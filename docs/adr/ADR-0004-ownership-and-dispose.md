@@ -30,6 +30,7 @@ We standardize on a single cleanup idiom:
 - The message references a buffer or object owned by a pool.
 - Delivery may increase the number of outstanding references.
 - Queueing or publish fan-out must acquire retained shares explicitly.
+- Pool-backed leases expose that ownership through explicit handles and deterministic slot refcounts.
 - Disposal decrements the reference count and returns the resource to the pool when it reaches zero.
 
 ### View
@@ -75,5 +76,6 @@ Implementation should provide:
 
 - message constructors with explicit ownership names,
 - `ev_msg_dispose()` that is safe on zero-initialized messages,
+- a deterministic lease pool with explicit retain/release accounting,
 - host-side tests for normal and failure-path cleanup,
 - pool diagnostics for lease and stream pressure.

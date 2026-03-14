@@ -47,7 +47,8 @@ producer
 - mailbox acceptance is explicit,
 - rejection returns an error to the caller,
 - accepted mailboxes retain their own ownership share for LEASE payloads,
-- the caller remains responsible for its original ownership share and must dispose it when appropriate.
+- when the payload originates from a lease pool, message attachment itself already owns a dedicated message share,
+- the caller remains responsible for its original handle-owned share and must release it when appropriate.
 
 ## Publish path
 
@@ -67,7 +68,8 @@ producer
 - fan-out is bounded,
 - publish does not imply broadcast,
 - resource ownership across fan-out must be explicit and auditable,
-- each accepted target owns exactly one retained delivery share for LEASE payloads.
+- each accepted target owns exactly one retained delivery share for LEASE payloads,
+- pool-backed leases keep transport ownership measurable through slot refcounts and pool diagnostics.
 
 ## Failure paths
 
