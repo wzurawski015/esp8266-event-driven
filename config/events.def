@@ -1,0 +1,11 @@
+// Event single source of truth.
+//
+// Format:
+// EV_EVENT(EVENT_ID, PAYLOAD_KIND, "summary")
+
+EV_EVENT(EV_BOOT_STARTED, EV_PAYLOAD_INLINE, "Bootstrap sequence started")
+EV_EVENT(EV_BOOT_COMPLETED, EV_PAYLOAD_INLINE, "Bootstrap sequence completed")
+EV_EVENT(EV_TICK_1S, EV_PAYLOAD_INLINE, "One-second system tick")
+EV_EVENT(EV_STREAM_CHUNK_READY, EV_PAYLOAD_LEASE, "Streaming chunk ready for downstream processing")
+EV_EVENT(EV_DIAG_SNAPSHOT_REQ, EV_PAYLOAD_INLINE, "Diagnostic snapshot requested")
+EV_EVENT(EV_DIAG_SNAPSHOT_RSP, EV_PAYLOAD_LEASE, "Diagnostic snapshot prepared")

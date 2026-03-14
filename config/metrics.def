@@ -1,0 +1,9 @@
+// Metric catalog single source of truth.
+//
+// Format:
+// EV_METRIC(METRIC_ID, KIND, "summary")
+
+EV_METRIC(EV_METRIC_POST_OK, counter, "Successful event posts")
+EV_METRIC(EV_METRIC_POST_DROPPED, counter, "Dropped events")
+EV_METRIC(EV_METRIC_MAILBOX_HIGH_WATER, gauge, "Highest observed mailbox usage")
+EV_METRIC(EV_METRIC_POOL_HIGH_WATER, gauge, "Highest observed memory pool usage")

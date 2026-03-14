@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  host-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 make build-essential
+
+      - name: Generate living documentation artifacts
+        run: make docgen
+
+      - name: Build and run host smoke tests
+        run: make host-test

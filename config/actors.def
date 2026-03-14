@@ -1,0 +1,9 @@
+// Actor single source of truth.
+//
+// Format:
+// EV_ACTOR(ACTOR_ID, EXECUTION_DOMAIN, MAILBOX_KIND, "summary")
+
+EV_ACTOR(ACT_BOOT, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, "Bootstrap orchestrator")
+EV_ACTOR(ACT_STREAM, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_16, "Streaming pipeline coordinator")
+EV_ACTOR(ACT_DIAG, EV_DOMAIN_SLOW_IO, EV_MAILBOX_FIFO_8, "Diagnostics and observability actor")
+EV_ACTOR(ACT_APP, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, "Application composition actor")

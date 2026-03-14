@@ -1,0 +1,9 @@
+// Fault catalog single source of truth.
+//
+// Format:
+// EV_FAULT(FAULT_ID, CODE_HEX, "summary")
+
+EV_FAULT(EV_FAULT_NONE, 0x0000, "No fault")
+EV_FAULT(EV_FAULT_POOL_EXHAUSTED, 0x0101, "Memory pool exhausted")
+EV_FAULT(EV_FAULT_MAILBOX_OVERFLOW, 0x0102, "Mailbox overflow")
+EV_FAULT(EV_FAULT_I2C_BUS_STUCK, 0x0201, "I2C bus stuck")

@@ -1,0 +1,37 @@
+#!/usr/bin/env sh
+set -eu
+
+usage() {
+    cat <<'EOF'
+Usage:
+  ./tools/fw host-test
+  ./tools/fw docgen
+  ./tools/fw docs
+  ./tools/fw clean
+
+Notes:
+- This initial wrapper runs local host-side targets.
+- Dockerized ESP8266 firmware builds will be added once the SDK image is pinned.
+EOF
+}
+
+cmd="${1:-}"
+
+case "$cmd" in
+    host-test)
+        exec make host-test
+        ;;
+    docgen)
+        exec make docgen
+        ;;
+    docs)
+        exec make docs
+        ;;
+    clean)
+        exec make clean
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac
