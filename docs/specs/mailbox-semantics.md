@@ -65,7 +65,7 @@ The current host-verified runtime maps the bootstrap mailbox names to explicit b
 - `EV_MAILBOX_LOSSY_RING_8` — capacity 8 with drop-oldest-on-overflow.
 - `EV_MAILBOX_COALESCED_FLAG` — single pending indication that coalesces repeated payloadless deliveries of the same event.
 
-At this stage the concrete mailbox implementation stores only messages whose transport envelope is safe to copy by value. Messages carrying externally owned payload storage are still routed through callback contracts but are rejected by mailbox enqueue until the lease-aware runtime is introduced.
+At this stage the concrete mailbox implementation stores runtime envelopes by value. Messages carrying retainable LEASE payloads are queue-safe: mailbox enqueue acquires one additional ownership share for the queued copy, and mailbox drop/reset paths release queued shares deterministically. STREAM_VIEW payloads remain unsupported for mailbox enqueue until the stream backend contract is introduced.
 
 ## Planned normalization
 

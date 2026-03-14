@@ -23,13 +23,27 @@ typedef enum {
 } ev_msg_storage_t;
 
 /**
+ * @brief Retain callback for externally owned payloads.
+ *
+ * The callback must acquire one additional ownership share for the referenced
+ * payload. It is used when the runtime needs to duplicate transport ownership,
+ * for example while enqueueing the same leased payload into a mailbox.
+ *
+ * @param lifecycle_ctx Caller-provided lifecycle context.
+ * @param payload Payload pointer previously attached to the message.
+ * @param payload_size Payload size in bytes.
+ * @return EV_OK on success or an error code.
+ */
+typedef ev_result_t (*ev_msg_retain_fn_t)(void *lifecycle_ctx, const void *payload, size_t payload_size);
+
+/**
  * @brief Release callback for externally owned payloads.
  *
- * @param release_ctx Caller-provided release context.
+ * @param lifecycle_ctx Caller-provided lifecycle context.
  * @param payload Payload pointer previously attached to the message.
  * @param payload_size Payload size in bytes.
  */
-typedef void (*ev_msg_release_fn_t)(void *release_ctx, const void *payload, size_t payload_size);
+typedef void (*ev_msg_release_fn_t)(void *lifecycle_ctx, const void *payload, size_t payload_size);
 
 /**
  * @brief Descriptor for externally owned payload storage.
@@ -37,15 +51,16 @@ typedef void (*ev_msg_release_fn_t)(void *release_ctx, const void *payload, size
 typedef struct {
     const void *data;
     size_t size;
+    ev_msg_retain_fn_t retain_fn;
     ev_msg_release_fn_t release_fn;
-    void *release_ctx;
+    void *lifecycle_ctx;
 } ev_msg_external_payload_t;
 
 /**
  * @brief Canonical runtime transport envelope.
  *
  * The semantic payload kind is defined by the event catalog. The message stores
- * only the transport descriptor required to access and dispose the payload.
+ * only the transport descriptor required to access, retain, and dispose the payload.
  */
 typedef struct {
     ev_event_id_t event_id;
@@ -63,12 +78,18 @@ typedef struct {
 /**
  * @brief Reset a message to a zero-initialized state.
  *
+ * This function performs a raw reset only. Callers must ensure that any owned
+ * external payload has already been released or moved away before invoking it.
+ *
  * @param msg Message to reset.
  */
 void ev_msg_reset(ev_msg_t *msg);
 
 /**
  * @brief Initialize a message for publish delivery.
+ *
+ * Reinitializing an already populated message first releases any currently
+ * attached payload so that reuse is leak-safe.
  *
  * @param msg Message to initialize.
  * @param event_id Declared event identifier.
@@ -79,6 +100,9 @@ ev_result_t ev_msg_init_publish(ev_msg_t *msg, ev_event_id_t event_id, ev_actor_
 
 /**
  * @brief Initialize a message for direct send delivery.
+ *
+ * Reinitializing an already populated message first releases any currently
+ * attached payload so that reuse is leak-safe.
  *
  * @param msg Message to initialize.
  * @param event_id Declared event identifier.
@@ -96,7 +120,8 @@ ev_result_t ev_msg_init_send(
  * @brief Attach inline payload bytes to a message.
  *
  * This is valid only for events whose catalog payload kind is INLINE or
- * COPY_FIXED.
+ * COPY_FIXED. Replacing an already attached payload first releases the previous
+ * payload when needed.
  *
  * @param msg Message to modify.
  * @param data Source bytes. May be NULL only when size is zero.
@@ -109,21 +134,40 @@ ev_result_t ev_msg_set_inline_payload(ev_msg_t *msg, const void *data, size_t si
  * @brief Attach externally owned payload storage to a message.
  *
  * This is valid only for events whose catalog payload kind is LEASE or
- * STREAM_VIEW.
+ * STREAM_VIEW. Replacing an already attached payload first releases the
+ * previous payload when needed.
+ *
+ * For LEASE payloads, release_fn is required for any non-empty payload. A
+ * retain_fn is optional at construction time, but queueing and fan-out paths
+ * that duplicate transport ownership require it.
  *
  * @param msg Message to modify.
  * @param data External payload pointer. May be NULL only when size is zero.
  * @param size Payload size in bytes.
- * @param release_fn Optional release callback. Required for LEASE payloads.
- * @param release_ctx Caller-provided context for the release callback.
+ * @param retain_fn Optional retain callback for duplicate transport ownership.
+ * @param release_fn Optional release callback. Required for non-empty LEASE payloads.
+ * @param lifecycle_ctx Caller-provided context for retain and release callbacks.
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_msg_set_external_payload(
     ev_msg_t *msg,
     const void *data,
     size_t size,
+    ev_msg_retain_fn_t retain_fn,
     ev_msg_release_fn_t release_fn,
-    void *release_ctx);
+    void *lifecycle_ctx);
+
+/**
+ * @brief Acquire one additional ownership share for the current payload.
+ *
+ * This is primarily used by delivery code that needs to retain a lease-backed
+ * payload across mailbox copies. Inline and empty payloads are a no-op.
+ * Stream views remain unsupported for mailbox ownership duplication.
+ *
+ * @param msg Message to retain.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_msg_retain(const ev_msg_t *msg);
 
 /**
  * @brief Validate the internal consistency of a runtime message.

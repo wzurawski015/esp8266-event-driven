@@ -13,7 +13,10 @@ ev_result_t ev_msg_dispose(ev_msg_t *msg)
 
     if ((msg->storage == EV_MSG_STORAGE_EXTERNAL) && (msg->payload_size > 0U) &&
         (msg->payload.external.release_fn != NULL)) {
-        msg->payload.external.release_fn(msg->payload.external.release_ctx, msg->payload.external.data, msg->payload_size);
+        msg->payload.external.release_fn(
+            msg->payload.external.lifecycle_ctx,
+            msg->payload.external.data,
+            msg->payload_size);
     }
 
     memset(&msg->payload, 0, sizeof(msg->payload));

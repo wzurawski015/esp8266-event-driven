@@ -36,6 +36,7 @@ producer
   -> construct message
   -> ev_send(target, msg)
   -> target mailbox accepts or rejects
+  -> accepted mailbox retains lease ownership when required
   -> target consumes
   -> target disposes
 ```
@@ -45,7 +46,8 @@ producer
 - exactly one target mailbox participates,
 - mailbox acceptance is explicit,
 - rejection returns an error to the caller,
-- the caller remains responsible for cleanup if enqueue fails.
+- accepted mailboxes retain their own ownership share for LEASE payloads,
+- the caller remains responsible for its original ownership share and must dispose it when appropriate.
 
 ## Publish path
 
@@ -55,6 +57,7 @@ producer
   -> ev_publish(msg)
   -> static route table resolves targets
   -> each target mailbox accepts or rejects according to policy
+  -> each accepted mailbox retains one ownership share for LEASE payloads
   -> each consumer disposes its delivered message view
 ```
 
@@ -63,7 +66,8 @@ producer
 - target set is resolved only from SSOT routes,
 - fan-out is bounded,
 - publish does not imply broadcast,
-- resource ownership across fan-out must be explicit and auditable.
+- resource ownership across fan-out must be explicit and auditable,
+- each accepted target owns exactly one retained delivery share for LEASE payloads.
 
 ## Failure paths
 

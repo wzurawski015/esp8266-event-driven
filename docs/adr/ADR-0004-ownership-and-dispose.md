@@ -29,6 +29,7 @@ We standardize on a single cleanup idiom:
 
 - The message references a buffer or object owned by a pool.
 - Delivery may increase the number of outstanding references.
+- Queueing or publish fan-out must acquire retained shares explicitly.
 - Disposal decrements the reference count and returns the resource to the pool when it reaches zero.
 
 ### View

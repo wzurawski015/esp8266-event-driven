@@ -5,12 +5,26 @@
 #include "ev/dispose.h"
 #include "ev/msg.h"
 
-static void release_counter(void *release_ctx, const void *payload, size_t payload_size)
+typedef struct {
+    size_t retains;
+    size_t releases;
+} lease_trace_t;
+
+static ev_result_t retain_counter(void *lifecycle_ctx, const void *payload, size_t payload_size)
 {
-    size_t *counter = (size_t *)release_ctx;
+    lease_trace_t *trace = (lease_trace_t *)lifecycle_ctx;
     (void)payload;
     (void)payload_size;
-    ++(*counter);
+    ++trace->retains;
+    return EV_OK;
+}
+
+static void release_counter(void *lifecycle_ctx, const void *payload, size_t payload_size)
+{
+    lease_trace_t *trace = (lease_trace_t *)lifecycle_ctx;
+    (void)payload;
+    (void)payload_size;
+    ++trace->releases;
 }
 
 int main(void)
@@ -18,7 +32,8 @@ int main(void)
     ev_msg_t msg = {0};
     const unsigned char ok_bytes[] = {0x4fU, 0x4bU};
     const unsigned char lease_bytes[] = {0x01U, 0x02U, 0x03U};
-    size_t releases = 0U;
+    const unsigned char replacement_bytes[] = {0xAAU, 0xBBU};
+    lease_trace_t lease_trace = {0};
 
     assert(ev_msg_dispose(&msg) == EV_OK);
     assert(ev_msg_is_disposed(&msg));
@@ -33,15 +48,43 @@ int main(void)
 
     assert(ev_msg_init_publish(&msg, EV_STREAM_CHUNK_READY, ACT_STREAM) == EV_OK);
     assert(ev_msg_set_inline_payload(&msg, ok_bytes, sizeof(ok_bytes)) == EV_ERR_CONTRACT);
-    assert(ev_msg_set_external_payload(&msg, lease_bytes, sizeof(lease_bytes), NULL, NULL) == EV_ERR_CONTRACT);
-    assert(ev_msg_set_external_payload(&msg, lease_bytes, sizeof(lease_bytes), release_counter, &releases) == EV_OK);
+    assert(ev_msg_set_external_payload(&msg, lease_bytes, sizeof(lease_bytes), NULL, NULL, NULL) == EV_ERR_CONTRACT);
+    assert(ev_msg_set_external_payload(
+               &msg,
+               lease_bytes,
+               sizeof(lease_bytes),
+               retain_counter,
+               release_counter,
+               &lease_trace) == EV_OK);
     assert(ev_msg_validate(&msg) == EV_OK);
+    assert(ev_msg_retain(&msg) == EV_OK);
+    assert(lease_trace.retains == 1U);
     assert(ev_msg_dispose(&msg) == EV_OK);
-    assert(releases == 1U);
+    assert(lease_trace.releases == 1U);
     assert(ev_msg_dispose(&msg) == EV_OK);
-    assert(releases == 1U);
+    assert(lease_trace.releases == 1U);
 
+    /* Replacing an external payload releases the previous attachment. */
+    assert(ev_msg_init_publish(&msg, EV_DIAG_SNAPSHOT_RSP, ACT_DIAG) == EV_OK);
+    assert(ev_msg_set_external_payload(
+               &msg,
+               lease_bytes,
+               sizeof(lease_bytes),
+               retain_counter,
+               release_counter,
+               &lease_trace) == EV_OK);
+    assert(ev_msg_set_external_payload(
+               &msg,
+               replacement_bytes,
+               sizeof(replacement_bytes),
+               retain_counter,
+               release_counter,
+               &lease_trace) == EV_OK);
+    assert(lease_trace.releases == 2U);
+
+    /* Reinitializing a populated message also releases the attached payload. */
     assert(ev_msg_init_send(&msg, EV_DIAG_SNAPSHOT_REQ, ACT_APP, ACT_DIAG) == EV_OK);
+    assert(lease_trace.releases == 3U);
     assert(msg.target_actor == ACT_DIAG);
     assert(ev_msg_validate(&msg) == EV_OK);
 
