@@ -1,0 +1,55 @@
+# Doxyfile — esp8266-event-driven
+# Generated scaffold — customise as needed.
+
+#---------------------------------------------------------------------------
+# Project information
+#---------------------------------------------------------------------------
+PROJECT_NAME           = "esp8266-event-driven"
+PROJECT_BRIEF          = "Production-grade event-driven framework in pure C for ESP8266"
+PROJECT_NUMBER         =
+OUTPUT_DIRECTORY       = docs/html
+
+#---------------------------------------------------------------------------
+# Input
+#---------------------------------------------------------------------------
+INPUT                  = core domain ports adapters
+RECURSIVE              = YES
+FILE_PATTERNS          = *.c *.h
+EXCLUDE_PATTERNS       = */build/* */.git/*
+
+#---------------------------------------------------------------------------
+# Output formats
+#---------------------------------------------------------------------------
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = .
+HTML_TIMESTAMP         = NO
+
+#---------------------------------------------------------------------------
+# Source browsing
+#---------------------------------------------------------------------------
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = NO
+
+#---------------------------------------------------------------------------
+# Warnings
+#---------------------------------------------------------------------------
+QUIET                  = NO
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_LOGFILE           = docs/doxygen-warnings.log
+
+#---------------------------------------------------------------------------
+# Dot / graphs (optional — requires Graphviz)
+#---------------------------------------------------------------------------
+HAVE_DOT               = NO
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO
+
+#---------------------------------------------------------------------------
+# Preprocessing
+#---------------------------------------------------------------------------
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO

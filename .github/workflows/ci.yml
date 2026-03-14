@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# CI — build & test pipeline (placeholder)
+#
+# This workflow will be fully implemented once the core C sources are in place.
+# For now it validates that the repository scaffold is consistent.
+# ---------------------------------------------------------------------------
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+jobs:
+  # ------------------------------------------------------------------
+  # Lint / static analysis placeholder
+  # ------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Placeholder — add cppcheck / clang-tidy steps here"
+        run: echo "No C sources yet — lint step is a placeholder"
+
+  # ------------------------------------------------------------------
+  # Build placeholder
+  # ------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Placeholder — add toolchain setup and cmake build here"
+        run: echo "No C sources yet — build step is a placeholder"
+
+  # ------------------------------------------------------------------
+  # Test placeholder
+  # ------------------------------------------------------------------
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Placeholder — add unit-test execution here"
+        run: echo "No tests yet — test step is a placeholder"

@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------------------
+# docker-compose.yml — multi-service development environment (placeholder)
+# ---------------------------------------------------------------------------
+
+version: "3.9"
+
+services:
+  # -------------------------------------------------------------------------
+  # build — compile the firmware inside the reproducible build container
+  # -------------------------------------------------------------------------
+  build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: esp8266-event-driven-build
+    volumes:
+      # Mount the repository root so changes are reflected immediately
+      - .:/workspace:z
+    working_dir: /workspace
+    # Placeholder command — replace with real cmake invocation once sources exist
+    command: >
+      bash -c "echo 'TODO: cmake -B build && cmake --build build'"
+
+  # -------------------------------------------------------------------------
+  # docs — generate API documentation with Doxygen
+  # -------------------------------------------------------------------------
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: esp8266-event-driven-build
+    volumes:
+      - .:/workspace:z
+    working_dir: /workspace
+    # Placeholder command — replace with doxygen invocation once sources exist
+    command: >
+      bash -c "echo 'TODO: doxygen Doxyfile'"
+
+  # -------------------------------------------------------------------------
+  # test — run unit tests (host-side, no hardware required)
+  # -------------------------------------------------------------------------
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: esp8266-event-driven-build
+    volumes:
+      - .:/workspace:z
+    working_dir: /workspace
+    # Placeholder command — replace with ctest invocation once tests exist
+    command: >
+      bash -c "echo 'TODO: ctest --test-dir build --output-on-failure'"

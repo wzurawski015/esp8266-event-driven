@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# Docs — generate and publish API documentation (placeholder)
+#
+# This workflow will run Doxygen and publish to GitHub Pages once C sources
+# and headers are present.
+# ---------------------------------------------------------------------------
+name: Docs
+
+on:
+  push:
+    branches: ["main"]
+
+# Allow one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------------
+  # Build docs placeholder
+  # ------------------------------------------------------------------
+  build-docs:
+    name: Build docs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Placeholder — install Doxygen"
+        run: echo "Add: sudo apt-get install -y doxygen graphviz"
+
+      - name: "Placeholder — run Doxygen"
+        run: echo "Add: doxygen Doxyfile"
+
+  # ------------------------------------------------------------------
+  # Deploy to GitHub Pages placeholder
+  # ------------------------------------------------------------------
+  deploy-docs:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build-docs
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+      - name: "Placeholder — deploy docs/html to GitHub Pages"
+        run: echo "Add: actions/deploy-pages step here"
