@@ -1,8 +1,8 @@
-name: docs
+name: Docs
 
 on:
   push:
-    branches: [ main ]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -16,30 +16,36 @@ concurrency:
 
 jobs:
   build-docs:
+    name: Build docs
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Install documentation dependencies
+      - name: Install documentation toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 doxygen graphviz
 
-      - name: Generate documentation
-        run: make docs
+      - name: Build documentation
+        run: |
+          make docs
+          test -f docs/generated/site/index.html
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: docs/generated/site
 
   deploy-docs:
+    name: Deploy to GitHub Pages
     needs: build-docs
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
