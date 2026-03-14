@@ -55,6 +55,18 @@ Every mailbox kind must define one of the following behaviors explicitly:
 - Streaming paths should use lossy structures only when the data contract permits loss.
 - Safety-critical or stateful control paths should prefer reject-on-overflow semantics.
 
+## Current contract-stage mapping
+
+The current host-verified runtime maps the bootstrap mailbox names to explicit behavior:
+
+- `EV_MAILBOX_FIFO_8` — ordered FIFO with capacity 8 and reject-on-overflow.
+- `EV_MAILBOX_FIFO_16` — ordered FIFO with capacity 16 and reject-on-overflow.
+- `EV_MAILBOX_MAILBOX_1` — single-slot mailbox with overwrite-on-new-delivery.
+- `EV_MAILBOX_LOSSY_RING_8` — capacity 8 with drop-oldest-on-overflow.
+- `EV_MAILBOX_COALESCED_FLAG` — single pending indication that coalesces repeated payloadless deliveries of the same event.
+
+At this stage the concrete mailbox implementation stores only messages whose transport envelope is safe to copy by value. Messages carrying externally owned payload storage are still routed through callback contracts but are rejected by mailbox enqueue until the lease-aware runtime is introduced.
+
 ## Planned normalization
 
 The scaffold currently uses names such as `EV_MAILBOX_FIFO_8` and `EV_MAILBOX_FIFO_16`.
