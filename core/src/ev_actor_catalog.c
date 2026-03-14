@@ -60,6 +60,10 @@ const char *ev_mailbox_kind_name(ev_mailbox_kind_t kind)
         return "EV_MAILBOX_FIFO_16";
     case EV_MAILBOX_MAILBOX_1:
         return "EV_MAILBOX_MAILBOX_1";
+    case EV_MAILBOX_LOSSY_RING_8:
+        return "EV_MAILBOX_LOSSY_RING_8";
+    case EV_MAILBOX_COALESCED_FLAG:
+        return "EV_MAILBOX_COALESCED_FLAG";
     default:
         return "EV_MAILBOX_UNKNOWN";
     }
