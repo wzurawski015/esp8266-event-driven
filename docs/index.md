@@ -7,6 +7,7 @@
 - [Event model](specs/event-model.md)
 - [Message lifecycle](specs/message-lifecycle.md)
 - [Mailbox semantics](specs/mailbox-semantics.md)
+- [Lease pool model](specs/lease-pool-model.md)
 
 ## ADRs
 

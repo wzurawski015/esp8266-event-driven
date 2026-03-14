@@ -26,9 +26,9 @@ typedef struct {
  * @brief Queue state for one actor mailbox.
  *
  * Storage is provided by the caller and remains owned by the caller.
- * In the current contract stage the mailbox stores only messages whose
- * transport envelope is safe to copy by value. Externally owned payload
- * storage is rejected until the lease-aware runtime is introduced.
+ * The mailbox stores runtime envelopes by value. When a message carries a
+ * retainable LEASE payload, enqueue acquires one additional ownership share for
+ * the queued copy. Unsupported external payload kinds are rejected.
  */
 typedef struct {
     ev_mailbox_kind_t kind;
@@ -58,6 +58,9 @@ ev_result_t ev_mailbox_init(
 /**
  * @brief Reset mailbox queue state and diagnostics.
  *
+ * Any retained payloads currently owned by queued messages are released before
+ * the queue state is reset.
+ *
  * @param mailbox Mailbox to reset.
  * @return EV_OK on success or an error code.
  */
@@ -66,8 +69,9 @@ ev_result_t ev_mailbox_reset(ev_mailbox_t *mailbox);
 /**
  * @brief Post one message to a mailbox.
  *
- * The mailbox takes a by-value snapshot of the runtime envelope. Messages with
- * externally owned payloads are currently rejected with EV_ERR_UNSUPPORTED.
+ * The mailbox takes a by-value snapshot of the runtime envelope. For LEASE
+ * payloads this acquires one additional retained ownership share for the queued
+ * copy. Unsupported external payload kinds are rejected.
  *
  * @param mailbox Mailbox receiving the message.
  * @param msg Message to enqueue.
@@ -77,6 +81,9 @@ ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg);
 
 /**
  * @brief Pop one message from a mailbox.
+ *
+ * Ownership of any queued payload moves into @p out and must be disposed by the
+ * caller once processing completes.
  *
  * @param mailbox Mailbox to drain.
  * @param out Output receiving the next message.

@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "ev/actor_catalog.h"
+#include "ev/dispose.h"
 
 static bool ev_payload_kind_allows_inline(ev_payload_kind_t kind)
 {
@@ -12,6 +13,26 @@ static bool ev_payload_kind_allows_inline(ev_payload_kind_t kind)
 static bool ev_payload_kind_allows_external(ev_payload_kind_t kind)
 {
     return (kind == EV_PAYLOAD_LEASE) || (kind == EV_PAYLOAD_STREAM_VIEW);
+}
+
+static ev_result_t ev_msg_release_attached_payload(ev_msg_t *msg)
+{
+    if (msg == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if ((msg->storage == EV_MSG_STORAGE_EXTERNAL) && (msg->payload_size > 0U) &&
+        (msg->payload.external.release_fn != NULL)) {
+        msg->payload.external.release_fn(
+            msg->payload.external.lifecycle_ctx,
+            msg->payload.external.data,
+            msg->payload_size);
+    }
+
+    memset(&msg->payload, 0, sizeof(msg->payload));
+    msg->payload_size = 0U;
+    msg->storage = EV_MSG_STORAGE_NONE;
+    return EV_OK;
 }
 
 void ev_msg_reset(ev_msg_t *msg)
@@ -30,6 +51,7 @@ ev_result_t ev_msg_init_publish(ev_msg_t *msg, ev_event_id_t event_id, ev_actor_
         return EV_ERR_OUT_OF_RANGE;
     }
 
+    (void)ev_msg_dispose(msg);
     ev_msg_reset(msg);
     msg->event_id = event_id;
     msg->source_actor = source_actor;
@@ -51,6 +73,7 @@ ev_result_t ev_msg_init_send(
         return EV_ERR_OUT_OF_RANGE;
     }
 
+    (void)ev_msg_dispose(msg);
     ev_msg_reset(msg);
     msg->event_id = event_id;
     msg->source_actor = source_actor;
@@ -73,6 +96,7 @@ ev_payload_kind_t ev_msg_payload_kind(const ev_msg_t *msg)
 ev_result_t ev_msg_set_inline_payload(ev_msg_t *msg, const void *data, size_t size)
 {
     const ev_event_meta_t *meta;
+    ev_result_t rc;
 
     if (msg == NULL) {
         return EV_ERR_INVALID_ARG;
@@ -95,6 +119,11 @@ ev_result_t ev_msg_set_inline_payload(ev_msg_t *msg, const void *data, size_t si
         return EV_ERR_CONTRACT;
     }
 
+    rc = ev_msg_release_attached_payload(msg);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
     memset(&msg->payload, 0, sizeof(msg->payload));
     if (size > 0U) {
         memcpy(msg->payload.inline_bytes, data, size);
@@ -110,10 +139,12 @@ ev_result_t ev_msg_set_external_payload(
     ev_msg_t *msg,
     const void *data,
     size_t size,
+    ev_msg_retain_fn_t retain_fn,
     ev_msg_release_fn_t release_fn,
-    void *release_ctx)
+    void *lifecycle_ctx)
 {
     const ev_event_meta_t *meta;
+    ev_result_t rc;
 
     if (msg == NULL) {
         return EV_ERR_INVALID_ARG;
@@ -136,18 +167,59 @@ ev_result_t ev_msg_set_external_payload(
         return EV_ERR_CONTRACT;
     }
 
+    rc = ev_msg_release_attached_payload(msg);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
     memset(&msg->payload, 0, sizeof(msg->payload));
     if (size > 0U) {
         msg->storage = EV_MSG_STORAGE_EXTERNAL;
         msg->payload.external.data = data;
         msg->payload.external.size = size;
+        msg->payload.external.retain_fn = retain_fn;
         msg->payload.external.release_fn = release_fn;
-        msg->payload.external.release_ctx = release_ctx;
+        msg->payload.external.lifecycle_ctx = lifecycle_ctx;
     } else {
         msg->storage = EV_MSG_STORAGE_NONE;
     }
     msg->payload_size = size;
     return EV_OK;
+}
+
+ev_result_t ev_msg_retain(const ev_msg_t *msg)
+{
+    const ev_event_meta_t *meta;
+
+    if (msg == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    meta = ev_event_meta(msg->event_id);
+    if (meta == NULL) {
+        return EV_ERR_OUT_OF_RANGE;
+    }
+
+    if ((msg->storage != EV_MSG_STORAGE_EXTERNAL) || (msg->payload_size == 0U)) {
+        return EV_OK;
+    }
+
+    switch (meta->payload_kind) {
+    case EV_PAYLOAD_LEASE:
+        if (msg->payload.external.retain_fn == NULL) {
+            return EV_ERR_UNSUPPORTED;
+        }
+        return msg->payload.external.retain_fn(
+            msg->payload.external.lifecycle_ctx,
+            msg->payload.external.data,
+            msg->payload_size);
+
+    case EV_PAYLOAD_STREAM_VIEW:
+        return EV_ERR_UNSUPPORTED;
+
+    default:
+        return EV_ERR_CONTRACT;
+    }
 }
 
 ev_result_t ev_msg_validate(const ev_msg_t *msg)

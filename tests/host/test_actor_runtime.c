@@ -2,6 +2,7 @@
 #include <stddef.h>
 
 #include "ev/actor_runtime.h"
+#include "ev/dispose.h"
 #include "ev/msg.h"
 #include "ev/publish.h"
 #include "ev/send.h"
@@ -11,6 +12,28 @@ typedef struct {
     ev_event_id_t last_event;
     ev_actor_id_t last_source;
 } handler_trace_t;
+
+typedef struct {
+    size_t retains;
+    size_t releases;
+} lease_trace_t;
+
+static ev_result_t retain_count(void *ctx, const void *payload, size_t payload_size)
+{
+    lease_trace_t *trace = (lease_trace_t *)ctx;
+    (void)payload;
+    (void)payload_size;
+    ++trace->retains;
+    return EV_OK;
+}
+
+static void release_count(void *ctx, const void *payload, size_t payload_size)
+{
+    lease_trace_t *trace = (lease_trace_t *)ctx;
+    (void)payload;
+    (void)payload_size;
+    ++trace->releases;
+}
 
 static ev_result_t trace_handler(void *actor_context, const ev_msg_t *msg)
 {
@@ -33,8 +56,10 @@ int main(void)
     ev_actor_registry_t registry;
     handler_trace_t diag_trace = {0};
     handler_trace_t app_trace = {0};
+    lease_trace_t lease_trace = {0};
     ev_msg_t msg;
     size_t delivered = 0U;
+    static const unsigned char lease_bytes[] = {0x10U, 0x20U, 0x30U};
 
     assert(ev_mailbox_init(&diag_mailbox, EV_MAILBOX_FIFO_8, diag_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&app_mailbox, EV_MAILBOX_FIFO_8, app_storage, 8U) == EV_OK);
@@ -65,13 +90,25 @@ int main(void)
     assert(diag_trace.last_event == EV_DIAG_SNAPSHOT_REQ);
     assert(diag_trace.last_source == ACT_APP);
 
+    /* Lease payload must retain once for the queued copy and release once per owner. */
     assert(ev_msg_init_publish(&msg, EV_DIAG_SNAPSHOT_RSP, ACT_DIAG) == EV_OK);
+    assert(ev_msg_set_external_payload(
+               &msg,
+               lease_bytes,
+               sizeof(lease_bytes),
+               retain_count,
+               release_count,
+               &lease_trace) == EV_OK);
     assert(ev_publish(&msg, ev_actor_registry_delivery, &registry, &delivered) == EV_OK);
     assert(delivered == 1U);
+    assert(lease_trace.retains == 1U);
     assert(ev_actor_runtime_pending(&app_runtime) == 1U);
     assert(ev_actor_runtime_step(&app_runtime) == EV_OK);
     assert(app_trace.calls == 1U);
     assert(app_trace.last_event == EV_DIAG_SNAPSHOT_RSP);
+    assert(lease_trace.releases == 1U);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+    assert(lease_trace.releases == 2U);
 
     return 0;
 }

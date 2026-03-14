@@ -3,15 +3,11 @@
 #include <string.h>
 
 #include "ev/compiler.h"
+#include "ev/dispose.h"
 
 static bool ev_mailbox_kind_is_known(ev_mailbox_kind_t kind)
 {
     return ev_mailbox_kind_capacity(kind) > 0U;
-}
-
-static bool ev_msg_is_mailbox_copyable(const ev_msg_t *msg)
-{
-    return (msg != NULL) && (msg->storage != EV_MSG_STORAGE_EXTERNAL);
 }
 
 static void ev_mailbox_record_high_watermark(ev_mailbox_t *mailbox)
@@ -26,6 +22,19 @@ static size_t ev_mailbox_index_advance(const ev_mailbox_t *mailbox, size_t index
     return (index + 1U) % mailbox->storage_count;
 }
 
+static ev_result_t ev_mailbox_dispose_slot(ev_mailbox_t *mailbox, size_t index)
+{
+    ev_result_t rc;
+
+    if ((mailbox == NULL) || (mailbox->storage == NULL) || (index >= mailbox->storage_count)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    rc = ev_msg_dispose(&mailbox->storage[index]);
+    ev_msg_reset(&mailbox->storage[index]);
+    return rc;
+}
+
 static ev_result_t ev_mailbox_store_at(ev_mailbox_t *mailbox, size_t index, const ev_msg_t *msg)
 {
     if ((mailbox == NULL) || (msg == NULL) || (index >= mailbox->storage_count)) {
@@ -34,6 +43,19 @@ static ev_result_t ev_mailbox_store_at(ev_mailbox_t *mailbox, size_t index, cons
 
     mailbox->storage[index] = *msg;
     return EV_OK;
+}
+
+static ev_result_t ev_mailbox_retain_for_queue(const ev_msg_t *msg)
+{
+    if (msg == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if ((msg->storage != EV_MSG_STORAGE_EXTERNAL) || (msg->payload_size == 0U)) {
+        return EV_OK;
+    }
+
+    return ev_msg_retain(msg);
 }
 
 size_t ev_mailbox_kind_capacity(ev_mailbox_kind_t kind)
@@ -90,11 +112,15 @@ ev_result_t ev_mailbox_init(
 
 ev_result_t ev_mailbox_reset(ev_mailbox_t *mailbox)
 {
+    size_t i;
+
     if ((mailbox == NULL) || (mailbox->storage == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 
-    memset(mailbox->storage, 0, sizeof(*mailbox->storage) * mailbox->storage_count);
+    for (i = 0U; i < mailbox->storage_count; ++i) {
+        (void)ev_mailbox_dispose_slot(mailbox, i);
+    }
     mailbox->head = 0U;
     mailbox->tail = 0U;
     mailbox->count = 0U;
@@ -115,10 +141,6 @@ ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg)
         ++mailbox->stats.rejected;
         return rc;
     }
-    if (!ev_msg_is_mailbox_copyable(msg)) {
-        ++mailbox->stats.rejected;
-        return EV_ERR_UNSUPPORTED;
-    }
 
     switch (mailbox->kind) {
     case EV_MAILBOX_FIFO_8:
@@ -126,6 +148,11 @@ ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg)
         if (mailbox->count >= mailbox->storage_count) {
             ++mailbox->stats.rejected;
             return EV_ERR_FULL;
+        }
+        rc = ev_mailbox_retain_for_queue(msg);
+        if (rc != EV_OK) {
+            ++mailbox->stats.rejected;
+            return rc;
         }
         rc = ev_mailbox_store_at(mailbox, mailbox->tail, msg);
         if (rc != EV_OK) {
@@ -139,6 +166,14 @@ ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg)
         return EV_OK;
 
     case EV_MAILBOX_MAILBOX_1:
+        rc = ev_mailbox_retain_for_queue(msg);
+        if (rc != EV_OK) {
+            ++mailbox->stats.rejected;
+            return rc;
+        }
+        if (mailbox->count != 0U) {
+            (void)ev_mailbox_dispose_slot(mailbox, 0U);
+        }
         rc = ev_mailbox_store_at(mailbox, 0U, msg);
         if (rc != EV_OK) {
             ++mailbox->stats.rejected;
@@ -154,7 +189,13 @@ ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg)
         return EV_OK;
 
     case EV_MAILBOX_LOSSY_RING_8:
+        rc = ev_mailbox_retain_for_queue(msg);
+        if (rc != EV_OK) {
+            ++mailbox->stats.rejected;
+            return rc;
+        }
         if (mailbox->count >= mailbox->storage_count) {
+            (void)ev_mailbox_dispose_slot(mailbox, mailbox->head);
             mailbox->head = ev_mailbox_index_advance(mailbox, mailbox->head);
             --mailbox->count;
             ++mailbox->stats.dropped;
