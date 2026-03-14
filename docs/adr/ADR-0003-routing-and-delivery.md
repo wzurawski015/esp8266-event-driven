@@ -76,3 +76,15 @@ Implementation should generate a static route table from `config/routes.def` and
 - every route references a valid event,
 - duplicate routes are rejected,
 - publish never degenerates into broadcast.
+
+## Failure handling policy
+
+Publish fan-out is not treated as an unstructured broadcast.
+The core distinguishes two policies:
+
+- fail-fast for command-like or strongly ordered publication,
+- best-effort for observability and multi-subscriber fan-out.
+
+The accounting report for one publish attempt must expose how many static routes matched,
+how many deliveries were attempted, how many succeeded, how many failed, and the first failure code.
+This makes partial delivery explicit and testable.

@@ -54,10 +54,12 @@ int main(void)
     ev_actor_runtime_t diag_runtime;
     ev_actor_runtime_t app_runtime;
     ev_actor_registry_t registry;
+    ev_actor_registry_t partial_registry;
     handler_trace_t diag_trace = {0};
     handler_trace_t app_trace = {0};
     lease_trace_t lease_trace = {0};
     ev_msg_t msg;
+    ev_publish_report_t report;
     size_t delivered = 0U;
     static const unsigned char lease_bytes[] = {0x10U, 0x20U, 0x30U};
 
@@ -82,11 +84,38 @@ int main(void)
     assert(diag_trace.last_source == ACT_BOOT);
     assert(ev_actor_runtime_step(&diag_runtime) == EV_ERR_EMPTY);
 
+    assert(ev_msg_init_publish(&msg, EV_BOOT_COMPLETED, ACT_BOOT) == EV_OK);
+    assert(ev_publish(&msg, ev_actor_registry_delivery, &registry, &delivered) == EV_OK);
+    assert(delivered == 2U);
+    assert(ev_actor_runtime_pending(&diag_runtime) == 1U);
+    assert(ev_actor_runtime_pending(&app_runtime) == 1U);
+    assert(ev_actor_runtime_step(&diag_runtime) == EV_OK);
+    assert(ev_actor_runtime_step(&app_runtime) == EV_OK);
+    assert(diag_trace.calls == 2U);
+    assert(diag_trace.last_event == EV_BOOT_COMPLETED);
+    assert(app_trace.calls == 1U);
+    assert(app_trace.last_event == EV_BOOT_COMPLETED);
+
+    assert(ev_actor_registry_init(&partial_registry) == EV_OK);
+    assert(ev_actor_registry_bind(&partial_registry, &diag_runtime) == EV_OK);
+    ev_publish_report_reset(&report);
+    assert(ev_msg_init_publish(&msg, EV_BOOT_COMPLETED, ACT_BOOT) == EV_OK);
+    assert(ev_publish_ex(&msg, ev_actor_registry_delivery, &partial_registry, EV_PUBLISH_BEST_EFFORT, &report) == EV_ERR_PARTIAL);
+    assert(report.matched_routes == 2U);
+    assert(report.delivered_count == 1U);
+    assert(report.failed_count == 1U);
+    assert(report.first_failed_actor == ACT_APP);
+    assert(report.first_error == EV_ERR_NOT_FOUND);
+    assert(ev_actor_runtime_pending(&diag_runtime) == 1U);
+    assert(ev_actor_runtime_pending(&app_runtime) == 0U);
+    assert(ev_actor_runtime_step(&diag_runtime) == EV_OK);
+    assert(diag_trace.calls == 3U);
+
     assert(ev_msg_init_send(&msg, EV_DIAG_SNAPSHOT_REQ, ACT_APP, ACT_DIAG) == EV_OK);
     assert(ev_send(ACT_DIAG, &msg, ev_actor_registry_delivery, &registry) == EV_OK);
     assert(ev_actor_runtime_pending(&diag_runtime) == 1U);
     assert(ev_actor_runtime_step(&diag_runtime) == EV_OK);
-    assert(diag_trace.calls == 2U);
+    assert(diag_trace.calls == 4U);
     assert(diag_trace.last_event == EV_DIAG_SNAPSHOT_REQ);
     assert(diag_trace.last_source == ACT_APP);
 
@@ -104,7 +133,7 @@ int main(void)
     assert(lease_trace.retains == 1U);
     assert(ev_actor_runtime_pending(&app_runtime) == 1U);
     assert(ev_actor_runtime_step(&app_runtime) == EV_OK);
-    assert(app_trace.calls == 1U);
+    assert(app_trace.calls == 2U);
     assert(app_trace.last_event == EV_DIAG_SNAPSHOT_RSP);
     assert(lease_trace.releases == 1U);
     assert(ev_msg_dispose(&msg) == EV_OK);

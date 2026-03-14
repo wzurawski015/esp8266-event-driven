@@ -13,7 +13,8 @@ typedef enum {
     EV_ERR_CONTRACT = -5,
     EV_ERR_FULL = -6,
     EV_ERR_EMPTY = -7,
-    EV_ERR_UNSUPPORTED = -8
+    EV_ERR_UNSUPPORTED = -8,
+    EV_ERR_PARTIAL = -9
 } ev_result_t;
 
 #endif /* EV_RESULT_H */
