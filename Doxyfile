@@ -28,6 +28,7 @@ INPUT                  = README.md \
 RECURSIVE              = YES
 FILE_PATTERNS          = *.h *.c *.md *.def
 EXTENSION_MAPPING      = def=C
+INCLUDE_PATH           = config
 EXCLUDE_PATTERNS       = */docs/generated/site/*
 
 GENERATE_HTML          = YES
@@ -45,7 +46,6 @@ SORT_BRIEF_DOCS        = YES
 HAVE_DOT               = YES
 DOT_IMAGE_FORMAT       = svg
 INTERACTIVE_SVG        = YES
-CLASS_DIAGRAMS         = NO
 COLLABORATION_GRAPH    = NO
 GROUP_GRAPHS           = YES
 UML_LOOK               = NO

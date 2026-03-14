@@ -1,34 +1,105 @@
 #!/usr/bin/env sh
 set -eu
 
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+DOCKER_BIN="${DOCKER_BIN:-docker}"
+HOST_IMAGE="${FW_HOST_IMAGE:-esp8266-event-driven-host:local}"
+DOCS_IMAGE="${FW_DOCS_IMAGE:-esp8266-event-driven-docs:local}"
+RUN_USER="${FW_RUN_USER:-$(id -u):$(id -g)}"
+
 usage() {
     cat <<'EOF'
 Usage:
+  ./tools/fw host-image
+  ./tools/fw docs-image
   ./tools/fw host-test
   ./tools/fw docgen
   ./tools/fw docs
   ./tools/fw clean
+  ./tools/fw shell-host
+  ./tools/fw shell-docs
 
 Notes:
-- This initial wrapper runs local host-side targets.
-- Dockerized ESP8266 firmware builds will be added once the SDK image is pinned.
+- All developer-facing validation runs inside Docker by default.
+- Containers write back to the bind mount using the caller UID:GID.
+- Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, or FW_RUN_USER to override defaults.
 EOF
+}
+
+require_docker() {
+    command -v "$DOCKER_BIN" >/dev/null 2>&1 || {
+        echo "error: docker binary not found: $DOCKER_BIN" >&2
+        exit 1
+    }
+}
+
+build_host_image() {
+    require_docker
+    "$DOCKER_BIN" build \
+        -f "$ROOT_DIR/docker/Dockerfile.host" \
+        -t "$HOST_IMAGE" \
+        "$ROOT_DIR"
+}
+
+build_docs_image() {
+    require_docker
+    "$DOCKER_BIN" build \
+        -f "$ROOT_DIR/docker/Dockerfile.docs" \
+        -t "$DOCS_IMAGE" \
+        "$ROOT_DIR"
+}
+
+run_in_image() {
+    image="$1"
+    shift
+    exec "$DOCKER_BIN" run --rm \
+        --user "$RUN_USER" \
+        -v "$ROOT_DIR:/work" \
+        -w /work \
+        "$image" "$@"
+}
+
+run_shell_in_image() {
+    image="$1"
+    exec "$DOCKER_BIN" run --rm -it \
+        --user "$RUN_USER" \
+        -v "$ROOT_DIR:/work" \
+        -w /work \
+        "$image" sh
 }
 
 cmd="${1:-}"
 
 case "$cmd" in
+    host-image)
+        build_host_image
+        ;;
+    docs-image)
+        build_docs_image
+        ;;
     host-test)
-        exec make host-test
+        build_host_image
+        run_in_image "$HOST_IMAGE" make host-test
         ;;
     docgen)
-        exec make docgen
+        build_host_image
+        run_in_image "$HOST_IMAGE" make docgen
         ;;
     docs)
-        exec make docs
+        build_docs_image
+        run_in_image "$DOCS_IMAGE" make docs
         ;;
     clean)
-        exec make clean
+        build_host_image
+        run_in_image "$HOST_IMAGE" make clean
+        ;;
+    shell-host)
+        build_host_image
+        run_shell_in_image "$HOST_IMAGE"
+        ;;
+    shell-docs)
+        build_docs_image
+        run_shell_in_image "$DOCS_IMAGE"
         ;;
     *)
         usage
