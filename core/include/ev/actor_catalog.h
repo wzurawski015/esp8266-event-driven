@@ -1,6 +1,7 @@
 #ifndef EV_ACTOR_CATALOG_H
 #define EV_ACTOR_CATALOG_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "ev/actor_id.h"
@@ -40,5 +41,13 @@ const ev_actor_meta_t *ev_actor_meta(ev_actor_id_t id);
  * @return Constant string or NULL if out of range.
  */
 const char *ev_actor_name(ev_actor_id_t id);
+
+/**
+ * @brief Test whether an actor identifier is valid.
+ *
+ * @param id Actor identifier.
+ * @return true when the identifier exists in the catalog.
+ */
+bool ev_actor_id_is_valid(ev_actor_id_t id);
 
 #endif /* EV_ACTOR_CATALOG_H */

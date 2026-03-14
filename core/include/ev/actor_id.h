@@ -14,4 +14,6 @@ typedef enum {
     EV_ACTOR_COUNT
 } ev_actor_id_t;
 
+#define EV_ACTOR_NONE ((ev_actor_id_t)-1)
+
 #endif /* EV_ACTOR_ID_H */

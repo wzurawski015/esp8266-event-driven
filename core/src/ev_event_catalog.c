@@ -24,6 +24,11 @@ const ev_event_meta_t *ev_event_meta(ev_event_id_t id)
     return &k_event_catalog[id];
 }
 
+bool ev_event_id_is_valid(ev_event_id_t id)
+{
+    return ev_event_meta(id) != NULL;
+}
+
 const char *ev_event_name(ev_event_id_t id)
 {
     const ev_event_meta_t *meta = ev_event_meta(id);

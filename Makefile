@@ -10,9 +10,20 @@ DOC_SITE_DIR := docs/generated/site
 CORE_SRCS := \
     core/src/ev_version.c \
     core/src/ev_event_catalog.c \
-    core/src/ev_actor_catalog.c
+    core/src/ev_actor_catalog.c \
+    core/src/ev_msg.c \
+    core/src/ev_route_table.c \
+    core/src/ev_send.c \
+    core/src/ev_publish.c \
+    core/src/ev_dispose.c
 
-TEST_SRCS := tests/host/test_catalog.c
+HOST_TESTS := \
+    test_catalog \
+    test_msg_contract \
+    test_route_table \
+    test_dispatch_contract
+
+HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
 
 .PHONY: all host-test docgen docs clean
 
@@ -21,11 +32,11 @@ all: host-test
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/test_catalog: $(CORE_SRCS) $(TEST_SRCS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(CORE_SRCS) $(TEST_SRCS) $(LDFLAGS) -o $@
+$(BUILD_DIR)/%: tests/host/%.c $(CORE_SRCS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(CORE_SRCS) $< $(LDFLAGS) -o $@
 
-host-test: $(BUILD_DIR)/test_catalog
-	./$(BUILD_DIR)/test_catalog
+host-test: $(HOST_TEST_BINS)
+	@set -e; for t in $(HOST_TEST_BINS); do ./$$t; done
 
 docgen:
 	$(PYTHON) tools/docgen/docgen.py
