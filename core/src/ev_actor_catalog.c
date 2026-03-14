@@ -24,6 +24,11 @@ const ev_actor_meta_t *ev_actor_meta(ev_actor_id_t id)
     return &k_actor_catalog[id];
 }
 
+bool ev_actor_id_is_valid(ev_actor_id_t id)
+{
+    return ev_actor_meta(id) != NULL;
+}
+
 const char *ev_actor_name(ev_actor_id_t id)
 {
     const ev_actor_meta_t *meta = ev_actor_meta(id);
