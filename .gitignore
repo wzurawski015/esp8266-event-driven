@@ -1,55 +1,57 @@
-# Prerequisites
-*.d
+# Build outputs
+/build/
+/out/
+/coverage/
+/dist/
 
-# Object files
+# Generated documentation
+/docs/generated/*
+!/docs/generated/.gitkeep
+
+# C/C++ artifacts
 *.o
-*.ko
 *.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
 *.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
 *.so
-*.so.*
 *.dylib
+*.dll
+*.gcda
+*.gcno
+*.profraw
+*.profdata
 
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
+# Tooling
+compile_commands.json
+.cache/
+.clangd/
+.vscode/
+.idea/
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
+# Editor / OS noise
+*~
+*.swp
+.DS_Store
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
-
-# debug information files
-*.dwo
+.
+..
+.git
+.github
+.editorconfig
+.gitignore
+CONTRIBUTING.md
+Doxyfile
+Makefile
+README.md
+LICENSE
+app
+adapters
+bsp
+config
+core
+diag
+docker
+docs
+domain
+ports
+tests
+tools
