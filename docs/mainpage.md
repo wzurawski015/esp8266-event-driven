@@ -1,10 +1,14 @@
-# Documentation Index
+# esp8266-event-driven Documentation
 
-## Architecture
+Welcome to the generated documentation for **esp8266-event-driven**.
 
+This site is the canonical API and architecture reference for the framework.
+
+## Start here
+
+- [Repository overview](../README.md)
+- [Documentation index](index.md)
 - [System overview](architecture/overview.md)
-- [Memory model](specs/memory-model.md)
-- [Event model](specs/event-model.md)
 - [Message lifecycle](specs/message-lifecycle.md)
 - [Mailbox semantics](specs/mailbox-semantics.md)
 
@@ -15,9 +19,7 @@
 - [ADR-0003: Routing and delivery model](adr/ADR-0003-routing-and-delivery.md)
 - [ADR-0004: Ownership and dispose contract](adr/ADR-0004-ownership-and-dispose.md)
 
-## Generated artifacts
-
-The generated artifacts below are created from `config/*.def` by `tools/docgen/docgen.py`.
+## Generated catalogs
 
 - [Generated index](generated/index.md)
 - [Event catalog](generated/events.md)

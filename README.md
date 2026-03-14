@@ -13,7 +13,7 @@ This repository is the foundation for a long-lived embedded framework focused on
 - clean architecture boundaries,
 - living documentation generated from single sources of truth,
 - host-side verification before hardware integration,
-- Docker-based reproducibility.
+- Docker-based reproducibility for all developer-facing validation.
 
 ## Core design principles
 
@@ -54,11 +54,16 @@ docker/     reproducible build images
 
 ## Quick start
 
+Prerequisite: Docker must be installed and usable without interactive elevation.
+
 ```bash
 ./tools/fw host-test
 ./tools/fw docgen
 ./tools/fw docs
 ```
+
+These commands are the canonical local entry points.
+Do not validate the framework by invoking host toolchains directly.
 
 ## Current status
 
