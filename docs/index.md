@@ -13,6 +13,7 @@
 - [System pump model](specs/system-pump-model.md)
 - [Lease pool model](specs/lease-pool-model.md)
 - [Platform contracts](specs/platform-contracts.md)
+- [ESP8266 RTOS SDK adapters v1](specs/esp8266-rtos-sdk-adapters-v1.md)
 - [Target firmware skeleton](specs/target-firmware-skeleton.md)
 - [ATNEL AIR ESP motherboard BSP v1](specs/atnel-air-esp-motherboard-bsp-v1.md)
 

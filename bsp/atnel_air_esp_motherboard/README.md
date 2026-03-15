@@ -44,3 +44,8 @@ channels and interrupt wiring.
 5. MCP23008 interrupt-driven path
 6. 1-Wire / DS18B20
 7. IR receiver and Magic Hercules / WS2812 helpers
+
+
+Stage 2A4 also adds the first board-scoped target project under
+`adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard/`, which uses the
+public clock/log/reset/uart ports for boot diagnostics.

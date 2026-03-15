@@ -84,6 +84,17 @@ FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
 ```
 
+### ATNEL AIR ESP motherboard board target
+
+```bash
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-defconfig
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-build
+
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
+
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
+```
+
 These commands are the canonical local entry points.
 Do not validate the framework by invoking host toolchains directly.
 
@@ -125,9 +136,9 @@ Stage 2A3 progress:
 
 Next step:
 
-- concrete ESP8266 RTOS SDK adapters for clock/log/reset/gpio/uart,
-- framework-backed boot and diagnostics flow on target hardware,
-- controlled enablement of I2C, RTC, MCP23008, 1-Wire, IR, and Magic Hercules features through the board BSP.
+- Stage 2A4 adds the first concrete ESP8266 RTOS SDK adapters for clock/log/reset/uart,
+- Stage 2A4 also adds the first board-scoped bring-up target for `bsp/atnel_air_esp_motherboard/`,
+- later Stage 2 steps will extend this with GPIO/I2C/1-Wire and board peripherals.
 
 ## Non-negotiable constraints
 
