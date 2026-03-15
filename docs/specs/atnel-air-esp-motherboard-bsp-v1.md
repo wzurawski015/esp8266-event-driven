@@ -10,6 +10,9 @@ Stage 2A3 freezes the first board-specific BSP profile for the following stack:
 
 This stage does **not** yet claim full board integration.
 
+A Stage 2A4 companion target now provides the first board-scoped boot/diag bring-up
+using this BSP, but only through clock/log/reset/uart.
+
 It only freezes:
 
 - the primary GPIO ownership map,
@@ -58,8 +61,9 @@ Because of that, board-specific policy belongs in this BSP rather than in
 
 1. UART boot + diagnostics
 2. clock / log / reset / uart public adapters
-3. I2C scan and bus bring-up
-4. OLED + RTC
-5. MCP23008
-6. 1-Wire / DS18B20
-7. IR and Magic Hercules helpers
+3. board-scoped boot and diagnostics target
+4. I2C scan and bus bring-up
+5. OLED + RTC
+6. MCP23008
+7. 1-Wire / DS18B20
+8. IR and Magic Hercules helpers

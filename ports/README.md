@@ -24,3 +24,12 @@ Public platform contracts now live under `ports/include/ev/`:
 
 These headers define boundary surfaces only. They do not yet include concrete
 ESP8266 RTOS SDK adapters.
+
+
+Stage 2A4 adds the first concrete ESP8266 RTOS SDK implementations under
+`adapters/esp8266_rtos_sdk/components/ev_platform/` for:
+
+- clock
+- log
+- reset
+- uart

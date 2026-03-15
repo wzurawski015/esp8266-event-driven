@@ -35,3 +35,22 @@ jobs:
 
       - name: Build minimal ESP8266 target skeleton
         run: ./tools/fw sdk-build
+
+  sdk-atnel-target-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build board-specific SDK image
+        run: ./tools/fw sdk-image
+
+      - name: Materialize ATNEL board target sdkconfig from defaults
+        env:
+          FW_SDK_PROJECT_DIR: adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
+        run: ./tools/fw sdk-defconfig
+
+      - name: Build ATNEL board target
+        env:
+          FW_SDK_PROJECT_DIR: adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
+        run: ./tools/fw sdk-build
