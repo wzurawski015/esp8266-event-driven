@@ -68,6 +68,56 @@ static void enqueue_app(ev_mailbox_t *mailbox, size_t count)
     }
 }
 
+/* cursor-stability regression: one pass with budget > 1 must not re-base after first actor */
+static void domain_pump_cursor_regression(void)
+{
+    ev_msg_t boot_storage[8] = {{0}};
+    ev_msg_t stream_storage[16] = {{0}};
+    ev_msg_t app_storage[8] = {{0}};
+    ev_mailbox_t boot_mailbox;
+    ev_mailbox_t stream_mailbox;
+    ev_mailbox_t app_mailbox;
+    ev_actor_runtime_t boot_runtime;
+    ev_actor_runtime_t stream_runtime;
+    ev_actor_runtime_t app_runtime;
+    ev_actor_registry_t registry;
+    ev_domain_pump_t fast_pump;
+    ev_domain_pump_report_t report;
+    domain_trace_t boot_trace = {0};
+    domain_trace_t stream_trace = {0};
+    domain_trace_t app_trace = {0};
+
+    assert(ev_mailbox_init(&boot_mailbox, EV_MAILBOX_FIFO_8, boot_storage, 8U) == EV_OK);
+    assert(ev_mailbox_init(&stream_mailbox, EV_MAILBOX_FIFO_16, stream_storage, 16U) == EV_OK);
+    assert(ev_mailbox_init(&app_mailbox, EV_MAILBOX_FIFO_8, app_storage, 8U) == EV_OK);
+
+    assert(ev_actor_runtime_init(&boot_runtime, ACT_BOOT, &boot_mailbox, domain_handler, &boot_trace) == EV_OK);
+    assert(ev_actor_runtime_init(&stream_runtime, ACT_STREAM, &stream_mailbox, domain_handler, &stream_trace) == EV_OK);
+    assert(ev_actor_runtime_init(&app_runtime, ACT_APP, &app_mailbox, domain_handler, &app_trace) == EV_OK);
+
+    assert(ev_actor_registry_init(&registry) == EV_OK);
+    assert(ev_actor_registry_bind(&registry, &boot_runtime) == EV_OK);
+    assert(ev_actor_registry_bind(&registry, &stream_runtime) == EV_OK);
+    assert(ev_actor_registry_bind(&registry, &app_runtime) == EV_OK);
+    assert(ev_domain_pump_init(&fast_pump, &registry, EV_DOMAIN_FAST_LOOP) == EV_OK);
+
+    enqueue_boot(&boot_mailbox, 1U);
+    enqueue_stream(&stream_mailbox, 1U);
+    enqueue_app(&app_mailbox, 1U);
+
+    ev_domain_pump_report_reset(&report);
+    assert(ev_domain_pump_run(&fast_pump, 2U, &report) == EV_OK);
+    assert(report.pending_before == 3U);
+    assert(report.processed == 2U);
+    assert(report.pending_after == 1U);
+    assert(report.last_actor == ACT_STREAM);
+    assert(report.stop_result == EV_OK);
+    assert(boot_trace.calls == 1U);
+    assert(stream_trace.calls == 1U);
+    assert(app_trace.calls == 0U);
+}
+
+
 int main(void)
 {
     ev_msg_t boot_storage[8] = {{0}};
@@ -101,6 +151,8 @@ int main(void)
     domain_trace_t diag_trace = {0};
     domain_trace_t fail_boot_trace = {0};
     domain_trace_t fail_stream_trace = {0};
+
+    domain_pump_cursor_regression();
 
     assert(ev_mailbox_init(&boot_mailbox, EV_MAILBOX_FIFO_8, boot_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&stream_mailbox, EV_MAILBOX_FIFO_16, stream_storage, 16U) == EV_OK);
