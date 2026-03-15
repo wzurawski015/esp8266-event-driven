@@ -49,7 +49,8 @@ RUN git config --global advice.detachedHead false \
     && git clone --depth 1 --branch "$ESP8266_RTOS_SDK_REF" \
        https://github.com/espressif/ESP8266_RTOS_SDK.git /opt/esp/ESP8266_RTOS_SDK \
     && cd /opt/esp/ESP8266_RTOS_SDK \
-    && git submodule update --init --recursive
+    && git submodule update --init --recursive \
+    && git config --system --add safe.directory /opt/esp/ESP8266_RTOS_SDK
 
 RUN python3 -m venv /opt/esp/python-env \
     && /opt/esp/python-env/bin/pip install --upgrade pip wheel \
