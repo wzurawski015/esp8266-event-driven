@@ -17,3 +17,21 @@ jobs:
 
       - name: Build and run host smoke tests
         run: ./tools/fw host-test
+
+  sdk-target-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build SDK image
+        run: ./tools/fw sdk-image
+
+      - name: Validate pinned SDK toolchain contract
+        run: ./tools/fw sdk-check
+
+      - name: Materialize sdkconfig from defaults
+        run: ./tools/fw sdk-defconfig
+
+      - name: Build minimal ESP8266 target skeleton
+        run: ./tools/fw sdk-build

@@ -77,6 +77,8 @@ Prerequisite: Docker must be installed and usable without interactive elevation.
 ```bash
 ./tools/fw sdk-defconfig
 ./tools/fw sdk-build
+./tools/fw sdk-clean-target
+./tools/fw sdk-distclean
 
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
@@ -111,7 +113,9 @@ Stage 2 progress:
 
 - Stage 2A1 freezes the ESP8266 SDK image and first platform-contract set,
 - Stage 2A2 adds the first SDK-native target skeleton under `adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev`,
-- `./tools/fw` now exposes target-side `sdk-defconfig`, `sdk-menuconfig`, `sdk-build`, `sdk-flash`, and `sdk-monitor`.
+- `esp8266_generic_dev` now acts as the golden reference bring-up target for ESP8266 target-side validation,
+- `./tools/fw` now exposes target-side `sdk-defconfig`, `sdk-menuconfig`, `sdk-build`, `sdk-clean-target`, `sdk-distclean`, `sdk-flash`, and `sdk-monitor`,
+- CI now verifies the pinned SDK image and the generic target build without requiring hardware.
 
 Next step:
 

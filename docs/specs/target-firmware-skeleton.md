@@ -8,13 +8,14 @@ Current target path:
 adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev/
 ```
 
-This target is intentionally minimal.
+This target is intentionally minimal and now acts as the golden reference target for ESP8266 target-side validation.
 
 Goals of this stage:
 
 - prove that the pinned SDK image can build a real target project,
 - establish the canonical `make defconfig -> make -> make flash -> make monitor` workflow inside Docker,
 - keep the first target independent from unfinished adapter work,
+- keep one board-neutral target permanently green in CI,
 - provide a stable place where later board-specific bring-up can land.
 
 ## Project structure
@@ -48,6 +49,8 @@ It is a controlled bring-up skeleton used to verify:
 ./tools/fw sdk-check
 ./tools/fw sdk-defconfig
 ./tools/fw sdk-build
+./tools/fw sdk-clean-target
+./tools/fw sdk-distclean
 
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
@@ -67,3 +70,17 @@ The current `app_main()` only proves target build and runtime viability:
 
 This is deliberate.
 Framework-backed actors and adapter wiring will be layered in later Stage 2 steps.
+
+
+## Finalization policy for `esp8266_generic_dev`
+
+`esp8266_generic_dev` is not the final board support package.
+
+It is the smallest target that must remain:
+
+- reproducible,
+- board-neutral,
+- CI-buildable without attached hardware,
+- stable enough to separate framework/toolchain regressions from board-specific wiring issues.
+
+Board-specific peripherals such as OLED, RTC, MCP23008, 1-Wire sensor networks, IR receivers, or WS2812-driven helper hardware belong in dedicated BSP profiles rather than this generic target.
