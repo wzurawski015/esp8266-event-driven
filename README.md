@@ -60,6 +60,9 @@ Prerequisite: Docker must be installed and usable without interactive elevation.
 ./tools/fw host-test
 ./tools/fw docgen
 ./tools/fw docs
+./tools/fw sdk-image
+./tools/fw sdk-check
+./tools/fw shell-sdk
 ```
 
 These commands are the canonical local entry points.
@@ -89,10 +92,9 @@ Implemented in the current codebase:
 
 Next step:
 
-- pin ESP8266 RTOS SDK toolchain and Docker image,
-- define platform contracts in `ports/`,
-- define BSP contract and board profiles in `bsp/`,
-- add minimal target bring-up on real ESP8266 hardware.
+- Stage 2A1 freezes the ESP8266 SDK image and first platform-contract set,
+- Stage 2A2 will add the first target firmware skeleton,
+- later Stage 2 steps will add adapters, BSP profiles, and real-hardware bring-up.
 
 ## Non-negotiable constraints
 

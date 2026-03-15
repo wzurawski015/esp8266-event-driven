@@ -11,3 +11,16 @@ Stable interfaces that represent boundary crossings:
 - logging sinks.
 
 Ports describe *what* is needed, not *how* it is implemented.
+
+## Stage 2A1 first public platform contracts
+
+Public platform contracts now live under `ports/include/ev/`:
+
+- `port_clock.h`
+- `port_log.h`
+- `port_reset.h`
+- `port_gpio.h`
+- `port_uart.h`
+
+These headers define boundary surfaces only. They do not yet include concrete
+ESP8266 RTOS SDK adapters.

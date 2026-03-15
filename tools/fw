@@ -5,6 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 HOST_IMAGE="${FW_HOST_IMAGE:-esp8266-event-driven-host:local}"
 DOCS_IMAGE="${FW_DOCS_IMAGE:-esp8266-event-driven-docs:local}"
+SDK_IMAGE="${FW_SDK_IMAGE:-esp8266-event-driven-sdk:local}"
 RUN_USER="${FW_RUN_USER:-$(id -u):$(id -g)}"
 
 usage() {
@@ -18,11 +19,14 @@ Usage:
   ./tools/fw clean
   ./tools/fw shell-host
   ./tools/fw shell-docs
+  ./tools/fw sdk-image
+  ./tools/fw sdk-check
+  ./tools/fw shell-sdk
 
 Notes:
 - All developer-facing validation runs inside Docker by default.
 - Containers write back to the bind mount using the caller UID:GID.
-- Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, or FW_RUN_USER to override defaults.
+- Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, FW_SDK_IMAGE, or FW_RUN_USER to override defaults.
 EOF
 }
 
@@ -47,6 +51,27 @@ build_docs_image() {
         -f "$ROOT_DIR/docker/Dockerfile.docs" \
         -t "$DOCS_IMAGE" \
         "$ROOT_DIR"
+}
+
+build_sdk_image() {
+    require_docker
+    "$DOCKER_BIN" build \
+        -f "$ROOT_DIR/docker/Dockerfile.sdk" \
+        -t "$SDK_IMAGE" \
+        "$ROOT_DIR"
+}
+
+sdk_check() {
+    build_sdk_image
+    run_in_image "$SDK_IMAGE" sh -lc '
+        set -eu
+        xtensa-lx106-elf-gcc --version | head -n 1
+        python3 --version
+        make --version | head -n 1
+        printf "IDF_PATH=%s\n" "$IDF_PATH"
+        test -f "$IDF_PATH/make/project.mk"
+        test -f "$IDF_PATH/export.sh"
+    '
 }
 
 run_in_image() {
@@ -77,6 +102,9 @@ case "$cmd" in
     docs-image)
         build_docs_image
         ;;
+    sdk-image)
+        build_sdk_image
+        ;;
     host-test)
         build_host_image
         run_in_image "$HOST_IMAGE" make host-test
@@ -100,6 +128,13 @@ case "$cmd" in
     shell-docs)
         build_docs_image
         run_shell_in_image "$DOCS_IMAGE"
+        ;;
+    sdk-check)
+        sdk_check
+        ;;
+    shell-sdk)
+        build_sdk_image
+        run_shell_in_image "$SDK_IMAGE"
         ;;
     *)
         usage
