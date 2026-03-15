@@ -208,6 +208,7 @@ sdk_check() {
       set -eu
       xtensa-lx106-elf-gcc --version | head -n 1
       python3 --version
+      python3 -c "import pkg_resources; print(\"pkg_resources=ok\")"
       make --version | head -n 1
       printf "IDF_PATH=%s\n" "$IDF_PATH"
       test -f "$IDF_PATH/make/project.mk"
