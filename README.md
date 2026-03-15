@@ -117,11 +117,17 @@ Stage 2 progress:
 - `./tools/fw` now exposes target-side `sdk-defconfig`, `sdk-menuconfig`, `sdk-build`, `sdk-clean-target`, `sdk-distclean`, `sdk-flash`, and `sdk-monitor`,
 - CI now verifies the pinned SDK image and the generic target build without requiring hardware.
 
+Stage 2A3 progress:
+
+- the first concrete board profile now lives under `bsp/atnel_air_esp_motherboard/`,
+- `esp8266_generic_dev` stays the board-neutral golden reference target,
+- the ATNEL profile freezes a safe jumper baseline before board-specific adapter work.
+
 Next step:
 
 - concrete ESP8266 RTOS SDK adapters for clock/log/reset/gpio/uart,
-- board-scoped bring-up beyond the heartbeat skeleton,
-- first framework-backed boot and diagnostics flow on target hardware.
+- framework-backed boot and diagnostics flow on target hardware,
+- controlled enablement of I2C, RTC, MCP23008, 1-Wire, IR, and Magic Hercules features through the board BSP.
 
 ## Non-negotiable constraints
 
