@@ -32,6 +32,8 @@ Usage:
   ./tools/fw sdk-defconfig
   ./tools/fw sdk-menuconfig
   ./tools/fw sdk-build
+  ./tools/fw sdk-clean-target
+  ./tools/fw sdk-distclean
   ./tools/fw sdk-flash
   ./tools/fw sdk-monitor
 
@@ -323,6 +325,12 @@ case "$cmd" in
     ;;
   sdk-build)
     sdk_build
+    ;;
+  sdk-clean-target)
+    sdk_clean_target
+    ;;
+  sdk-distclean)
+    sdk_distclean
     ;;
   sdk-flash)
     sdk_flash

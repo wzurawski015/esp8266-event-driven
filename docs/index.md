@@ -14,6 +14,7 @@
 - [Lease pool model](specs/lease-pool-model.md)
 - [Platform contracts](specs/platform-contracts.md)
 - [Target firmware skeleton](specs/target-firmware-skeleton.md)
+- [ATNEL AIR ESP motherboard BSP v1](specs/atnel-air-esp-motherboard-bsp-v1.md)
 
 ## ADRs
 

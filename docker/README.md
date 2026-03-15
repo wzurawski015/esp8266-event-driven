@@ -35,9 +35,14 @@ The SDK image also contains a narrow compatibility workaround for the broken leg
 ./tools/fw sdk-check
 ./tools/fw sdk-defconfig
 ./tools/fw sdk-build
+./tools/fw sdk-clean-target
+./tools/fw sdk-distclean
 
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
 
 ./tools/fw shell-sdk
 ```
+
+
+The generic target is also exercised in CI through sdk-image -> sdk-check -> sdk-defconfig -> sdk-build.
