@@ -8,7 +8,8 @@ The contract-stage runtime must already expose enough counters to reason about:
 - missing actor bindings,
 - mailbox pressure per actor,
 - handler failures,
-- empty runtime steps.
+- empty runtime steps,
+- bounded-drain budget pressure.
 
 These counters are not a replacement for tracing, but they provide deterministic
 observability without introducing platform dependencies.
@@ -44,11 +45,19 @@ Tracked fields:
 - `handler_errors`
 - `dispose_errors`
 - `pending_high_watermark`
+- `pump_calls`
+- `pump_budget_hits`
+- `last_pump_budget`
+- `last_pump_processed`
 - `last_result`
 
 `pending_high_watermark` is sampled after successful mailbox enqueue.
 The counter therefore reflects the highest pending depth actually accepted by
 that runtime.
+
+`pump_budget_hits` counts bounded-drain runs that stopped because pending work
+still existed after the configured budget was consumed. This is the first simple
+signal of fairness pressure in a cooperative runtime.
 
 ## Reset semantics
 

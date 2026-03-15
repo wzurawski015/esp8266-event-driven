@@ -8,7 +8,7 @@
  * @brief Actor identifiers generated from config/actors.def.
  */
 typedef enum {
-#define EV_ACTOR(name, execution_domain, mailbox_kind, summary) name,
+#define EV_ACTOR(name, execution_domain, mailbox_kind, drain_budget, summary) name,
 #include "actors.def"
 #undef EV_ACTOR
     EV_ACTOR_COUNT

@@ -77,6 +77,8 @@ int main(void)
     assert(diag_stats != NULL);
     assert(diag_stats->enqueued == 0U);
     assert(diag_stats->pending_high_watermark == 0U);
+    assert(diag_stats->pump_calls == 0U);
+    assert(diag_stats->pump_budget_hits == 0U);
     assert(diag_stats->last_result == EV_OK);
 
     assert(ev_msg_init_publish(&msg, EV_BOOT_COMPLETED, ACT_BOOT) == EV_OK);
@@ -157,6 +159,7 @@ int main(void)
     assert(partial_stats->enqueue_failed == 1U);
     assert(partial_stats->pending_high_watermark == 8U);
     assert(partial_stats->last_result == EV_ERR_FULL);
+    assert(partial_stats->pump_calls == 0U);
 
     assert(ev_actor_registry_init(&partial_registry) == EV_OK);
     assert(ev_actor_registry_bind(&partial_registry, &diag_runtime_fail) == EV_OK);

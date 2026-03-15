@@ -3,7 +3,8 @@
 #include "ev/compiler.h"
 
 static const ev_actor_meta_t k_actor_catalog[] = {
-#define EV_ACTOR(name, execution_domain, mailbox_kind, summary) { name, #name, execution_domain, mailbox_kind, summary },
+#define EV_ACTOR(name, execution_domain, mailbox_kind, drain_budget, summary) \
+    { name, #name, execution_domain, mailbox_kind, drain_budget, summary },
 #include "actors.def"
 #undef EV_ACTOR
 };
@@ -33,6 +34,12 @@ const char *ev_actor_name(ev_actor_id_t id)
 {
     const ev_actor_meta_t *meta = ev_actor_meta(id);
     return (meta != NULL) ? meta->name : NULL;
+}
+
+size_t ev_actor_default_drain_budget(ev_actor_id_t id)
+{
+    const ev_actor_meta_t *meta = ev_actor_meta(id);
+    return (meta != NULL) ? meta->drain_budget : 0U;
 }
 
 const char *ev_execution_domain_name(ev_execution_domain_t domain)
