@@ -2,6 +2,7 @@
 #define EV_ACTOR_RUNTIME_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "ev/actor_id.h"
 #include "ev/delivery.h"
@@ -18,6 +19,32 @@
 typedef ev_result_t (*ev_actor_handler_fn_t)(void *actor_context, const ev_msg_t *msg);
 
 /**
+ * @brief Cumulative delivery counters owned by one actor registry.
+ */
+typedef struct {
+    uint32_t delivery_attempted;
+    uint32_t delivery_succeeded;
+    uint32_t delivery_failed;
+    uint32_t delivery_target_missing;
+    ev_actor_id_t last_target_actor;
+    ev_result_t last_result;
+} ev_actor_registry_stats_t;
+
+/**
+ * @brief Cumulative counters owned by one actor runtime.
+ */
+typedef struct {
+    uint32_t enqueued;
+    uint32_t enqueue_failed;
+    uint32_t steps_ok;
+    uint32_t steps_empty;
+    uint32_t handler_errors;
+    uint32_t dispose_errors;
+    size_t pending_high_watermark;
+    ev_result_t last_result;
+} ev_actor_runtime_stats_t;
+
+/**
  * @brief Runtime wiring for one actor instance.
  */
 typedef struct {
@@ -25,6 +52,7 @@ typedef struct {
     ev_mailbox_t *mailbox;
     ev_actor_handler_fn_t handler;
     void *actor_context;
+    ev_actor_runtime_stats_t stats;
 } ev_actor_runtime_t;
 
 /**
@@ -32,6 +60,7 @@ typedef struct {
  */
 typedef struct {
     ev_actor_runtime_t *slots[EV_ACTOR_COUNT];
+    ev_actor_registry_stats_t stats;
 } ev_actor_registry_t;
 
 /**
@@ -58,6 +87,22 @@ ev_result_t ev_actor_runtime_init(
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_actor_registry_init(ev_actor_registry_t *registry);
+
+/**
+ * @brief Reset cumulative delivery counters for one registry.
+ *
+ * @param registry Registry to update.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_actor_registry_reset_stats(ev_actor_registry_t *registry);
+
+/**
+ * @brief Return a stable pointer to registry delivery counters.
+ *
+ * @param registry Registry to inspect.
+ * @return Pointer to counters or NULL when registry is NULL.
+ */
+const ev_actor_registry_stats_t *ev_actor_registry_stats(const ev_actor_registry_t *registry);
 
 /**
  * @brief Bind one runtime into a registry slot.
@@ -96,6 +141,24 @@ ev_result_t ev_actor_registry_delivery(ev_actor_id_t target_actor, const ev_msg_
  * @return EV_OK on success, EV_ERR_EMPTY when no message is pending, or an error code.
  */
 ev_result_t ev_actor_runtime_step(ev_actor_runtime_t *runtime);
+
+/**
+ * @brief Reset cumulative counters for one actor runtime.
+ *
+ * Queue state is left untouched. Only counters are cleared.
+ *
+ * @param runtime Runtime to update.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_actor_runtime_reset_stats(ev_actor_runtime_t *runtime);
+
+/**
+ * @brief Return a stable pointer to runtime counters.
+ *
+ * @param runtime Runtime to inspect.
+ * @return Pointer to counters or NULL when runtime is NULL.
+ */
+const ev_actor_runtime_stats_t *ev_actor_runtime_stats(const ev_actor_runtime_t *runtime);
 
 /**
  * @brief Return the number of pending messages for one runtime.

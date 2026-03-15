@@ -27,7 +27,8 @@ HOST_TESTS := \
     test_dispatch_contract \
     test_mailbox_contract \
     test_actor_runtime \
-    test_lease_pool_contract
+    test_lease_pool_contract \
+    test_runtime_diagnostics
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
 
