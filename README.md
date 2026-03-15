@@ -17,22 +17,22 @@ This repository is the foundation for a long-lived embedded framework focused on
 
 ## Core design principles
 
-1. **Pure C, disciplined interfaces**  
+1. **Pure C, disciplined interfaces**
    Public APIs must be small, explicit, and ownership-aware.
 
-2. **Static routing over dynamic magic**  
+2. **Static routing over dynamic magic**
    Events are described once and routed through compile-time tables.
 
-3. **Actor boundaries, not task explosion**  
+3. **Actor boundaries, not task explosion**
    Actors own state. Tasks are a deployment choice, not a design crutch.
 
-4. **Zero heap in the hot path**  
+4. **Zero heap in the hot path**
    Memory policy is explicit: pools, rings, leases, scratch arenas.
 
-5. **Streaming-first**  
+5. **Streaming-first**
    Large payloads must move through views, rings, and leases, not ad-hoc copies.
 
-6. **Living documentation**  
+6. **Living documentation**
    SSOT files in `config/*.def` drive code, catalogs, and architecture diagrams.
 
 ## Repository layout
@@ -42,7 +42,7 @@ app/        composition root and system wiring
 core/       platform-agnostic kernel, catalogs, memory model, result codes
 domain/     use cases, state machines, policies
 ports/      stable interfaces crossing into infrastructure
-adapters/   ESP8266 RTOS SDK bindings and external integrations
+adapters/   ESP8266 RTOS SDK bindings, target skeletons, and external integrations
 bsp/        board-specific configuration and pin maps
 diag/       diagnostics, metrics, CLI, tracing
 config/     single sources of truth
@@ -56,13 +56,30 @@ docker/     reproducible build images
 
 Prerequisite: Docker must be installed and usable without interactive elevation.
 
+### Host-side foundation
+
 ```bash
 ./tools/fw host-test
 ./tools/fw docgen
 ./tools/fw docs
+```
+
+### ESP8266 SDK baseline
+
+```bash
 ./tools/fw sdk-image
 ./tools/fw sdk-check
 ./tools/fw shell-sdk
+```
+
+### Minimal target firmware skeleton
+
+```bash
+./tools/fw sdk-defconfig
+./tools/fw sdk-build
+
+FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
+FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
 ```
 
 These commands are the canonical local entry points.
@@ -90,11 +107,17 @@ Implemented in the current codebase:
 - cooperative domain pump,
 - multi-domain system pump.
 
-Next step:
+Stage 2 progress:
 
 - Stage 2A1 freezes the ESP8266 SDK image and first platform-contract set,
-- Stage 2A2 will add the first target firmware skeleton,
-- later Stage 2 steps will add adapters, BSP profiles, and real-hardware bring-up.
+- Stage 2A2 adds the first SDK-native target skeleton under `adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev`,
+- `./tools/fw` now exposes target-side `sdk-defconfig`, `sdk-menuconfig`, `sdk-build`, `sdk-flash`, and `sdk-monitor`.
+
+Next step:
+
+- concrete ESP8266 RTOS SDK adapters for clock/log/reset/gpio/uart,
+- board-scoped bring-up beyond the heartbeat skeleton,
+- first framework-backed boot and diagnostics flow on target hardware.
 
 ## Non-negotiable constraints
 

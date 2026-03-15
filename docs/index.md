@@ -13,6 +13,7 @@
 - [System pump model](specs/system-pump-model.md)
 - [Lease pool model](specs/lease-pool-model.md)
 - [Platform contracts](specs/platform-contracts.md)
+- [Target firmware skeleton](specs/target-firmware-skeleton.md)
 
 ## ADRs
 

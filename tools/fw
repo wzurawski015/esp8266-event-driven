@@ -3,141 +3,333 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DOCKER_BIN="${DOCKER_BIN:-docker}"
+
 HOST_IMAGE="${FW_HOST_IMAGE:-esp8266-event-driven-host:local}"
 DOCS_IMAGE="${FW_DOCS_IMAGE:-esp8266-event-driven-docs:local}"
 SDK_IMAGE="${FW_SDK_IMAGE:-esp8266-event-driven-sdk:local}"
+
 RUN_USER="${FW_RUN_USER:-$(id -u):$(id -g)}"
+SDK_PROJECT_DIR_REL="${FW_SDK_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev}"
+SDK_SERIAL_PORT="${FW_ESPPORT:-${ESPPORT:-/dev/ttyUSB0}}"
 
 usage() {
-    cat <<'EOF'
+  cat <<'USAGE'
 Usage:
   ./tools/fw host-image
   ./tools/fw docs-image
+  ./tools/fw sdk-image
+
   ./tools/fw host-test
   ./tools/fw docgen
   ./tools/fw docs
   ./tools/fw clean
+
   ./tools/fw shell-host
   ./tools/fw shell-docs
-  ./tools/fw sdk-image
-  ./tools/fw sdk-check
   ./tools/fw shell-sdk
 
+  ./tools/fw sdk-check
+  ./tools/fw sdk-defconfig
+  ./tools/fw sdk-menuconfig
+  ./tools/fw sdk-build
+  ./tools/fw sdk-flash
+  ./tools/fw sdk-monitor
+
 Notes:
-- All developer-facing validation runs inside Docker by default.
-- Containers write back to the bind mount using the caller UID:GID.
-- Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, FW_SDK_IMAGE, or FW_RUN_USER to override defaults.
-EOF
+  - All developer-facing validation runs inside Docker by default.
+  - Containers write back to the bind mount using the caller UID:GID.
+  - Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, FW_SDK_IMAGE, FW_RUN_USER,
+    FW_SDK_PROJECT_DIR, or FW_ESPPORT to override defaults.
+USAGE
 }
 
 require_docker() {
-    command -v "$DOCKER_BIN" >/dev/null 2>&1 || {
-        echo "error: docker binary not found: $DOCKER_BIN" >&2
-        exit 1
-    }
+  command -v "$DOCKER_BIN" >/dev/null 2>&1 || {
+    echo "error: docker binary not found: $DOCKER_BIN" >&2
+    exit 1
+  }
+}
+
+require_sdk_project() {
+  if [ ! -f "$ROOT_DIR/$SDK_PROJECT_DIR_REL/Makefile" ]; then
+    echo "error: SDK project not found at $ROOT_DIR/$SDK_PROJECT_DIR_REL" >&2
+    echo "set FW_SDK_PROJECT_DIR to a valid relative project path" >&2
+    exit 1
+  fi
+}
+
+require_serial_port() {
+  if [ ! -e "$SDK_SERIAL_PORT" ]; then
+    echo "error: serial device not found: $SDK_SERIAL_PORT" >&2
+    echo "set FW_ESPPORT to the host serial device, for example /dev/ttyUSB0" >&2
+    exit 1
+  fi
 }
 
 build_host_image() {
-    require_docker
-    "$DOCKER_BIN" build \
-        -f "$ROOT_DIR/docker/Dockerfile.host" \
-        -t "$HOST_IMAGE" \
-        "$ROOT_DIR"
+  require_docker
+  "$DOCKER_BIN" build \
+    -f "$ROOT_DIR/docker/Dockerfile.host" \
+    -t "$HOST_IMAGE" \
+    "$ROOT_DIR"
 }
 
 build_docs_image() {
-    require_docker
-    "$DOCKER_BIN" build \
-        -f "$ROOT_DIR/docker/Dockerfile.docs" \
-        -t "$DOCS_IMAGE" \
-        "$ROOT_DIR"
+  require_docker
+  "$DOCKER_BIN" build \
+    -f "$ROOT_DIR/docker/Dockerfile.docs" \
+    -t "$DOCS_IMAGE" \
+    "$ROOT_DIR"
 }
 
 build_sdk_image() {
-    require_docker
-    "$DOCKER_BIN" build \
-        -f "$ROOT_DIR/docker/Dockerfile.sdk" \
-        -t "$SDK_IMAGE" \
-        "$ROOT_DIR"
-}
-
-sdk_check() {
-    build_sdk_image
-    run_in_image "$SDK_IMAGE" sh -lc '
-        set -eu
-        xtensa-lx106-elf-gcc --version | head -n 1
-        python3 --version
-        make --version | head -n 1
-        printf "IDF_PATH=%s\n" "$IDF_PATH"
-        test -f "$IDF_PATH/make/project.mk"
-        test -f "$IDF_PATH/export.sh"
-    '
+  require_docker
+  "$DOCKER_BIN" build \
+    -f "$ROOT_DIR/docker/Dockerfile.sdk" \
+    -t "$SDK_IMAGE" \
+    "$ROOT_DIR"
 }
 
 run_in_image() {
-    image="$1"
-    shift
-    exec "$DOCKER_BIN" run --rm \
-        --user "$RUN_USER" \
-        -v "$ROOT_DIR:/work" \
-        -w /work \
-        "$image" "$@"
+  image="$1"
+  shift
+  "$DOCKER_BIN" run --rm \
+    --user "$RUN_USER" \
+    -v "$ROOT_DIR:/work" \
+    -w /work \
+    "$image" \
+    "$@"
 }
 
-run_shell_in_image() {
-    image="$1"
-    exec "$DOCKER_BIN" run --rm -it \
-        --user "$RUN_USER" \
-        -v "$ROOT_DIR:/work" \
-        -w /work \
-        "$image" sh
+run_in_image_it() {
+  image="$1"
+  shift
+  "$DOCKER_BIN" run --rm -it \
+    --user "$RUN_USER" \
+    -v "$ROOT_DIR:/work" \
+    -w /work \
+    "$image" \
+    "$@"
+}
+
+run_in_sdk() {
+  require_sdk_project
+  build_sdk_image
+  run_in_image \
+    "$SDK_IMAGE" \
+    env \
+    EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+    ESPPORT="$SDK_SERIAL_PORT" \
+    "$@"
+}
+
+run_in_sdk_it() {
+  require_sdk_project
+  build_sdk_image
+  run_in_image_it \
+    "$SDK_IMAGE" \
+    env \
+    EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+    ESPPORT="$SDK_SERIAL_PORT" \
+    "$@"
+}
+
+run_in_sdk_with_device() {
+  require_sdk_project
+  require_serial_port
+  build_sdk_image
+
+  serial_gid=$(stat -c '%g' "$SDK_SERIAL_PORT" 2>/dev/null || true)
+
+  if [ -n "$serial_gid" ]; then
+    "$DOCKER_BIN" run --rm \
+      --user "$RUN_USER" \
+      --group-add "$serial_gid" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      "$@"
+  else
+    "$DOCKER_BIN" run --rm \
+      --user "$RUN_USER" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      "$@"
+  fi
+}
+
+run_in_sdk_with_device_it() {
+  require_sdk_project
+  require_serial_port
+  build_sdk_image
+
+  serial_gid=$(stat -c '%g' "$SDK_SERIAL_PORT" 2>/dev/null || true)
+
+  if [ -n "$serial_gid" ]; then
+    "$DOCKER_BIN" run --rm -it \
+      --user "$RUN_USER" \
+      --group-add "$serial_gid" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      "$@"
+  else
+    "$DOCKER_BIN" run --rm -it \
+      --user "$RUN_USER" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      "$@"
+  fi
+}
+
+sdk_check() {
+  build_sdk_image
+  run_in_image \
+    "$SDK_IMAGE" \
+    sh -lc '
+      set -eu
+      xtensa-lx106-elf-gcc --version | head -n 1
+      python3 --version
+      make --version | head -n 1
+      printf "IDF_PATH=%s\n" "$IDF_PATH"
+      test -f "$IDF_PATH/make/project.mk"
+      test -f "$IDF_PATH/export.sh"
+    '
+}
+
+sdk_defconfig() {
+  run_in_sdk \
+    sh -lc '
+      set -eu
+      make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+    '
+}
+
+sdk_build() {
+  run_in_sdk \
+    sh -lc '
+      set -eu
+      if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+      fi
+      jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+      make -C "$EV_SDK_PROJECT" -j"$jobs"
+    '
+}
+
+sdk_menuconfig() {
+  run_in_sdk_it \
+    sh -lc '
+      set -eu
+      if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+      fi
+      make -C "$EV_SDK_PROJECT" menuconfig
+    '
+}
+
+sdk_flash() {
+  run_in_sdk_with_device \
+    sh -lc '
+      set -eu
+      if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+      fi
+      make -C "$EV_SDK_PROJECT" ESPPORT="$ESPPORT" flash
+    '
+}
+
+sdk_monitor() {
+  run_in_sdk_with_device_it \
+    sh -lc '
+      set -eu
+      test -f "$EV_SDK_PROJECT/sdkconfig" || {
+        echo "error: sdkconfig missing, run ./tools/fw sdk-defconfig or ./tools/fw sdk-build first" >&2
+        exit 1
+      }
+      make -C "$EV_SDK_PROJECT" ESPPORT="$ESPPORT" monitor
+    '
 }
 
 cmd="${1:-}"
 
 case "$cmd" in
-    host-image)
-        build_host_image
-        ;;
-    docs-image)
-        build_docs_image
-        ;;
-    sdk-image)
-        build_sdk_image
-        ;;
-    host-test)
-        build_host_image
-        run_in_image "$HOST_IMAGE" make host-test
-        ;;
-    docgen)
-        build_host_image
-        run_in_image "$HOST_IMAGE" make docgen
-        ;;
-    docs)
-        build_docs_image
-        run_in_image "$DOCS_IMAGE" make docs
-        ;;
-    clean)
-        build_host_image
-        run_in_image "$HOST_IMAGE" make clean
-        ;;
-    shell-host)
-        build_host_image
-        run_shell_in_image "$HOST_IMAGE"
-        ;;
-    shell-docs)
-        build_docs_image
-        run_shell_in_image "$DOCS_IMAGE"
-        ;;
-    sdk-check)
-        sdk_check
-        ;;
-    shell-sdk)
-        build_sdk_image
-        run_shell_in_image "$SDK_IMAGE"
-        ;;
-    *)
-        usage
-        exit 1
-        ;;
+  host-image)
+    build_host_image
+    ;;
+  docs-image)
+    build_docs_image
+    ;;
+  sdk-image)
+    build_sdk_image
+    ;;
+  host-test)
+    build_host_image
+    run_in_image "$HOST_IMAGE" make host-test
+    ;;
+  docgen)
+    build_host_image
+    run_in_image "$HOST_IMAGE" make docgen
+    ;;
+  docs)
+    build_docs_image
+    run_in_image "$DOCS_IMAGE" make docs
+    ;;
+  clean)
+    build_host_image
+    run_in_image "$HOST_IMAGE" make clean
+    ;;
+  shell-host)
+    build_host_image
+    run_in_image_it "$HOST_IMAGE" sh
+    ;;
+  shell-docs)
+    build_docs_image
+    run_in_image_it "$DOCS_IMAGE" sh
+    ;;
+  shell-sdk)
+    require_sdk_project
+    build_sdk_image
+    run_in_sdk_it sh
+    ;;
+  sdk-check)
+    sdk_check
+    ;;
+  sdk-defconfig)
+    sdk_defconfig
+    ;;
+  sdk-menuconfig)
+    sdk_menuconfig
+    ;;
+  sdk-build)
+    sdk_build
+    ;;
+  sdk-flash)
+    sdk_flash
+    ;;
+  sdk-monitor)
+    sdk_monitor
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
 esac

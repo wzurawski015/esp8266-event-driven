@@ -4,6 +4,10 @@
 /coverage/
 /dist/
 
+/adapters/esp8266_rtos_sdk/targets/*/build/
+/adapters/esp8266_rtos_sdk/targets/*/sdkconfig
+/adapters/esp8266_rtos_sdk/targets/*/sdkconfig.old
+
 # Generated documentation
 /docs/generated/*
 !/docs/generated/.gitkeep
