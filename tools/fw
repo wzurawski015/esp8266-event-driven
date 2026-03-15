@@ -213,6 +213,7 @@ sdk_check() {
       printf "IDF_PATH=%s\n" "$IDF_PATH"
       test -f "$IDF_PATH/make/project.mk"
       test -f "$IDF_PATH/export.sh"
+      git -C "$IDF_PATH" rev-parse --is-inside-work-tree >/dev/null
     '
 }
 
