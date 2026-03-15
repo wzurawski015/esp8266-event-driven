@@ -5,6 +5,11 @@
 #include "ev/actor_catalog.h"
 #include "ev/dispose.h"
 
+static bool ev_msg_has_cookie(const ev_msg_t *msg)
+{
+    return (msg != NULL) && (msg->cookie == EV_MSG_COOKIE);
+}
+
 static bool ev_payload_kind_allows_inline(ev_payload_kind_t kind)
 {
     return (kind == EV_PAYLOAD_INLINE) || (kind == EV_PAYLOAD_COPY_FIXED);
@@ -39,6 +44,7 @@ void ev_msg_reset(ev_msg_t *msg)
 {
     if (msg != NULL) {
         memset(msg, 0, sizeof(*msg));
+        msg->cookie = EV_MSG_COOKIE;
     }
 }
 
@@ -51,7 +57,9 @@ ev_result_t ev_msg_init_publish(ev_msg_t *msg, ev_event_id_t event_id, ev_actor_
         return EV_ERR_OUT_OF_RANGE;
     }
 
-    (void)ev_msg_dispose(msg);
+    if (ev_msg_has_cookie(msg)) {
+        (void)ev_msg_dispose(msg);
+    }
     ev_msg_reset(msg);
     msg->event_id = event_id;
     msg->source_actor = source_actor;
@@ -73,7 +81,9 @@ ev_result_t ev_msg_init_send(
         return EV_ERR_OUT_OF_RANGE;
     }
 
-    (void)ev_msg_dispose(msg);
+    if (ev_msg_has_cookie(msg)) {
+        (void)ev_msg_dispose(msg);
+    }
     ev_msg_reset(msg);
     msg->event_id = event_id;
     msg->source_actor = source_actor;
@@ -100,6 +110,9 @@ ev_result_t ev_msg_set_inline_payload(ev_msg_t *msg, const void *data, size_t si
 
     if (msg == NULL) {
         return EV_ERR_INVALID_ARG;
+    }
+    if (!ev_msg_has_cookie(msg)) {
+        return EV_ERR_STATE;
     }
     if (ev_msg_is_disposed(msg)) {
         return EV_ERR_STATE;
@@ -149,6 +162,9 @@ ev_result_t ev_msg_set_external_payload(
     if (msg == NULL) {
         return EV_ERR_INVALID_ARG;
     }
+    if (!ev_msg_has_cookie(msg)) {
+        return EV_ERR_STATE;
+    }
     if (ev_msg_is_disposed(msg)) {
         return EV_ERR_STATE;
     }
@@ -194,6 +210,9 @@ ev_result_t ev_msg_retain(const ev_msg_t *msg)
     if (msg == NULL) {
         return EV_ERR_INVALID_ARG;
     }
+    if (!ev_msg_has_cookie(msg)) {
+        return EV_ERR_STATE;
+    }
 
     meta = ev_event_meta(msg->event_id);
     if (meta == NULL) {
@@ -228,6 +247,9 @@ ev_result_t ev_msg_validate(const ev_msg_t *msg)
 
     if (msg == NULL) {
         return EV_ERR_INVALID_ARG;
+    }
+    if (!ev_msg_has_cookie(msg)) {
+        return EV_ERR_STATE;
     }
     if (ev_msg_is_disposed(msg)) {
         return EV_ERR_STATE;
@@ -287,7 +309,7 @@ ev_result_t ev_msg_validate(const ev_msg_t *msg)
 
 bool ev_msg_is_disposed(const ev_msg_t *msg)
 {
-    return (msg != NULL) && ((msg->flags & EV_MSG_F_DISPOSED) != 0U);
+    return ev_msg_has_cookie(msg) && ((msg->flags & EV_MSG_F_DISPOSED) != 0U);
 }
 
 const void *ev_msg_payload_data(const ev_msg_t *msg)
