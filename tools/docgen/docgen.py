@@ -10,7 +10,7 @@ RE_EVENT = re.compile(
     r'^\s*EV_EVENT\(\s*([A-Z0-9_]+)\s*,\s*([A-Z0-9_]+)\s*,\s*"([^"]*)"\s*\)\s*$'
 )
 RE_ACTOR = re.compile(
-    r'^\s*EV_ACTOR\(\s*([A-Z0-9_]+)\s*,\s*([A-Z0-9_]+)\s*,\s*([A-Z0-9_]+)\s*,\s*"([^"]*)"\s*\)\s*$'
+    r'^\s*EV_ACTOR\(\s*([A-Z0-9_]+)\s*,\s*([A-Z0-9_]+)\s*,\s*([A-Z0-9_]+)\s*,\s*([0-9]+U?)\s*,\s*"([^"]*)"\s*\)\s*$'
 )
 RE_ROUTE = re.compile(
     r'^\s*EV_ROUTE\(\s*([A-Z0-9_]+)\s*,\s*([A-Z0-9_]+)\s*\)\s*$'
@@ -54,12 +54,13 @@ def parse_actors(path: Path) -> list[dict[str, str]]:
         match = RE_ACTOR.match(line)
         if not match:
             raise ValueError(f"Invalid actor definition: {line}")
-        name, domain, mailbox, summary = match.groups()
+        name, domain, mailbox, drain_budget, summary = match.groups()
         out.append(
             {
                 "name": name,
                 "domain": domain,
                 "mailbox": mailbox,
+                "drain_budget": drain_budget,
                 "summary": summary,
             }
         )
@@ -106,12 +107,12 @@ def generate_actors_md(actors: list[dict[str, str]]) -> None:
     lines = [
         "# Actor Catalog",
         "",
-        "| Actor | Execution domain | Mailbox | Summary |",
-        "|---|---|---|---|",
+        "| Actor | Execution domain | Mailbox | Drain budget | Summary |",
+        "|---|---|---|---:|---|",
     ]
     for actor in actors:
         lines.append(
-            f"| `{actor['name']}` | `{actor['domain']}` | `{actor['mailbox']}` | {actor['summary']} |"
+            f"| `{actor['name']}` | `{actor['domain']}` | `{actor['mailbox']}` | `{actor['drain_budget']}` | {actor['summary']} |"
         )
     lines.append("")
     write_text(OUT / "actors.md", "\n".join(lines))

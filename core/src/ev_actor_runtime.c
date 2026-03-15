@@ -19,6 +19,48 @@ static void ev_actor_runtime_record_pending_high_watermark(ev_actor_runtime_t *r
     }
 }
 
+static ev_result_t ev_actor_runtime_process_one(ev_actor_runtime_t *runtime)
+{
+    ev_result_t rc;
+    ev_result_t dispose_rc;
+    ev_msg_t msg;
+
+    rc = ev_mailbox_pop(runtime->mailbox, &msg);
+    if (rc != EV_OK) {
+        runtime->stats.last_result = rc;
+        return rc;
+    }
+
+    rc = runtime->handler(runtime->actor_context, &msg);
+    if (rc != EV_OK) {
+        ++runtime->stats.handler_errors;
+    }
+
+    dispose_rc = ev_msg_dispose(&msg);
+    if (dispose_rc != EV_OK) {
+        ++runtime->stats.dispose_errors;
+        if (rc == EV_OK) {
+            rc = dispose_rc;
+        }
+    }
+
+    if (rc == EV_OK) {
+        ++runtime->stats.steps_ok;
+    }
+    runtime->stats.last_result = rc;
+    return rc;
+}
+
+void ev_actor_pump_report_reset(ev_actor_pump_report_t *report)
+{
+    if (report == NULL) {
+        return;
+    }
+
+    memset(report, 0, sizeof(*report));
+    report->stop_result = EV_OK;
+}
+
 ev_result_t ev_actor_runtime_init(
     ev_actor_runtime_t *runtime,
     ev_actor_id_t actor_id,
@@ -40,6 +82,9 @@ ev_result_t ev_actor_runtime_init(
         return EV_ERR_OUT_OF_RANGE;
     }
     if (mailbox->kind != meta->mailbox_kind) {
+        return EV_ERR_CONTRACT;
+    }
+    if (meta->drain_budget == 0U) {
         return EV_ERR_CONTRACT;
     }
 
@@ -145,40 +190,92 @@ ev_result_t ev_actor_registry_delivery(ev_actor_id_t target_actor, const ev_msg_
 
 ev_result_t ev_actor_runtime_step(ev_actor_runtime_t *runtime)
 {
-    ev_result_t rc;
-    ev_result_t dispose_rc;
-    ev_msg_t msg;
-
     if ((runtime == NULL) || (runtime->mailbox == NULL) || (runtime->handler == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
+    if (ev_mailbox_is_empty(runtime->mailbox)) {
+        ++runtime->stats.steps_empty;
+        runtime->stats.last_result = EV_ERR_EMPTY;
+        return EV_ERR_EMPTY;
+    }
 
-    rc = ev_mailbox_pop(runtime->mailbox, &msg);
-    if (rc != EV_OK) {
-        if (rc == EV_ERR_EMPTY) {
-            ++runtime->stats.steps_empty;
+    return ev_actor_runtime_process_one(runtime);
+}
+
+size_t ev_actor_runtime_default_budget(const ev_actor_runtime_t *runtime)
+{
+    return ((runtime != NULL) && ev_actor_id_is_valid(runtime->actor_id))
+               ? ev_actor_default_drain_budget(runtime->actor_id)
+               : 0U;
+}
+
+ev_result_t ev_actor_runtime_pump(
+    ev_actor_runtime_t *runtime,
+    size_t budget,
+    ev_actor_pump_report_t *report)
+{
+    ev_result_t rc = EV_OK;
+    ev_actor_pump_report_t local_report;
+
+    if ((runtime == NULL) || (runtime->mailbox == NULL) || (runtime->handler == NULL) || (budget == 0U)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (report == NULL) {
+        report = &local_report;
+    }
+    ev_actor_pump_report_reset(report);
+    report->budget = budget;
+    report->pending_before = ev_actor_runtime_pending(runtime);
+
+    ++runtime->stats.pump_calls;
+    runtime->stats.last_pump_budget = budget;
+    runtime->stats.last_pump_processed = 0U;
+
+    if (report->pending_before == 0U) {
+        ++runtime->stats.steps_empty;
+        runtime->stats.last_result = EV_ERR_EMPTY;
+        report->stop_result = EV_ERR_EMPTY;
+        return EV_ERR_EMPTY;
+    }
+
+    while ((report->processed < budget) && !ev_mailbox_is_empty(runtime->mailbox)) {
+        rc = ev_actor_runtime_process_one(runtime);
+        if (rc != EV_OK) {
+            report->pending_after = ev_actor_runtime_pending(runtime);
+            report->stop_result = rc;
+            runtime->stats.last_pump_processed = report->processed;
+            return rc;
         }
-        runtime->stats.last_result = rc;
-        return rc;
+        ++report->processed;
     }
 
-    rc = runtime->handler(runtime->actor_context, &msg);
-    if (rc != EV_OK) {
-        ++runtime->stats.handler_errors;
+    report->pending_after = ev_actor_runtime_pending(runtime);
+    runtime->stats.last_pump_processed = report->processed;
+
+    if (report->processed < budget) {
+        report->stop_result = EV_ERR_EMPTY;
+        return EV_OK;
     }
 
-    dispose_rc = ev_msg_dispose(&msg);
-    if (dispose_rc != EV_OK) {
-        ++runtime->stats.dispose_errors;
-        runtime->stats.last_result = (rc == EV_OK) ? EV_ERR_STATE : rc;
-        return (rc == EV_OK) ? EV_ERR_STATE : rc;
+    if (report->pending_after > 0U) {
+        report->exhausted_budget = true;
+        ++runtime->stats.pump_budget_hits;
     }
 
-    if (rc == EV_OK) {
-        ++runtime->stats.steps_ok;
+    report->stop_result = EV_OK;
+    return EV_OK;
+}
+
+ev_result_t ev_actor_runtime_pump_default(
+    ev_actor_runtime_t *runtime,
+    ev_actor_pump_report_t *report)
+{
+    size_t budget = ev_actor_runtime_default_budget(runtime);
+    if (budget == 0U) {
+        return EV_ERR_CONTRACT;
     }
-    runtime->stats.last_result = rc;
-    return rc;
+    return ev_actor_runtime_pump(runtime, budget, report);
 }
 
 ev_result_t ev_actor_runtime_reset_stats(ev_actor_runtime_t *runtime)
@@ -199,5 +296,7 @@ const ev_actor_runtime_stats_t *ev_actor_runtime_stats(const ev_actor_runtime_t 
 
 size_t ev_actor_runtime_pending(const ev_actor_runtime_t *runtime)
 {
-    return ((runtime != NULL) && (runtime->mailbox != NULL)) ? ev_mailbox_count(runtime->mailbox) : 0U;
+    return ((runtime != NULL) && (runtime->mailbox != NULL))
+               ? ev_mailbox_count(runtime->mailbox)
+               : 0U;
 }

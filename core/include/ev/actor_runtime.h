@@ -1,6 +1,7 @@
 #ifndef EV_ACTOR_RUNTIME_H
 #define EV_ACTOR_RUNTIME_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -40,7 +41,11 @@ typedef struct {
     uint32_t steps_empty;
     uint32_t handler_errors;
     uint32_t dispose_errors;
+    uint32_t pump_calls;
+    uint32_t pump_budget_hits;
     size_t pending_high_watermark;
+    size_t last_pump_budget;
+    size_t last_pump_processed;
     ev_result_t last_result;
 } ev_actor_runtime_stats_t;
 
@@ -62,6 +67,25 @@ typedef struct {
     ev_actor_runtime_t *slots[EV_ACTOR_COUNT];
     ev_actor_registry_stats_t stats;
 } ev_actor_registry_t;
+
+/**
+ * @brief Report produced by one bounded drain operation.
+ */
+typedef struct {
+    size_t budget;
+    size_t processed;
+    size_t pending_before;
+    size_t pending_after;
+    bool exhausted_budget;
+    ev_result_t stop_result;
+} ev_actor_pump_report_t;
+
+/**
+ * @brief Reset one pump report to a stable empty state.
+ *
+ * @param report Report to clear.
+ */
+void ev_actor_pump_report_reset(ev_actor_pump_report_t *report);
 
 /**
  * @brief Initialize one actor runtime.
@@ -141,6 +165,46 @@ ev_result_t ev_actor_registry_delivery(ev_actor_id_t target_actor, const ev_msg_
  * @return EV_OK on success, EV_ERR_EMPTY when no message is pending, or an error code.
  */
 ev_result_t ev_actor_runtime_step(ev_actor_runtime_t *runtime);
+
+/**
+ * @brief Drain up to @p budget messages from one actor runtime.
+ *
+ * This is the bounded-drain primitive used to prevent one logical actor from
+ * monopolizing a cooperative loop. The function stops when one of three things
+ * happens:
+ *
+ * - the mailbox becomes empty before the budget is consumed,
+ * - the budget is consumed,
+ * - handler or dispose fails.
+ *
+ * @param runtime Runtime to drain.
+ * @param budget Maximum number of messages to process.
+ * @param report Optional report receiving bounded-drain details.
+ * @return EV_OK on success, EV_ERR_EMPTY when no work was pending, or an error code.
+ */
+ev_result_t ev_actor_runtime_pump(
+    ev_actor_runtime_t *runtime,
+    size_t budget,
+    ev_actor_pump_report_t *report);
+
+/**
+ * @brief Drain one actor runtime using its SSOT-configured default budget.
+ *
+ * @param runtime Runtime to drain.
+ * @param report Optional report receiving bounded-drain details.
+ * @return EV_OK on success, EV_ERR_EMPTY when no work was pending, or an error code.
+ */
+ev_result_t ev_actor_runtime_pump_default(
+    ev_actor_runtime_t *runtime,
+    ev_actor_pump_report_t *report);
+
+/**
+ * @brief Return the default bounded-drain budget for one runtime.
+ *
+ * @param runtime Runtime to inspect.
+ * @return Configured budget or 0 when runtime is NULL or invalid.
+ */
+size_t ev_actor_runtime_default_budget(const ev_actor_runtime_t *runtime);
 
 /**
  * @brief Reset cumulative counters for one actor runtime.

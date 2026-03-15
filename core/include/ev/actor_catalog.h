@@ -16,6 +16,7 @@ typedef struct {
     const char *name;
     ev_execution_domain_t execution_domain;
     ev_mailbox_kind_t mailbox_kind;
+    size_t drain_budget;
     const char *summary;
 } ev_actor_meta_t;
 
@@ -41,6 +42,14 @@ const ev_actor_meta_t *ev_actor_meta(ev_actor_id_t id);
  * @return Constant string or NULL if out of range.
  */
 const char *ev_actor_name(ev_actor_id_t id);
+
+/**
+ * @brief Return the default bounded-drain budget for one actor.
+ *
+ * @param id Actor identifier.
+ * @return Configured bounded-drain budget or 0 when the actor is invalid.
+ */
+size_t ev_actor_default_drain_budget(ev_actor_id_t id);
 
 /**
  * @brief Test whether an actor identifier is valid.

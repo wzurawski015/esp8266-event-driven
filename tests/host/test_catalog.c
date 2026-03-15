@@ -29,6 +29,8 @@ int main(void)
         assert(ev_actor_name(meta->id) != NULL);
         assert(ev_execution_domain_name(meta->execution_domain) != NULL);
         assert(ev_mailbox_kind_name(meta->mailbox_kind) != NULL);
+        assert(meta->drain_budget > 0U);
+        assert(ev_actor_default_drain_budget(meta->id) == meta->drain_budget);
     }
 
     puts("host smoke tests passed");
