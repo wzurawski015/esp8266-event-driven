@@ -22,6 +22,25 @@ static bool ev_domain_pump_actor_matches(ev_actor_id_t actor_id, ev_execution_do
     const ev_actor_meta_t *meta = ev_actor_meta(actor_id);
     return (meta != NULL) && (meta->execution_domain == domain);
 }
+static size_t ev_domain_pump_domain_default_budget(ev_execution_domain_t domain)
+{
+    size_t total = 0U;
+    size_t i;
+
+    if (!ev_domain_pump_domain_is_valid(domain)) {
+        return 0U;
+    }
+
+    for (i = 0U; i < ev_actor_count(); ++i) {
+        const ev_actor_meta_t *meta = ev_actor_meta((ev_actor_id_t)i);
+        if ((meta != NULL) && (meta->execution_domain == domain)) {
+            total += meta->drain_budget;
+        }
+    }
+
+    return total;
+}
+
 
 void ev_domain_pump_report_reset(ev_domain_pump_report_t *report)
 {
@@ -69,6 +88,15 @@ ev_result_t ev_domain_pump_reset_stats(ev_domain_pump_t *pump)
 const ev_domain_pump_stats_t *ev_domain_pump_stats(const ev_domain_pump_t *pump)
 {
     return (pump != NULL) ? &pump->stats : NULL;
+}
+
+size_t ev_domain_pump_default_budget(const ev_domain_pump_t *pump)
+{
+    if (pump == NULL) {
+        return 0U;
+    }
+
+    return ev_domain_pump_domain_default_budget(pump->domain);
 }
 
 size_t ev_domain_pump_pending(const ev_domain_pump_t *pump)

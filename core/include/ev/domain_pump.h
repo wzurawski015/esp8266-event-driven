@@ -97,6 +97,18 @@ const ev_domain_pump_stats_t *ev_domain_pump_stats(const ev_domain_pump_t *pump)
 size_t ev_domain_pump_pending(const ev_domain_pump_t *pump);
 
 /**
+ * @brief Return the default domain quantum derived from actor SSOT budgets.
+ *
+ * The value is the sum of `drain_budget` across all actors assigned to the
+ * pump domain. It is used by higher scheduler layers as the default bounded
+ * cooperative quantum for one full domain turn.
+ *
+ * @param pump Pump to inspect.
+ * @return Default domain budget or 0 when pump is NULL or invalid.
+ */
+size_t ev_domain_pump_default_budget(const ev_domain_pump_t *pump);
+
+/**
  * @brief Drain up to @p budget messages across all actors in one domain.
  *
  * The pump iterates actors in round-robin order, starting from the internal

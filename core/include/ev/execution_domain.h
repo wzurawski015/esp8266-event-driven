@@ -8,7 +8,8 @@ typedef enum {
     EV_DOMAIN_ISR = 0,
     EV_DOMAIN_FAST_LOOP = 1,
     EV_DOMAIN_SLOW_IO = 2,
-    EV_DOMAIN_NETWORK = 3
+    EV_DOMAIN_NETWORK = 3,
+    EV_DOMAIN_COUNT = 4
 } ev_execution_domain_t;
 
 /**
