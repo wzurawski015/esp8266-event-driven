@@ -39,6 +39,11 @@ int main(void)
     assert(ev_msg_is_disposed(&msg));
     assert(ev_msg_dispose(&msg) == EV_OK);
 
+    memset(&msg, 0xA5, sizeof(msg));
+    assert(ev_msg_init_send(&msg, EV_TICK_1S, ACT_BOOT, ACT_DIAG) == EV_OK);
+    assert(ev_msg_validate(&msg) == EV_OK);
+    assert(msg.target_actor == ACT_DIAG);
+
     assert(ev_msg_init_publish(&msg, EV_BOOT_STARTED, ACT_BOOT) == EV_OK);
     assert(msg.target_actor == EV_ACTOR_NONE);
     assert(ev_msg_set_inline_payload(&msg, ok_bytes, sizeof(ok_bytes)) == EV_OK);

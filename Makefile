@@ -19,6 +19,7 @@ CORE_SRCS := \
     core/src/ev_mailbox.c \
     core/src/ev_actor_runtime.c \
     core/src/ev_domain_pump.c \
+    core/src/ev_system_pump.c \
     core/src/ev_lease_pool.c
 
 HOST_TESTS := \
@@ -31,7 +32,8 @@ HOST_TESTS := \
     test_lease_pool_contract \
     test_runtime_diagnostics \
     test_actor_pump_contract \
-    test_domain_pump_contract
+    test_domain_pump_contract \
+    test_system_pump_contract
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
 

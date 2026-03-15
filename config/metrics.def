@@ -19,3 +19,8 @@ EV_METRIC(EV_METRIC_ACTOR_PUMP_BUDGET_HITS, counter, "Bounded drain runs that st
 EV_METRIC(EV_METRIC_DOMAIN_PUMP_CALLS, counter, "Cooperative domain-pump invocations")
 EV_METRIC(EV_METRIC_DOMAIN_PUMP_EMPTY, counter, "Cooperative domain-pump runs with no pending work")
 EV_METRIC(EV_METRIC_DOMAIN_PUMP_BUDGET_HITS, counter, "Cooperative domain-pump runs that exhausted the global budget")
+EV_METRIC(EV_METRIC_SYSTEM_PUMP_CALLS, counter, "Multi-domain cooperative pump invocations")
+EV_METRIC(EV_METRIC_SYSTEM_PUMP_EMPTY, counter, "Multi-domain cooperative pump runs with no pending work")
+EV_METRIC(EV_METRIC_SYSTEM_PUMP_DOMAINS, counter, "Domain turns executed by the multi-domain cooperative pump")
+EV_METRIC(EV_METRIC_SYSTEM_PUMP_MESSAGES, counter, "Messages processed by the multi-domain cooperative pump")
+EV_METRIC(EV_METRIC_SYSTEM_PUMP_BUDGET_HITS, counter, "Multi-domain cooperative pump runs that exhausted the turn budget")

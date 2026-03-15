@@ -12,6 +12,7 @@
 #include "ev/result.h"
 
 #define EV_MSG_INLINE_CAPACITY 24U
+#define EV_MSG_COOKIE 0x45564D53u
 
 /**
  * @brief Physical storage used by the runtime envelope.
@@ -63,6 +64,7 @@ typedef struct {
  * only the transport descriptor required to access, retain, and dispose the payload.
  */
 typedef struct {
+    uint32_t cookie;
     ev_event_id_t event_id;
     ev_actor_id_t source_actor;
     ev_actor_id_t target_actor;
@@ -80,6 +82,8 @@ typedef struct {
  *
  * This function performs a raw reset only. Callers must ensure that any owned
  * external payload has already been released or moved away before invoking it.
+ * The reset also stamps the message with a contract cookie so that later reuse
+ * can distinguish a known envelope from indeterminate stack bytes.
  *
  * @param msg Message to reset.
  */
@@ -89,7 +93,8 @@ void ev_msg_reset(ev_msg_t *msg);
  * @brief Initialize a message for publish delivery.
  *
  * Reinitializing an already populated message first releases any currently
- * attached payload so that reuse is leak-safe.
+ * attached payload so that reuse is leak-safe. First-time initialization is
+ * also safe on indeterminate stack storage.
  *
  * @param msg Message to initialize.
  * @param event_id Declared event identifier.
@@ -102,7 +107,8 @@ ev_result_t ev_msg_init_publish(ev_msg_t *msg, ev_event_id_t event_id, ev_actor_
  * @brief Initialize a message for direct send delivery.
  *
  * Reinitializing an already populated message first releases any currently
- * attached payload so that reuse is leak-safe.
+ * attached payload so that reuse is leak-safe. First-time initialization is
+ * also safe on indeterminate stack storage.
  *
  * @param msg Message to initialize.
  * @param event_id Declared event identifier.

@@ -107,3 +107,27 @@ Tracked fields:
 These counters complement per-actor runtime counters. Actor-level counters tell
 you what happened inside one mailbox owner; domain-pump counters tell you how a
 cooperative loop behaved while orchestrating multiple runtimes.
+
+## System-pump counters
+
+`ev_system_pump_t` owns cumulative counters for cooperative orchestration across
+multiple execution domains.
+
+Tracked fields:
+
+- `run_calls`
+- `empty_calls`
+- `budget_hits`
+- `domains_pumped`
+- `turns_processed`
+- `messages_processed`
+- `last_turn_budget`
+- `last_turns_processed`
+- `last_domain`
+- `last_result`
+
+These counters sit above domain-pump counters in the scheduling stack.
+Actor-runtime counters tell you what happened inside one mailbox owner.
+Domain-pump counters tell you how one execution domain behaved.
+System-pump counters tell you how the cooperative scheduler behaved while
+rotating across multiple execution domains.

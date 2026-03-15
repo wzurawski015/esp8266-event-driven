@@ -98,3 +98,15 @@ Every code review touching message flow should answer:
 - what happens if enqueue fails,
 - what function performs disposal,
 - whether fan-out changes resource lifetime.
+
+## Initialization safety
+
+`ev_msg_init_publish()` and `ev_msg_init_send()` must be safe on first use with
+indeterminate stack storage. The runtime therefore stamps every reset envelope
+with a contract cookie and treats disposal of an unknown envelope as a no-op
+that normalizes it into a disposed state.
+
+This removes a dangerous hidden requirement that callers zero-initialize every
+transient `ev_msg_t` before first use. Reuse of an already initialized message
+remains leak-safe because reinitialization still disposes any attached payload
+before resetting the envelope.
