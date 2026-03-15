@@ -19,7 +19,7 @@ static ev_result_t ev_clock_mono_now_us(void *ctx, ev_time_mono_us_t *out_now)
         return EV_ERR_INVALID_ARG;
     }
 
-    *out_now = (ev_time_mono_us_t)esp_log_timestamp() * 1000ULL;
+    *out_now = (ev_time_mono_us_t)esp_log_early_timestamp() * 1000ULL;
     return EV_OK;
 }
 
