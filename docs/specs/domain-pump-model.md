@@ -32,7 +32,8 @@ At runtime it:
 - skips missing bindings and empty mailboxes,
 - drains each selected actor with
   `min(actor_default_budget, remaining_domain_budget)`,
-- advances its internal cursor after each actor-level pump,
+- advances its internal cursor after each actor-level pump, while keeping
+  the current scan base stable for the rest of that pass,
 - continues until either:
   - the global budget is exhausted,
   - no more work exists in the domain,
@@ -41,6 +42,8 @@ At runtime it:
 ## Fairness model
 
 The internal cursor makes the domain pump round-robin across actors.
+Each scan pass snapshots the cursor at pass entry, so a cursor update never
+re-bases indexes mid-pass and therefore cannot skip actors accidentally.
 
 This prevents one actor from always being examined first when a caller invokes
 small global budgets repeatedly.

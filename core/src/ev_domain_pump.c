@@ -138,9 +138,10 @@ ev_result_t ev_domain_pump_run(
     while (remaining > 0U) {
         bool progressed_this_pass = false;
         size_t offset;
+        size_t start_index = pump->next_actor_index;
 
         for (offset = 0U; offset < actor_count; ++offset) {
-            size_t index = (pump->next_actor_index + offset) % actor_count;
+            size_t index = (start_index + offset) % actor_count;
             ev_actor_runtime_t *runtime;
             size_t actor_budget;
             ev_actor_pump_report_t actor_report;
