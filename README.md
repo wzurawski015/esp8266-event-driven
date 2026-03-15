@@ -67,16 +67,32 @@ Do not validate the framework by invoking host toolchains directly.
 
 ## Current status
 
-This initial scaffold establishes:
+Stage 1 foundation is complete on `main`.
 
-- repository structure,
-- coding conventions,
+Implemented in the current codebase:
+
+- repository structure and coding conventions,
+- Docker-first validation workflow,
 - Doxygen + Graphviz documentation pipeline,
-- generated event/actor/route catalogs,
-- minimal host-side smoke test,
-- ADR-0001 with architectural foundations.
+- SSOT-generated event, actor, route and metric catalogs,
+- message / send / publish / dispose contracts,
+- static route table,
+- mailbox abstraction,
+- actor runtime skeleton,
+- lease-aware transport,
+- deterministic lease pool,
+- publish failure policy and fan-out accounting,
+- runtime diagnostics,
+- bounded actor pump,
+- cooperative domain pump,
+- multi-domain system pump.
 
-Firmware integration with ESP8266 RTOS SDK will be added once the toolchain and BSP contract are pinned.
+Next step:
+
+- pin ESP8266 RTOS SDK toolchain and Docker image,
+- define platform contracts in `ports/`,
+- define BSP contract and board profiles in `bsp/`,
+- add minimal target bring-up on real ESP8266 hardware.
 
 ## Non-negotiable constraints
 
