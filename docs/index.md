@@ -12,6 +12,7 @@
 - [Domain pump model](specs/domain-pump-model.md)
 - [System pump model](specs/system-pump-model.md)
 - [Lease pool model](specs/lease-pool-model.md)
+- [Platform contracts](specs/platform-contracts.md)
 
 ## ADRs
 
@@ -19,6 +20,7 @@
 - [ADR-0002: Message contract](adr/ADR-0002-message-contract.md)
 - [ADR-0003: Routing and delivery model](adr/ADR-0003-routing-and-delivery.md)
 - [ADR-0004: Ownership and dispose contract](adr/ADR-0004-ownership-and-dispose.md)
+- [ADR-0005: ESP8266 build, toolchain, and platform-contract strategy](adr/ADR-0005-esp8266-build-toolchain-and-platform-contracts.md)
 
 ## Generated artifacts
 
