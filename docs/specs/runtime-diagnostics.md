@@ -88,3 +88,22 @@ At this stage we do **not** yet expose:
 
 Those belong to later diagnostic layers and should be built on top of these
 small deterministic counters.
+
+## Domain-pump counters
+
+`ev_domain_pump_t` owns cumulative scheduler-style counters for one logical
+execution domain.
+
+Tracked fields:
+
+- `pump_calls`
+- `pump_empty_calls`
+- `pump_budget_hits`
+- `last_budget`
+- `last_processed`
+- `last_actor`
+- `last_result`
+
+These counters complement per-actor runtime counters. Actor-level counters tell
+you what happened inside one mailbox owner; domain-pump counters tell you how a
+cooperative loop behaved while orchestrating multiple runtimes.

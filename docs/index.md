@@ -9,6 +9,7 @@
 - [Mailbox semantics](specs/mailbox-semantics.md)
 - [Runtime diagnostics](specs/runtime-diagnostics.md)
 - [Actor pump model](specs/actor-pump-model.md)
+- [Domain pump model](specs/domain-pump-model.md)
 - [Lease pool model](specs/lease-pool-model.md)
 
 ## ADRs
