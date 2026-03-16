@@ -8,7 +8,7 @@ This document freezes the current Docker-first serial monitoring policy for ESP8
 It is still useful when the SDK monitor behavior itself is under investigation.
 
 `./tools/fw sdk-simple-monitor` is the hardened fallback for day-to-day runtime diagnostics on real hardware.
-It avoids the SDK monitor stack, runs without a pseudo-TTY, and opens the serial device directly inside the SDK container.
+It avoids the SDK monitor stack, runs without a pseudo-TTY, and opens the serial device directly inside the SDK container through a small Python serial reader with explicit signal handling.
 
 ## Canonical Docker-first flow
 
@@ -75,10 +75,11 @@ FW_ESPPORT=/dev/ttyUSB0 \
 ./tools/fw sdk-flash-manual
 ```
 
-`sdk-flash-manual` disables auto-reset toggling and assumes the board is already
+`sdk-flash-manual` disables auto-reset toggling before and after flashing and assumes the board is already
 in ROM bootloader mode.
 Use your board-specific equivalent of “hold BOOT/GPIO0 low, pulse RESET, then
 release into the loader” before starting that command.
+After a successful manual flash, press **RESET** to boot the new application image.
 
 ## Boot-capture rule
 

@@ -22,3 +22,4 @@ Behavioral guarantees in the current stage:
 - log flush is best-effort and does not depend on UART driver installation order,
 - wall-clock time is still intentionally unsupported,
 - USB modem-control boot/reset choreography stays an operator workflow concern and is not part of the public UART contract.
+- diagnostic targets may project monotonic microseconds into a 32-bit millisecond log view when serial portability requires it.
