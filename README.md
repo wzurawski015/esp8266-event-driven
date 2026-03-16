@@ -92,6 +92,9 @@ FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard .
 
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 
+# if Docker/WSL2 auto-reset flashing is unstable, enter ROM bootloader mode manually first
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
+
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
 ```
 
@@ -99,6 +102,7 @@ These commands are the canonical local entry points.
 Do not validate the framework by invoking host toolchains directly.
 For Docker + WSL2 serial work, `sdk-simple-monitor` is the canonical ATNEL runtime path.
 Use `sdk-monitor` only when you explicitly need the SDK-native monitor behavior.
+If `sdk-flash` fails with a DTR/RTS I/O error under Docker + WSL2, use `sdk-flash-manual` after placing the board into ROM bootloader mode manually.
 
 ## Current status
 
