@@ -1,4 +1,3 @@
-#include <inttypes.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -40,9 +39,9 @@ static void ev_diag_logf(ev_log_port_t *log_port,
     (void)log_port->write(log_port->ctx, level, tag, buffer, (size_t)len);
 }
 
-static uint64_t ev_time_mono_us_to_ms(ev_time_mono_us_t mono_now_us)
+static uint32_t ev_time_mono_us_to_diag_ms(ev_time_mono_us_t mono_now_us)
 {
-    return (uint64_t)mono_now_us / 1000ULL;
+    return (uint32_t)((uint64_t)mono_now_us / 1000ULL);
 }
 
 void app_main(void)
@@ -55,6 +54,7 @@ void app_main(void)
     ev_reset_reason_t reset_reason;
     ev_time_mono_us_t mono_now_us;
     uint32_t heartbeat = 0U;
+    uint32_t mono_now_ms = 0U;
 
     if (ev_esp8266_clock_port_init(&clock_port) != EV_OK) {
         return;
@@ -93,7 +93,8 @@ void app_main(void)
     ev_diag_logf(&log_port, EV_LOG_INFO, EV_BOARD_TAG, "framework boot");
     ev_diag_logf(&log_port, EV_LOG_INFO, EV_BOARD_TAG, "board profile: %s", EV_BOARD_NAME);
     ev_diag_logf(&log_port, EV_LOG_INFO, EV_BOARD_TAG, "reset reason: %s", ev_reset_reason_to_cstr(reset_reason));
-    ev_diag_logf(&log_port, EV_LOG_INFO, EV_BOARD_TAG, "mono_now_ms=%" PRIu64, ev_time_mono_us_to_ms(mono_now_us));
+    mono_now_ms = ev_time_mono_us_to_diag_ms(mono_now_us);
+    ev_diag_logf(&log_port, EV_LOG_INFO, EV_BOARD_TAG, "mono_now_ms=%u", (unsigned)mono_now_ms);
     ev_diag_logf(&log_port, EV_LOG_INFO, EV_BOARD_TAG, "clock port contract size: %u", (unsigned)sizeof(ev_clock_port_t));
     (void)log_port.flush(log_port.ctx);
 
@@ -101,12 +102,13 @@ void app_main(void)
         if (clock_port.mono_now_us(clock_port.ctx, &mono_now_us) != EV_OK) {
             mono_now_us = 0U;
         }
+        mono_now_ms = ev_time_mono_us_to_diag_ms(mono_now_us);
         ev_diag_logf(&log_port,
                      EV_LOG_INFO,
                      EV_BOARD_TAG,
-                     "heartbeat=%" PRIu32 " mono_now_ms=%" PRIu64,
-                     heartbeat++,
-                     ev_time_mono_us_to_ms(mono_now_us));
+                     "heartbeat=%u mono_now_ms=%u",
+                     (unsigned)heartbeat++,
+                     (unsigned)mono_now_ms);
         (void)log_port.flush(log_port.ctx);
         (void)clock_port.delay_ms(clock_port.ctx, 1000U);
     }

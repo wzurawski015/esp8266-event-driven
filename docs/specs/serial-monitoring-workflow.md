@@ -48,6 +48,19 @@ For the current ATNEL target, the application runtime logs are expected at `1152
 Boot ROM output from ESP8266 may still appear at a different baud rate during the earliest boot window.
 That noise is acceptable as long as the post-boot runtime log stream is stable and readable.
 
+## Runtime log formatting policy
+
+For the current ESP8266 bring-up stage, runtime heartbeat logs print `mono_now_ms`
+as a diagnostic 32-bit millisecond value.
+
+This is intentional. The public clock contract remains 64-bit in microseconds, but
+the serial diagnostics path avoids target-side `printf` length modifiers that are
+not stable on the current ESP8266 runtime path.
+
+A runtime symptom of this portability problem is a line such as `mono_now_ms=lu`
+instead of a numeric value. When that appears, the target should be treated as a
+firmware formatting bug, not as a serial-line baud mismatch.
+
 ## WSL2 note
 
 On WSL2, serial access still depends on `usbipd` attach flow from Windows into WSL.
