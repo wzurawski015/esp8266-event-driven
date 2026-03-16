@@ -283,7 +283,7 @@ sdk_check() {
       set -eu
       xtensa-lx106-elf-gcc --version | head -n 1
       python3 --version
-      python3 -c "import pkg_resources; print(\"pkg_resources=ok\")"
+      python3 -c "import pip, serial, setuptools; print(\"python_env=ok pip=%s pyserial=%s setuptools=%s\" % (pip.__version__, getattr(serial, \"VERSION\", getattr(serial, \"__version__\", \"unknown\")), setuptools.__version__))"
       make --version | head -n 1
       printf "IDF_PATH=%s\n" "$IDF_PATH"
       test -f "$IDF_PATH/make/project.mk"
@@ -313,16 +313,23 @@ sdk_build() {
 }
 
 sdk_clean_target() {
-  run_in_sdk     sh -lc '
+  run_in_sdk \
+    sh -lc '
       set -eu
       make -C "$EV_SDK_PROJECT" clean
     '
 }
 
 sdk_distclean() {
-  run_in_sdk     sh -lc '
+  run_in_sdk \
+    sh -lc '
       set -eu
-      make -C "$EV_SDK_PROJECT" distclean
+      make -C "$EV_SDK_PROJECT" clean || true
+      rm -rf \
+        "$EV_SDK_PROJECT/build" \
+        "$EV_SDK_PROJECT/sdkconfig" \
+        "$EV_SDK_PROJECT/sdkconfig.old" \
+        "$EV_SDK_PROJECT/sdkconfig.bak"
     '
 }
 
@@ -338,33 +345,37 @@ sdk_menuconfig() {
 }
 
 sdk_flash_common() {
-  run_in_sdk_with_device     sh -lc '
+  run_in_sdk_with_device \
+    sh -lc '
       set -eu
       if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
         make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
       fi
 
       attempt=1
-      status=1
 
       while [ "$attempt" -le "$FLASH_RETRIES" ]; do
         log_file=$(mktemp)
+        status=0
+        retryable=0
 
-        if make -C "$EV_SDK_PROJECT" \
-            ESPPORT="$ESPPORT" \
-            ESPTOOLPY_BEFORE="$FLASH_BEFORE" \
-            ESPTOOLPY_AFTER="$FLASH_AFTER" \
-            flash >"$log_file" 2>&1; then
+        make -C "$EV_SDK_PROJECT" \
+          ESPPORT="$ESPPORT" \
+          ESPTOOLPY_BEFORE="$FLASH_BEFORE" \
+          ESPTOOLPY_AFTER="$FLASH_AFTER" \
+          flash >"$log_file" 2>&1 || status=$?
+
+        if [ "$status" -eq 0 ]; then
           cat "$log_file"
           rm -f "$log_file"
           exit 0
         fi
 
-        status=$?
         cat "$log_file" >&2
 
-        if grep -Eq "setDTR|setRTS|TIOCMBIC|TIOCMBIS|Input/output error|Errno 5" "$log_file"; then
-          echo "note: serial modem-control toggling failed on $ESPPORT (attempt $attempt/$FLASH_RETRIES)." >&2
+        if grep -Eq "setDTR|setRTS|TIOCMBIC|TIOCMBIS|Input/output error|Errno 5|Failed to connect|Timed out waiting for packet header" "$log_file"; then
+          retryable=1
+          echo "note: serial auto-reset or bootloader handshake failed on $ESPPORT (attempt $attempt/$FLASH_RETRIES)." >&2
           echo "note: this is a known Docker/WSL2 USB-serial edge case." >&2
           echo "note: if retries do not help, use ./tools/fw sdk-flash-manual" >&2
           echo "note: after putting the board into ROM bootloader mode manually." >&2
@@ -372,7 +383,7 @@ sdk_flash_common() {
 
         rm -f "$log_file"
 
-        if [ "$attempt" -ge "$FLASH_RETRIES" ]; then
+        if [ "$retryable" -ne 1 ] || [ "$attempt" -ge "$FLASH_RETRIES" ]; then
           exit "$status"
         fi
 
@@ -381,7 +392,7 @@ sdk_flash_common() {
         attempt=$((attempt + 1))
       done
 
-      exit "$status"
+      exit 1
     '
 }
 
@@ -411,7 +422,8 @@ sdk_monitor() {
 }
 
 sdk_simple_monitor() {
-  run_in_sdk_with_device_i     sh -lc '
+  run_in_sdk_with_device_i \
+    sh -lc '
       set -eu
       test -f "$EV_SDK_PROJECT/sdkconfig" || {
         echo "error: sdkconfig missing, run ./tools/fw sdk-defconfig or ./tools/fw sdk-build first" >&2
@@ -436,8 +448,24 @@ def _stop(_signum, _frame):
 signal.signal(signal.SIGINT, _stop)
 signal.signal(signal.SIGTERM, _stop)
 
+serial_kwargs = {
+    "port": port,
+    "baudrate": baud,
+    "timeout": 0.20,
+    "xonxoff": False,
+    "rtscts": False,
+    "dsrdtr": False,
+}
+
 try:
-    with serial.Serial(port=port, baudrate=baud, timeout=0.20) as ser:
+    serial_kwargs["exclusive"] = True
+    ser = serial.Serial(**serial_kwargs)
+except TypeError:
+    serial_kwargs.pop("exclusive", None)
+    ser = serial.Serial(**serial_kwargs)
+
+try:
+    with ser:
         while True:
             chunk = ser.read(max(1, ser.in_waiting))
             if chunk:

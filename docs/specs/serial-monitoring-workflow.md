@@ -10,6 +10,8 @@ It is still useful when the SDK monitor behavior itself is under investigation.
 `./tools/fw sdk-simple-monitor` is the hardened fallback for day-to-day runtime diagnostics on real hardware.
 It avoids the SDK monitor stack, runs without a pseudo-TTY, and opens the serial device directly inside the SDK container through a small Python serial reader with explicit signal handling.
 
+The simple monitor also disables software and hardware flow-control assumptions and requests exclusive access to the serial device when the installed `pyserial` supports it.
+
 ## Canonical Docker-first flow
 
 From the repository root:
@@ -43,7 +45,7 @@ Use `sdk-simple-monitor` when:
 
 ## Baud-rate policy
 
-For the current ATNEL target, the application runtime logs are expected at `115200`.
+For the current boot/diagnostic targets, the application runtime logs are expected at `115200`.
 
 Boot ROM output from ESP8266 may still appear at a different baud rate during the earliest boot window.
 That noise is acceptable as long as the post-boot runtime log stream is stable and readable.
@@ -53,13 +55,12 @@ That noise is acceptable as long as the post-boot runtime log stream is stable a
 For the current ESP8266 bring-up stage, runtime heartbeat logs print `mono_now_ms`
 as a diagnostic 32-bit millisecond value.
 
-This is intentional. The public clock contract remains 64-bit in microseconds, but
-the serial diagnostics path avoids target-side `printf` length modifiers that are
-not stable on the current ESP8266 runtime path.
+This is intentional.
+The public clock contract remains 64-bit in microseconds, but the serial diagnostics path avoids target-side `printf` length modifiers that are not stable on the current ESP8266 runtime path.
 
 A runtime symptom of this portability problem is a line such as `mono_now_ms=lu`
-instead of a numeric value. When that appears, the target should be treated as a
-firmware formatting bug, not as a serial-line baud mismatch.
+instead of a numeric value.
+When that appears, the target should be treated as a firmware formatting bug, not as a serial-line baud mismatch.
 
 ## Flash-reset fallback
 
@@ -67,7 +68,15 @@ firmware formatting bug, not as a serial-line baud mismatch.
 On Docker + WSL2 this may fail intermittently when USB modem-control ioctls for
 DTR/RTS return an I/O error before `esptool.py` reaches the ROM loader.
 
-When that happens, the canonical Docker fallback is:
+The wrapper now retries only for transient connection/modem-control failures such as:
+
+- DTR/RTS ioctl errors,
+- `Errno 5` I/O failures,
+- ROM-loader handshake timeouts / failed-connect paths.
+
+Non-transient flash failures are returned immediately with a non-zero exit code.
+
+When auto-reset retries do not recover, the canonical Docker fallback is:
 
 ```bash
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard \
@@ -75,20 +84,16 @@ FW_ESPPORT=/dev/ttyUSB0 \
 ./tools/fw sdk-flash-manual
 ```
 
-`sdk-flash-manual` disables auto-reset toggling before and after flashing and assumes the board is already
-in ROM bootloader mode.
-Use your board-specific equivalent of “hold BOOT/GPIO0 low, pulse RESET, then
-release into the loader” before starting that command.
+`sdk-flash-manual` disables auto-reset toggling before and after flashing and assumes the board is already in ROM bootloader mode.
+Use your board-specific equivalent of “hold BOOT/GPIO0 low, pulse RESET, then release into the loader” before starting that command.
 After a successful manual flash, press **RESET** to boot the new application image.
 
 ## Boot-capture rule
 
 `./tools/fw sdk-simple-monitor` attaches to the live serial stream.
-If you want to capture the application log from the first runtime line, start the
-monitor first and then press **RESET** on the board.
+If you want to capture the application log from the first runtime line, start the monitor first and then press **RESET** on the board.
 
-This keeps Docker as the canonical operator path without depending on the SDK
-interactive monitor implementation.
+This keeps Docker as the canonical operator path without depending on the SDK interactive monitor implementation.
 
 ## WSL2 note
 

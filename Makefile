@@ -54,7 +54,13 @@ docgen:
 	$(PYTHON) tools/docgen/docgen.py
 
 docs: docgen
+	rm -f docs/generated/doxygen-warnings.log
 	doxygen Doxyfile
+	@if [ -s docs/generated/doxygen-warnings.log ]; then \
+		echo "error: Doxygen warnings detected; see docs/generated/doxygen-warnings.log" >&2; \
+		cat docs/generated/doxygen-warnings.log >&2; \
+		exit 1; \
+	fi
 
 clean:
 	rm -rf build docs/generated/*

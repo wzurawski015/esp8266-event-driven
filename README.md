@@ -64,24 +64,27 @@ Prerequisite: Docker must be installed and usable without interactive elevation.
 ./tools/fw docs
 ```
 
+`./tools/fw docs` is intentionally strict: if Doxygen emits warnings, the command fails.
+
 ### ESP8266 SDK baseline
 
 ```bash
-./tools/fw sdk-image
 ./tools/fw sdk-check
 ./tools/fw shell-sdk
 ```
 
-### Minimal target firmware skeleton
+### Generic ESP8266 golden-reference target
 
 ```bash
 ./tools/fw sdk-defconfig
 ./tools/fw sdk-build
 ./tools/fw sdk-clean-target
 ./tools/fw sdk-distclean
+./tools/fw sdk-build
 
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
+FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
+FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
 ```
 
 ### ATNEL AIR ESP motherboard board target
@@ -89,21 +92,21 @@ FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
 ```bash
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-defconfig
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-build
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-clean-target
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-distclean
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-build
 
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
-
-# if Docker/WSL2 auto-reset flashing is unstable, enter ROM bootloader mode manually first
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
-
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
 ```
 
 These commands are the canonical local entry points.
 Do not validate the framework by invoking host toolchains directly.
-For Docker + WSL2 serial work, `sdk-simple-monitor` is the canonical ATNEL runtime path.
+For Docker + WSL2 serial work, `sdk-simple-monitor` is the canonical runtime path for the current boot/diagnostic targets.
 Use `sdk-monitor` only when you explicitly need the SDK-native monitor behavior.
 If `sdk-flash` fails with a DTR/RTS I/O error under Docker + WSL2, use `sdk-flash-manual` after placing the board into ROM bootloader mode manually, then press **RESET** after a successful manual flash.
-Cleanup symmetry is also part of the supported operator surface: `./tools/fw sdk-clean-target` and `./tools/fw sdk-distclean` must remain usable for both the generic and ATNEL targets.
+Cleanup symmetry is part of the supported operator surface: `./tools/fw sdk-clean-target` and `./tools/fw sdk-distclean` must remain usable for both the generic and ATNEL targets.
 See [`docs/specs/stage2-foundation-quality-gate.md`](docs/specs/stage2-foundation-quality-gate.md) for the frozen Stage 2 acceptance bar.
 
 ## Current status
@@ -132,21 +135,16 @@ Stage 2 progress:
 
 - Stage 2A1 freezes the ESP8266 SDK image and first platform-contract set,
 - Stage 2A2 adds the first SDK-native target skeleton under `adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev`,
-- `esp8266_generic_dev` now acts as the golden reference bring-up target for ESP8266 target-side validation,
-- `./tools/fw` now exposes target-side `sdk-defconfig`, `sdk-menuconfig`, `sdk-build`, `sdk-clean-target`, `sdk-distclean`, `sdk-flash`, and `sdk-monitor`,
-- CI now verifies the pinned SDK image and the generic target build without requiring hardware.
-
-Stage 2A3 progress:
-
-- the first concrete board profile now lives under `bsp/atnel_air_esp_motherboard/`,
-- `esp8266_generic_dev` stays the board-neutral golden reference target,
-- the ATNEL profile freezes a safe jumper baseline before board-specific adapter work.
+- Stage 2A3 adds the first concrete board profile under `bsp/atnel_air_esp_motherboard/`,
+- Stage 2A4 adds the first concrete ESP8266 RTOS SDK adapters for clock/log/reset/uart,
+- `esp8266_generic_dev` and `atnel_air_esp_motherboard` now share a common framework-backed boot/diagnostic harness,
+- CI now verifies host docs/tests plus `sdk-clean-target -> sdk-distclean -> sdk-build` symmetry for both current SDK targets.
 
 Next step:
 
-- Stage 2A4 adds the first concrete ESP8266 RTOS SDK adapters for clock/log/reset/uart,
-- Stage 2A4 also adds the first board-scoped bring-up target for `bsp/atnel_air_esp_motherboard/`,
-- later Stage 2 steps will extend this with GPIO/I2C/1-Wire and board peripherals.
+- widen the adapter surface with GPIO/I2C/1-Wire,
+- keep the generic and ATNEL targets on one shared bring-up path while BSP scope grows,
+- only add board peripherals once the current operator workflow stays green.
 
 ## Non-negotiable constraints
 

@@ -57,7 +57,7 @@ RUN python3 -m venv /opt/esp/python-env \
     && /opt/esp/python-env/bin/pip install "setuptools<82" \
     && /opt/esp/python-env/bin/pip install -r /opt/esp/ESP8266_RTOS_SDK/requirements.txt \
     && /opt/esp/python-env/bin/pip install --upgrade "setuptools<82" \
-    && /opt/esp/python-env/bin/python3 -c "import pkg_resources"
+    && /opt/esp/python-env/bin/python3 -c "import pip, serial, setuptools"
 
 ENV IDF_PATH=/opt/esp/ESP8266_RTOS_SDK
 ENV PATH=/opt/esp/python-env/bin:/opt/esp/xtensa-lx106-elf/bin:$PATH

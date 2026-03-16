@@ -1,12 +1,13 @@
 # esp8266_generic_dev target
 
-This is the golden reference SDK-native target project used for Stage 2 bring-up.
+This is the golden-reference SDK-native target project used for Stage 2 bring-up.
 
 Scope of this target:
 
 - validate the pinned ESP8266 RTOS SDK image,
 - validate `sdkconfig.defaults -> defconfig -> build`,
-- provide a minimal heartbeat firmware under Docker-first workflow,
+- validate target-local cleanup symmetry through `sdk-clean-target` and `sdk-distclean`,
+- prove the shared framework-backed boot/diagnostic harness on a board-neutral target,
 - stay intentionally board-neutral,
 - create a stable landing zone for later BSP and adapter integration.
 
@@ -17,21 +18,24 @@ Canonical commands from the repository root:
 ./tools/fw sdk-build
 ./tools/fw sdk-clean-target
 ./tools/fw sdk-distclean
+./tools/fw sdk-build
 
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
+FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
+FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
 ```
 
 Notes:
 
 - generated `sdkconfig` is intentionally ignored by Git,
 - build artifacts remain inside this project-local target directory,
-- this project is not yet the final framework firmware image,
-- future Stage 2 steps will wire public `ports/` contracts to concrete ESP8266 RTOS SDK adapters.
+- runtime logs from the shared boot/diagnostic harness are expected at `115200`,
+- `sdk-simple-monitor` is the preferred runtime path when Docker/WSL2 interactive monitor behavior is unstable,
+- this target is intentionally small but no longer bypasses the public platform ports.
 
-
-CI policy:
+## CI policy
 
 - `esp8266_generic_dev` must stay buildable without hardware attached,
-- hardware-specific features belong in dedicated BSP profiles,
-- this target should remain the smallest trustworthy target-side reference.
+- it must remain the smallest trustworthy target-side proof of the public ESP8266 ports,
+- target-local cleanup and rebuild symmetry is part of its acceptance contract,
+- hardware-specific features belong in dedicated BSP profiles.
