@@ -15,6 +15,9 @@ jobs:
       - name: Generate living documentation artifacts
         run: ./tools/fw docgen
 
+      - name: Verify generated documentation is checked in
+        run: git diff --exit-code
+
       - name: Build and run host smoke tests
         run: ./tools/fw host-test
 

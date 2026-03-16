@@ -92,11 +92,13 @@ FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard .
 
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 
-FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
 ```
 
 These commands are the canonical local entry points.
 Do not validate the framework by invoking host toolchains directly.
+For Docker + WSL2 serial work, `sdk-simple-monitor` is the canonical ATNEL runtime path.
+Use `sdk-monitor` only when you explicitly need the SDK-native monitor behavior.
 
 ## Current status
 

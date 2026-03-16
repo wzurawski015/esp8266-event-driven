@@ -11,6 +11,53 @@
 
 #include "ev/esp8266_port_adapters.h"
 
+static bool ev_uart_port_is_supported(ev_uart_port_num_t port)
+{
+    return port == 0U;
+}
+
+static bool ev_uart_data_bits_is_valid(uint8_t data_bits)
+{
+    return data_bits >= 5U && data_bits <= 8U;
+}
+
+static bool ev_uart_stop_bits_is_valid(uint8_t stop_bits)
+{
+    return stop_bits == 1U || stop_bits == 2U;
+}
+
+static ev_result_t ev_uart_validate_port(ev_uart_port_num_t port)
+{
+    return ev_uart_port_is_supported(port) ? EV_OK : EV_ERR_UNSUPPORTED;
+}
+
+static ev_result_t ev_uart_validate_config(ev_uart_port_num_t port, const ev_uart_config_t *cfg)
+{
+    ev_result_t port_check = ev_uart_validate_port(port);
+
+    if (port_check != EV_OK) {
+        return port_check;
+    }
+
+    if (cfg == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (cfg->baud_rate == 0U) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (!ev_uart_data_bits_is_valid(cfg->data_bits)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (!ev_uart_stop_bits_is_valid(cfg->stop_bits)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    return EV_OK;
+}
+
 static ev_result_t ev_clock_mono_now_us(void *ctx, ev_time_mono_us_t *out_now)
 {
     (void)ctx;
@@ -89,6 +136,11 @@ static ev_result_t ev_log_write_impl(void *ctx,
 static ev_result_t ev_log_flush_impl(void *ctx)
 {
     (void)ctx;
+
+    if (!uart_is_driver_installed(UART_NUM_0)) {
+        return EV_OK;
+    }
+
     if (uart_wait_tx_done(UART_NUM_0, pdMS_TO_TICKS(50)) != ESP_OK) {
         return EV_ERR_STATE;
     }
@@ -232,8 +284,11 @@ static ev_result_t ev_uart_init_impl(void *ctx,
     uart_config_t sdk_cfg = {0};
     (void)ctx;
 
-    if (cfg == NULL) {
-        return EV_ERR_INVALID_ARG;
+    {
+        ev_result_t validation = ev_uart_validate_config(port, cfg);
+        if (validation != EV_OK) {
+            return validation;
+        }
     }
 
     sdk_cfg.baud_rate = (int)cfg->baud_rate;
@@ -273,6 +328,17 @@ static ev_result_t ev_uart_write_impl(void *ctx,
         return EV_ERR_INVALID_ARG;
     }
 
+    if (ev_uart_validate_port(port) != EV_OK) {
+        return EV_ERR_UNSUPPORTED;
+    }
+
+    if (len == 0U) {
+        if (out_written != NULL) {
+            *out_written = 0U;
+        }
+        return EV_OK;
+    }
+
     written = uart_write_bytes((uart_port_t)port, (const char *)data, len);
     if (written < 0) {
         return EV_ERR_STATE;
@@ -284,6 +350,10 @@ static ev_result_t ev_uart_write_impl(void *ctx,
 
     if (out_written != NULL) {
         *out_written = (size_t)written;
+    }
+
+    if ((size_t)written != len) {
+        return EV_ERR_STATE;
     }
 
     return EV_OK;
@@ -300,6 +370,17 @@ static ev_result_t ev_uart_read_impl(void *ctx,
 
     if (data == NULL) {
         return EV_ERR_INVALID_ARG;
+    }
+
+    if (ev_uart_validate_port(port) != EV_OK) {
+        return EV_ERR_UNSUPPORTED;
+    }
+
+    if (len == 0U) {
+        if (out_read != NULL) {
+            *out_read = 0U;
+        }
+        return EV_OK;
     }
 
     read_count = uart_read_bytes((uart_port_t)port, (uint8_t *)data, (uint32_t)len, 0);

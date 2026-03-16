@@ -28,6 +28,35 @@ The adapters are intentionally narrow:
 - the UART adapter is tuned for UART0 boot/diagnostic flow,
 - no GPIO/I2C/1-Wire adapter is claimed yet.
 
+## Runtime log portability note
+
+The public clock contract stays 64-bit and reports monotonic microseconds through
+`ev_time_mono_us_t`.
+
+Target-side bring-up logs intentionally do **not** print that value with 64-bit
+`printf` specifiers. On the current ESP8266 RTOS SDK v3.4 runtime path used for
+early diagnostics, format strings that depend on platform-specific length
+modifiers are not reliable enough for a clean serial stream.
+
+For that reason, the ATNEL boot target projects monotonic time into a diagnostic
+32-bit millisecond value (`mono_now_ms`) for runtime logs only, and prints it
+with `%u` plus an explicit cast to `unsigned`. This keeps the serial heartbeat
+readable without weakening the public platform contract.
+
+If long-uptime logging becomes a requirement later, the next step should be an
+explicit high/low-part log format rather than reintroducing target-side 64-bit
+`printf` dependence.
+
+## Adapter hardening rules
+
+The current adapter layer follows these invariants:
+
+- unsupported UART ports fail explicitly with `EV_ERR_UNSUPPORTED`,
+- invalid UART configuration fails explicitly with `EV_ERR_INVALID_ARG`,
+- the UART adapter does not silently coerce unsupported line settings,
+- log flushing is best-effort even before the UART driver is installed,
+- target diagnostics may project rich public data into smaller runtime-only views when serial portability requires it.
+
 ## Why these four come first
 
 These ports are enough to establish a framework-backed bring-up path on target
