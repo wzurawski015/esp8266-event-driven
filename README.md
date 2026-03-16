@@ -102,7 +102,9 @@ These commands are the canonical local entry points.
 Do not validate the framework by invoking host toolchains directly.
 For Docker + WSL2 serial work, `sdk-simple-monitor` is the canonical ATNEL runtime path.
 Use `sdk-monitor` only when you explicitly need the SDK-native monitor behavior.
-If `sdk-flash` fails with a DTR/RTS I/O error under Docker + WSL2, use `sdk-flash-manual` after placing the board into ROM bootloader mode manually.
+If `sdk-flash` fails with a DTR/RTS I/O error under Docker + WSL2, use `sdk-flash-manual` after placing the board into ROM bootloader mode manually, then press **RESET** after a successful manual flash.
+Cleanup symmetry is also part of the supported operator surface: `./tools/fw sdk-clean-target` and `./tools/fw sdk-distclean` must remain usable for both the generic and ATNEL targets.
+See [`docs/specs/stage2-foundation-quality-gate.md`](docs/specs/stage2-foundation-quality-gate.md) for the frozen Stage 2 acceptance bar.
 
 ## Current status
 

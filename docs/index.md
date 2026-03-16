@@ -17,6 +17,7 @@
 - [Target firmware skeleton](specs/target-firmware-skeleton.md)
 - [ATNEL AIR ESP motherboard BSP v1](specs/atnel-air-esp-motherboard-bsp-v1.md)
 - [Serial monitoring workflow](specs/serial-monitoring-workflow.md)
+- [Stage 2 foundation quality gate](specs/stage2-foundation-quality-gate.md)
 
 ## ADRs
 

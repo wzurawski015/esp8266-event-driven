@@ -56,7 +56,8 @@ The current adapter layer follows these invariants:
 - invalid UART configuration fails explicitly with `EV_ERR_INVALID_ARG`,
 - the UART adapter does not silently coerce unsupported line settings,
 - log flushing is best-effort even before the UART driver is installed,
-- target diagnostics may project rich public data into smaller runtime-only views when serial portability requires it.
+- target diagnostics may project rich public data into smaller runtime-only views when serial portability requires it,
+- adapter-backed targets are expected to support `sdk-clean-target` and `sdk-distclean` through the Docker operator workflow.
 
 ## Why these four come first
 
