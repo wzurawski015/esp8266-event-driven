@@ -47,6 +47,16 @@ If long-uptime logging becomes a requirement later, the next step should be an
 explicit high/low-part log format rather than reintroducing target-side 64-bit
 `printf` dependence.
 
+## Adapter hardening rules
+
+The current adapter layer follows these invariants:
+
+- unsupported UART ports fail explicitly with `EV_ERR_UNSUPPORTED`,
+- invalid UART configuration fails explicitly with `EV_ERR_INVALID_ARG`,
+- the UART adapter does not silently coerce unsupported line settings,
+- log flushing is best-effort even before the UART driver is installed,
+- target diagnostics may project rich public data into smaller runtime-only views when serial portability requires it.
+
 ## Why these four come first
 
 These ports are enough to establish a framework-backed bring-up path on target

@@ -61,6 +61,15 @@ A runtime symptom of this portability problem is a line such as `mono_now_ms=lu`
 instead of a numeric value. When that appears, the target should be treated as a
 firmware formatting bug, not as a serial-line baud mismatch.
 
+## Boot-capture rule
+
+`./tools/fw sdk-simple-monitor` attaches to the live serial stream.
+If you want to capture the application log from the first runtime line, start the
+monitor first and then press **RESET** on the board.
+
+This keeps Docker as the canonical operator path without depending on the SDK
+interactive monitor implementation.
+
 ## WSL2 note
 
 On WSL2, serial access still depends on `usbipd` attach flow from Windows into WSL.
