@@ -66,6 +66,9 @@ static ev_result_t ev_clock_mono_now_us(void *ctx, ev_time_mono_us_t *out_now)
         return EV_ERR_INVALID_ARG;
     }
 
+    /* ESP8266 RTOS SDK v3.4 exposes early monotonic time at millisecond
+     * granularity through esp_log_early_timestamp(). Keep the public port unit
+     * in microseconds, but document the effective 1 ms resolution explicitly. */
     *out_now = (ev_time_mono_us_t)esp_log_early_timestamp() * 1000ULL;
     return EV_OK;
 }

@@ -10,10 +10,16 @@ The foundation is considered green when all of the following are true:
 
 - `./tools/fw host-test` passes,
 - `./tools/fw docgen` passes and leaves generated artifacts in sync,
-- `./tools/fw docs` passes,
+- `./tools/fw docs` passes without Doxygen warnings,
 - `./tools/fw sdk-check` passes,
 - `./tools/fw sdk-build` passes for `esp8266_generic_dev`,
+- `./tools/fw sdk-clean-target` passes for `esp8266_generic_dev`,
+- `./tools/fw sdk-distclean` passes for `esp8266_generic_dev`,
+- `./tools/fw sdk-build` passes again for `esp8266_generic_dev` after `sdk-distclean`,
 - `./tools/fw sdk-build` passes for `atnel_air_esp_motherboard`,
+- `./tools/fw sdk-clean-target` passes for `atnel_air_esp_motherboard`,
+- `./tools/fw sdk-distclean` passes for `atnel_air_esp_motherboard`,
+- `./tools/fw sdk-build` passes again for `atnel_air_esp_motherboard` after `sdk-distclean`,
 - `./tools/fw sdk-flash` can program the ATNEL target through Docker,
 - `./tools/fw sdk-simple-monitor` shows readable runtime heartbeat logs at `115200`.
 
@@ -40,12 +46,14 @@ The following behaviors are currently treated as environment constraints, not as
 - ESP8266 ROM boot text may appear at `74880` baud before the application switches to `115200`.
 - Under Docker + WSL2, the first `sdk-flash` attempt may fail on DTR/RTS modem-control ioctls with `Errno 5`.
 - In the current ESP8266 runtime path, target-side 64-bit `printf` format modifiers are not trusted for clean serial diagnostics.
+- The current monotonic clock implementation preserves microsecond units but has an effective 1 ms resolution.
 
 As a result:
 
 - runtime heartbeat logs intentionally print `mono_now_ms` as a 32-bit diagnostic view,
-- `sdk-flash` includes retry and fallback guidance,
-- `sdk-flash-manual` exists as an explicit operator path.
+- `sdk-flash` includes retry and fallback guidance for transient serial-control failures,
+- `sdk-flash-manual` exists as an explicit operator path,
+- the generic and ATNEL targets stay on the same boot/diagnostic harness until BSP scope justifies a split.
 
 ## Manual-flash semantics
 
@@ -66,8 +74,9 @@ Both of these commands are part of the supported operator surface:
 ```
 
 They must work for the default generic target and for board-scoped targets selected through `FW_SDK_PROJECT_DIR`.
+`./tools/fw sdk-distclean` is wrapper-owned and must not depend on the presence of a vendor `make distclean` target.
 
 ## Expansion rule
 
 Peripheral work may proceed only when the green-state checklist remains true.
-If a later change breaks flashing, monitoring, build reproducibility, or target-side diagnostics, that regression must be fixed before widening BSP scope.
+If a later change breaks flashing, monitoring, build reproducibility, cleanup symmetry, or target-side diagnostics, that regression must be fixed before widening BSP scope.

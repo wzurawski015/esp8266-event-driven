@@ -1,24 +1,19 @@
-#include <inttypes.h>
 #include <stdint.h>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_log.h"
+#include "ev/esp8266_boot_diag.h"
 
-#include "ev/port_clock.h"
-
-static const char *TAG = "ev_stage2a2";
+#define EV_BOARD_TAG "ev_generic"
+#define EV_BOARD_NAME "esp8266_generic_dev"
 
 void app_main(void)
 {
-    uint32_t heartbeat = 0U;
+    static const ev_boot_diag_config_t k_boot_diag = {
+        .board_tag = EV_BOARD_TAG,
+        .board_name = EV_BOARD_NAME,
+        .uart_port = 0U,
+        .uart_baud_rate = 115200U,
+        .heartbeat_period_ms = 1000U,
+    };
 
-    ESP_LOGI(TAG, "esp8266-event-driven target skeleton boot");
-    ESP_LOGI(TAG, "board profile: esp8266_generic_dev");
-    ESP_LOGI(TAG, "clock port contract size: %u", (unsigned)sizeof(ev_clock_port_t));
-
-    for (;;) {
-        ESP_LOGI(TAG, "heartbeat=%" PRIu32, heartbeat++);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    ev_esp8266_boot_diag_run(&k_boot_diag);
 }
