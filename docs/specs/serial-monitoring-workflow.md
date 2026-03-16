@@ -61,6 +61,25 @@ A runtime symptom of this portability problem is a line such as `mono_now_ms=lu`
 instead of a numeric value. When that appears, the target should be treated as a
 firmware formatting bug, not as a serial-line baud mismatch.
 
+## Flash-reset fallback
+
+`./tools/fw sdk-flash` still uses the SDK-native auto-reset path by default.
+On Docker + WSL2 this may fail intermittently when USB modem-control ioctls for
+DTR/RTS return an I/O error before `esptool.py` reaches the ROM loader.
+
+When that happens, the canonical Docker fallback is:
+
+```bash
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard \
+FW_ESPPORT=/dev/ttyUSB0 \
+./tools/fw sdk-flash-manual
+```
+
+`sdk-flash-manual` disables auto-reset toggling and assumes the board is already
+in ROM bootloader mode.
+Use your board-specific equivalent of “hold BOOT/GPIO0 low, pulse RESET, then
+release into the loader” before starting that command.
+
 ## Boot-capture rule
 
 `./tools/fw sdk-simple-monitor` attaches to the live serial stream.

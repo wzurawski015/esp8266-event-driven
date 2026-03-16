@@ -51,6 +51,7 @@ explicit high/low-part log format rather than reintroducing target-side 64-bit
 
 The current adapter layer follows these invariants:
 
+- USB modem-control lines used for bootloader entry are treated as operator workflow, not as part of `ev_uart_port_t`,
 - unsupported UART ports fail explicitly with `EV_ERR_UNSUPPORTED`,
 - invalid UART configuration fails explicitly with `EV_ERR_INVALID_ARG`,
 - the UART adapter does not silently coerce unsupported line settings,

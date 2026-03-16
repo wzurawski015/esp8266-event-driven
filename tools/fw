@@ -12,6 +12,10 @@ RUN_USER="${FW_RUN_USER:-$(id -u):$(id -g)}"
 SDK_PROJECT_DIR_REL="${FW_SDK_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev}"
 SDK_SERIAL_PORT="${FW_ESPPORT:-${ESPPORT:-/dev/ttyUSB0}}"
 SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-74880}}"
+SDK_FLASH_BEFORE="${FW_FLASH_BEFORE:-default_reset}"
+SDK_FLASH_AFTER="${FW_FLASH_AFTER:-hard_reset}"
+SDK_FLASH_RETRIES="${FW_FLASH_RETRIES:-3}"
+SDK_FLASH_RETRY_DELAY_S="${FW_FLASH_RETRY_DELAY_S:-1}"
 
 usage() {
   cat <<'USAGE'
@@ -36,6 +40,7 @@ Usage:
   ./tools/fw sdk-clean-target
   ./tools/fw sdk-distclean
   ./tools/fw sdk-flash
+  ./tools/fw sdk-flash-manual
   ./tools/fw sdk-monitor
   ./tools/fw sdk-simple-monitor
 
@@ -43,7 +48,8 @@ Notes:
   - All developer-facing validation runs inside Docker by default.
   - Containers write back to the bind mount using the caller UID:GID.
   - Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, FW_SDK_IMAGE, FW_RUN_USER,
-    FW_SDK_PROJECT_DIR, FW_ESPPORT, or FW_MONITOR_BAUD to override defaults.
+    FW_SDK_PROJECT_DIR, FW_ESPPORT, FW_MONITOR_BAUD, FW_FLASH_BEFORE,
+    FW_FLASH_AFTER, FW_FLASH_RETRIES, or FW_FLASH_RETRY_DELAY_S to override defaults.
 USAGE
 }
 
@@ -159,6 +165,10 @@ run_in_sdk_with_device() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
       "$@"
   else
     "$DOCKER_BIN" run --rm \
@@ -171,6 +181,10 @@ run_in_sdk_with_device() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
       "$@"
   fi
 }
@@ -194,6 +208,10 @@ run_in_sdk_with_device_it() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
       "$@"
   else
     "$DOCKER_BIN" run --rm -it \
@@ -206,6 +224,10 @@ run_in_sdk_with_device_it() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
       "$@"
   fi
 }
@@ -229,6 +251,10 @@ run_in_sdk_with_device_i() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
       "$@"
   else
     "$DOCKER_BIN" run --rm -i \
@@ -241,6 +267,10 @@ run_in_sdk_with_device_i() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
       "$@"
   fi
 }
@@ -293,16 +323,64 @@ sdk_menuconfig() {
     '
 }
 
-sdk_flash() {
-  run_in_sdk_with_device \
-    sh -lc '
+sdk_flash_common() {
+  run_in_sdk_with_device     sh -lc '
       set -eu
       if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
         make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
       fi
-      make -C "$EV_SDK_PROJECT" ESPPORT="$ESPPORT" flash
+
+      attempt=1
+      status=1
+
+      while [ "$attempt" -le "$FLASH_RETRIES" ]; do
+        log_file=$(mktemp)
+
+        if make -C "$EV_SDK_PROJECT" \
+            ESPPORT="$ESPPORT" \
+            ESPTOOLPY_BEFORE="$FLASH_BEFORE" \
+            ESPTOOLPY_AFTER="$FLASH_AFTER" \
+            flash >"$log_file" 2>&1; then
+          cat "$log_file"
+          rm -f "$log_file"
+          exit 0
+        fi
+
+        status=$?
+        cat "$log_file" >&2
+
+        if grep -Eq "setDTR|setRTS|TIOCMBIC|TIOCMBIS|Input/output error|Errno 5" "$log_file"; then
+          echo "note: serial modem-control toggling failed on $ESPPORT (attempt $attempt/$FLASH_RETRIES)." >&2
+          echo "note: this is a known Docker/WSL2 USB-serial edge case." >&2
+          echo "note: if retries do not help, use ./tools/fw sdk-flash-manual" >&2
+          echo "note: after putting the board into ROM bootloader mode manually." >&2
+        fi
+
+        rm -f "$log_file"
+
+        if [ "$attempt" -ge "$FLASH_RETRIES" ]; then
+          exit "$status"
+        fi
+
+        echo "note: retrying flash in ${FLASH_RETRY_DELAY_S}s..." >&2
+        sleep "$FLASH_RETRY_DELAY_S"
+        attempt=$((attempt + 1))
+      done
+
+      exit "$status"
     '
 }
+
+sdk_flash() {
+  sdk_flash_common
+}
+
+sdk_flash_manual() {
+  echo "note: sdk-flash-manual disables DTR/RTS auto-reset." >&2
+  echo "note: put the board into ROM bootloader mode manually before flashing." >&2
+  FLASH_BEFORE=no_reset FLASH_AFTER=no_reset sdk_flash_common
+}
+
 
 sdk_monitor() {
   run_in_sdk_with_device_it \
@@ -393,6 +471,9 @@ case "$cmd" in
     ;;
   sdk-flash)
     sdk_flash
+    ;;
+  sdk-flash-manual)
+    sdk_flash_manual
     ;;
   sdk-monitor)
     sdk_monitor
