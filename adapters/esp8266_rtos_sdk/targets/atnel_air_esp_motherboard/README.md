@@ -22,7 +22,7 @@ FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard .
 
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
-FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-simple-monitor
 ```
 
 Recommended early jumper baseline:
@@ -34,8 +34,8 @@ Recommended early jumper baseline:
 - JP19 open
 - JP1 open
 
-`115200` is the expected runtime baud for the current target image.
+`tools/fw` now selects the monitor baud from target context by default. For this target, the runtime default is `115200`.
 If `sdk-monitor` is unstable under Docker or WSL2, use `sdk-simple-monitor` as the canonical fallback.
-If `sdk-flash` fails with a DTR/RTS I/O error under Docker or WSL2, use `sdk-flash-manual` after putting the board into ROM bootloader mode manually, then press **RESET** once flashing finishes.
+If `sdk-flash` fails with a DTR/RTS I/O error under Docker or WSL2, use `sdk-flash-manual` after putting the board into ROM bootloader mode manually. That path now bypasses pre-flash auto-reset and post-flash reset entirely, so press **RESET** once flashing finishes.
 If you need the log from the first application line, start `sdk-simple-monitor` first and then press **RESET** on the board.
 The frozen operator acceptance bar for this target lives in `docs/specs/stage2-foundation-quality-gate.md`.

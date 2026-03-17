@@ -64,7 +64,7 @@ Prerequisite: Docker must be installed and usable without interactive elevation.
 ./tools/fw docs
 ```
 
-`./tools/fw docs` is intentionally strict: if Doxygen emits warnings, the command fails.
+`./tools/fw docs` is intentionally strict for the documented public contract surface: if Doxygen emits warnings, the command fails.
 
 ### ESP8266 SDK baseline
 
@@ -84,7 +84,7 @@ Prerequisite: Docker must be installed and usable without interactive elevation.
 
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
-FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
+FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-simple-monitor
 ```
 
 ### ATNEL AIR ESP motherboard board target
@@ -98,14 +98,15 @@ FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard .
 
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
-FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-simple-monitor
 ```
 
 These commands are the canonical local entry points.
 Do not validate the framework by invoking host toolchains directly.
 For Docker + WSL2 serial work, `sdk-simple-monitor` is the canonical runtime path for the current boot/diagnostic targets.
+`tools/fw` now chooses the monitor baud from target context by default; the current Stage 2 ESP8266 targets default to `115200`.
 Use `sdk-monitor` only when you explicitly need the SDK-native monitor behavior.
-If `sdk-flash` fails with a DTR/RTS I/O error under Docker + WSL2, use `sdk-flash-manual` after placing the board into ROM bootloader mode manually, then press **RESET** after a successful manual flash.
+If `sdk-flash` fails with a DTR/RTS I/O error under Docker + WSL2, use `sdk-flash-manual` after placing the board into ROM bootloader mode manually. That path now calls `esptool.py` directly with `--before no-reset --after no-reset`, so neither pre-flash auto-reset nor post-flash reset is attempted by the wrapper. Press **RESET** after a successful manual flash.
 Cleanup symmetry is part of the supported operator surface: `./tools/fw sdk-clean-target` and `./tools/fw sdk-distclean` must remain usable for both the generic and ATNEL targets.
 See [`docs/specs/stage2-foundation-quality-gate.md`](docs/specs/stage2-foundation-quality-gate.md) for the frozen Stage 2 acceptance bar.
 

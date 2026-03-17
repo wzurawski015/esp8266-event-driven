@@ -34,7 +34,7 @@ FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard .
 
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 
-FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-simple-monitor
 ```
 
 Use `sdk-monitor` only when you explicitly need the SDK-native interactive monitor behavior.
@@ -47,12 +47,13 @@ The following behaviors are currently treated as environment constraints, not as
 - Under Docker + WSL2, the first `sdk-flash` attempt may fail on DTR/RTS modem-control ioctls with `Errno 5`.
 - In the current ESP8266 runtime path, target-side 64-bit `printf` format modifiers are not trusted for clean serial diagnostics.
 - The current monotonic clock implementation preserves microsecond units but has an effective 1 ms resolution.
+- The current monotonic source is backed by a 32-bit millisecond counter and therefore wraps after roughly 49.7 days.
 
 As a result:
 
 - runtime heartbeat logs intentionally print `mono_now_ms` as a 32-bit diagnostic view,
 - `sdk-flash` includes retry and fallback guidance for transient serial-control failures,
-- `sdk-flash-manual` exists as an explicit operator path,
+- `sdk-flash-manual` exists as an explicit operator path that really skips auto-reset before and after flashing,
 - the generic and ATNEL targets stay on the same boot/diagnostic harness until BSP scope justifies a split.
 
 ## Manual-flash semantics

@@ -55,6 +55,8 @@ resolution.
 
 So the contract unit remains microseconds, but the effective resolution is
 currently **1 ms**.
+The current source is also backed by a 32-bit millisecond counter, so the raw
+source wraps after roughly 49.7 days of uptime.
 This is acceptable for Stage 2 boot/diagnostic heartbeat work and is documented
 explicitly so later BSP work can choose whether to keep or replace that source.
 
