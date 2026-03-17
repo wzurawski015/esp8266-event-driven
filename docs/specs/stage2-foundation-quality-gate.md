@@ -52,7 +52,7 @@ The following behaviors are currently treated as environment constraints, not as
 As a result:
 
 - runtime heartbeat logs intentionally print `mono_now_ms` as a 32-bit diagnostic view,
-- `sdk-flash` includes retry and fallback guidance for transient serial-control failures,
+- `sdk-flash` includes retry and fallback guidance for transient serial-control failures and mirrors live flash output during each attempt,
 - `sdk-flash-manual` exists as an explicit operator path that skips esptool-managed auto-reset before and after flashing,
 - the generic and ATNEL targets stay on the same boot/diagnostic harness until BSP scope justifies a split.
 

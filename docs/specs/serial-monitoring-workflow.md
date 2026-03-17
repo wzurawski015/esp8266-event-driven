@@ -77,6 +77,8 @@ The wrapper now retries only for transient connection/modem-control failures suc
 
 `Invalid head of packet` means the serial line responded, but the target was not yet in a clean ROM-loader sync state. On Docker + WSL2 this is usually the same operator class as a partial auto-reset / partial bootloader-entry failure, not a sign that the built image is corrupt.
 
+`sdk-flash` now mirrors live `make flash` / `esptool.py` output while also classifying retryable failures. The wrapper forces `PYTHONUNBUFFERED=1` for the flash attempt, so a stall at `Connecting....` now reflects a real handshake wait instead of Python output being buffered into the temporary log stream.
+
 Non-transient flash failures are returned immediately with a non-zero exit code.
 
 When auto-reset retries do not recover, the canonical Docker fallback is:

@@ -376,22 +376,28 @@ sdk_flash_common() {
 
       while [ "$attempt" -le "$FLASH_RETRIES" ]; do
         log_file=$(mktemp)
+        stream_dir=$(mktemp -d)
+        stream_fifo="$stream_dir/flash.out"
         status=0
         retryable=0
+        stream_pid=
 
-        make -C "$EV_SDK_PROJECT" \
+        mkfifo "$stream_fifo"
+
+        echo "note: flash attempt $attempt/$FLASH_RETRIES on $ESPPORT ..." >&2
+        echo "note: live flash output is mirrored below; if the line stalls at Connecting...., the current esptool handshake is genuinely still in progress." >&2
+
+        tee "$log_file" <"$stream_fifo" >&2 &
+        stream_pid=$!
+
+        PYTHONUNBUFFERED=1 make -C "$EV_SDK_PROJECT" \
           ESPPORT="$ESPPORT" \
           ESPTOOLPY_BEFORE="$FLASH_BEFORE" \
           ESPTOOLPY_AFTER="$FLASH_AFTER" \
-          flash >"$log_file" 2>&1 || status=$?
+          flash >"$stream_fifo" 2>&1 || status=$?
 
-        if [ "$status" -eq 0 ]; then
-          cat "$log_file"
-          rm -f "$log_file"
-          exit 0
-        fi
-
-        cat "$log_file" >&2
+        wait "$stream_pid" 2>/dev/null || true
+        rm -rf "$stream_dir"
 
         if grep -Eiq "setDTR|setRTS|TIOCMBIC|TIOCMBIS|Input/output error|Errno 5|Failed to connect|Timed out waiting for packet header|Invalid head of packet" "$log_file"; then
           retryable=1
@@ -402,6 +408,10 @@ sdk_flash_common() {
         fi
 
         rm -f "$log_file"
+
+        if [ "$status" -eq 0 ]; then
+          exit 0
+        fi
 
         if [ "$retryable" -ne 1 ] || [ "$attempt" -ge "$FLASH_RETRIES" ]; then
           exit "$status"
