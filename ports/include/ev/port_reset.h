@@ -7,6 +7,9 @@
 extern "C" {
 #endif
 
+/**
+ * @brief Normalized reset reasons exposed to the framework.
+ */
 typedef enum ev_reset_reason {
     EV_RESET_REASON_UNKNOWN = 0,
     EV_RESET_REASON_POWER_ON = 1,
@@ -17,10 +20,13 @@ typedef enum ev_reset_reason {
     EV_RESET_REASON_BROWNOUT = 6
 } ev_reset_reason_t;
 
+/**
+ * @brief Platform reset contract.
+ */
 typedef struct ev_reset_port {
-    void *ctx;
-    ev_result_t (*get_reason)(void *ctx, ev_reset_reason_t *out_reason);
-    ev_result_t (*restart)(void *ctx);
+    void *ctx; /**< Caller-owned adapter context. */
+    ev_result_t (*get_reason)(void *ctx, ev_reset_reason_t *out_reason); /**< Query the last reset reason. */
+    ev_result_t (*restart)(void *ctx); /**< Request an immediate restart. */
 } ev_reset_port_t;
 
 #ifdef __cplusplus

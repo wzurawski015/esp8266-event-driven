@@ -8,7 +8,7 @@ This document freezes the current Docker-first serial monitoring policy for ESP8
 It is still useful when the SDK monitor behavior itself is under investigation.
 
 `./tools/fw sdk-simple-monitor` is the hardened fallback for day-to-day runtime diagnostics on real hardware.
-It avoids the SDK monitor stack, runs without a pseudo-TTY, and opens the serial device directly inside the SDK container through a small Python serial reader with explicit signal handling.
+It avoids the SDK monitor stack, runs without a pseudo-TTY, and opens the serial device directly inside the SDK container through a small Python serial reader with explicit signal handling. The reader is now launched directly as the container command, without an extra `sh -lc` wrapper layer between Docker and Python.
 
 The simple monitor also disables software and hardware flow-control assumptions and requests exclusive access to the serial device when the installed `pyserial` supports it.
 
@@ -25,7 +25,6 @@ FW_ESPPORT=/dev/ttyUSB0 \
 
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard \
 FW_ESPPORT=/dev/ttyUSB0 \
-FW_MONITOR_BAUD=115200 \
 ./tools/fw sdk-simple-monitor
 ```
 
@@ -45,7 +44,8 @@ Use `sdk-simple-monitor` when:
 
 ## Baud-rate policy
 
-For the current boot/diagnostic targets, the application runtime logs are expected at `115200`.
+`tools/fw` now chooses the monitor baud from target context by default.
+For the current boot/diagnostic ESP8266 targets, that default resolves to `115200`.
 
 Boot ROM output from ESP8266 may still appear at a different baud rate during the earliest boot window.
 That noise is acceptable as long as the post-boot runtime log stream is stable and readable.
@@ -84,7 +84,7 @@ FW_ESPPORT=/dev/ttyUSB0 \
 ./tools/fw sdk-flash-manual
 ```
 
-`sdk-flash-manual` disables auto-reset toggling before and after flashing and assumes the board is already in ROM bootloader mode.
+`sdk-flash-manual` now calls `esptool.py` directly with `--before no-reset --after no-reset` and assumes the board is already in ROM bootloader mode.
 Use your board-specific equivalent of “hold BOOT/GPIO0 low, pulse RESET, then release into the loader” before starting that command.
 After a successful manual flash, press **RESET** to boot the new application image.
 
@@ -94,6 +94,16 @@ After a successful manual flash, press **RESET** to boot the new application ima
 If you want to capture the application log from the first runtime line, start the monitor first and then press **RESET** on the board.
 
 This keeps Docker as the canonical operator path without depending on the SDK interactive monitor implementation.
+
+## Clock wrap-around note
+
+The current monotonic implementation is derived from a 32-bit millisecond source.
+That means the underlying source wraps after roughly 49.7 days of uptime.
+
+For the current Stage 2 boot/diagnostic targets this is acceptable, because the
+monotonic value is used as a short-horizon heartbeat and operator diagnostic.
+The limitation is still documented explicitly so later BSP work can replace the
+source if longer uninterrupted uptime diagnostics become a requirement.
 
 ## WSL2 note
 

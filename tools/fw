@@ -4,6 +4,17 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 
+sdk_default_monitor_baud() {
+  case "$1" in
+    adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev|adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard)
+      printf '%s\n' '115200'
+      ;;
+    *)
+      printf '%s\n' '74880'
+      ;;
+  esac
+}
+
 HOST_IMAGE="${FW_HOST_IMAGE:-esp8266-event-driven-host:local}"
 DOCS_IMAGE="${FW_DOCS_IMAGE:-esp8266-event-driven-docs:local}"
 SDK_IMAGE="${FW_SDK_IMAGE:-esp8266-event-driven-sdk:local}"
@@ -11,7 +22,7 @@ SDK_IMAGE="${FW_SDK_IMAGE:-esp8266-event-driven-sdk:local}"
 RUN_USER="${FW_RUN_USER:-$(id -u):$(id -g)}"
 SDK_PROJECT_DIR_REL="${FW_SDK_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev}"
 SDK_SERIAL_PORT="${FW_ESPPORT:-${ESPPORT:-/dev/ttyUSB0}}"
-SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-74880}}"
+SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-$(sdk_default_monitor_baud "$SDK_PROJECT_DIR_REL")}}"
 SDK_FLASH_BEFORE="${FW_FLASH_BEFORE:-default_reset}"
 SDK_FLASH_AFTER="${FW_FLASH_AFTER:-hard_reset}"
 SDK_FLASH_RETRIES="${FW_FLASH_RETRIES:-3}"
@@ -64,6 +75,15 @@ require_sdk_project() {
   if [ ! -f "$ROOT_DIR/$SDK_PROJECT_DIR_REL/Makefile" ]; then
     echo "error: SDK project not found at $ROOT_DIR/$SDK_PROJECT_DIR_REL" >&2
     echo "set FW_SDK_PROJECT_DIR to a valid relative project path" >&2
+    exit 1
+  fi
+}
+
+require_sdkconfig_file() {
+  require_sdk_project
+  if [ ! -f "$ROOT_DIR/$SDK_PROJECT_DIR_REL/sdkconfig" ]; then
+    echo "error: sdkconfig missing for $SDK_PROJECT_DIR_REL" >&2
+    echo "run ./tools/fw sdk-defconfig or ./tools/fw sdk-build first" >&2
     exit 1
   fi
 }
@@ -403,7 +423,46 @@ sdk_flash() {
 sdk_flash_manual() {
   echo "note: sdk-flash-manual disables DTR/RTS auto-reset before and after flashing." >&2
   echo "note: put the board into ROM bootloader mode manually before flashing." >&2
-  FLASH_BEFORE=no_reset FLASH_AFTER=no_reset sdk_flash_common
+  run_in_sdk_with_device \
+    sh -lc '
+      set -eu
+      if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+      fi
+
+      jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+      make -C "$EV_SDK_PROJECT" -j"$jobs"
+
+      project_name=$(sed -n "s/^PROJECT_NAME[[:space:]]*:=[[:space:]]*//p" "$EV_SDK_PROJECT/Makefile" | head -n 1 | sed "s/[[:space:]]*$//")
+
+      if [ -z "$project_name" ]; then
+        echo "error: could not derive PROJECT_NAME from $EV_SDK_PROJECT/Makefile" >&2
+        exit 1
+      fi
+
+      build_dir="$EV_SDK_PROJECT/build"
+      boot_bin="$build_dir/bootloader/bootloader.bin"
+      part_bin="$build_dir/partitions_singleapp.bin"
+      app_bin="$build_dir/${project_name}.bin"
+
+      for artifact in "$boot_bin" "$part_bin" "$app_bin"; do
+        if [ ! -f "$artifact" ]; then
+          echo "error: missing flash artifact: $artifact" >&2
+          exit 1
+        fi
+      done
+
+      python3 "$IDF_PATH/components/esptool_py/esptool/esptool.py" \
+        --chip esp8266 \
+        --port "$ESPPORT" \
+        --baud 115200 \
+        --before no-reset \
+        --after no-reset \
+        write_flash -z --flash_mode dio --flash_freq 40m --flash_size 2MB \
+        0x0 "$boot_bin" \
+        0x10000 "$app_bin" \
+        0x8000 "$part_bin"
+    '
   echo "note: flashing finished without automatic reset; press RESET to boot the new app." >&2
 }
 
@@ -422,58 +481,12 @@ sdk_monitor() {
 }
 
 sdk_simple_monitor() {
+  require_sdkconfig_file
+  printf "simple serial monitor: %s @ %s\n" "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" >&2
+  printf "quit with Ctrl+C\n" >&2
+  printf "note: runtime logs are expected at %s; earliest ESP8266 ROM boot text may still appear at 74880 baud.\n" "$SDK_MONITOR_BAUD" >&2
   run_in_sdk_with_device_i \
-    sh -lc '
-      set -eu
-      test -f "$EV_SDK_PROJECT/sdkconfig" || {
-        echo "error: sdkconfig missing, run ./tools/fw sdk-defconfig or ./tools/fw sdk-build first" >&2
-        exit 1
-      }
-      printf "simple serial monitor: %s @ %s\n" "$ESPPORT" "$MONITORBAUD" >&2
-      printf "quit with Ctrl+C\n" >&2
-      printf "note: runtime logs are expected at %s; earliest ESP8266 ROM boot text may still appear at 74880 baud.\n" "$MONITORBAUD" >&2
-      python3 - "$ESPPORT" "$MONITORBAUD" <<'PY'
-import os
-import signal
-import sys
-
-import serial
-
-port = sys.argv[1]
-baud = int(sys.argv[2])
-
-def _stop(_signum, _frame):
-    raise KeyboardInterrupt
-
-signal.signal(signal.SIGINT, _stop)
-signal.signal(signal.SIGTERM, _stop)
-
-serial_kwargs = {
-    "port": port,
-    "baudrate": baud,
-    "timeout": 0.20,
-    "xonxoff": False,
-    "rtscts": False,
-    "dsrdtr": False,
-}
-
-try:
-    serial_kwargs["exclusive"] = True
-    ser = serial.Serial(**serial_kwargs)
-except TypeError:
-    serial_kwargs.pop("exclusive", None)
-    ser = serial.Serial(**serial_kwargs)
-
-try:
-    with ser:
-        while True:
-            chunk = ser.read(max(1, ser.in_waiting))
-            if chunk:
-                os.write(sys.stdout.fileno(), chunk)
-except KeyboardInterrupt:
-    pass
-PY
-    '
+    python3 -u /work/tools/serial_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD"
 }
 
 cmd="${1:-}"

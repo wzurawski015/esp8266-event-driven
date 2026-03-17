@@ -22,6 +22,7 @@ Behavioral guarantees in the current stage:
 - log flush is best-effort and does not depend on UART driver installation order,
 - wall-clock time is still intentionally unsupported,
 - the public monotonic clock stays 64-bit in microseconds while the current ESP8266 implementation provides an effective 1 ms resolution,
+- the current monotonic source is derived from a 32-bit millisecond counter and therefore wraps after roughly 49.7 days of uptime,
 - USB modem-control boot/reset choreography stays an operator workflow concern and is not part of the public UART contract,
 - diagnostic targets may project monotonic microseconds into a 32-bit millisecond log view when serial portability requires it,
 - generic and board-scoped targets should reuse this component rather than reimplement target-local boot/diagnostic loops.
