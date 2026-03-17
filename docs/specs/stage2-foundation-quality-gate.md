@@ -53,15 +53,15 @@ As a result:
 
 - runtime heartbeat logs intentionally print `mono_now_ms` as a 32-bit diagnostic view,
 - `sdk-flash` includes retry and fallback guidance for transient serial-control failures,
-- `sdk-flash-manual` exists as an explicit operator path that really skips auto-reset before and after flashing,
+- `sdk-flash-manual` exists as an explicit operator path that skips esptool-managed auto-reset before and after flashing,
 - the generic and ATNEL targets stay on the same boot/diagnostic harness until BSP scope justifies a split.
 
 ## Manual-flash semantics
 
-`./tools/fw sdk-flash-manual` is reserved for environments where Docker cannot reliably toggle DTR/RTS.
+`./tools/fw sdk-flash-manual` is reserved for environments where Docker cannot reliably toggle DTR/RTS or where the auto-reset path reaches the serial port but not a clean ROM-loader sync state.
 
 It assumes that the board is already placed into ROM bootloader mode manually.
-It also disables the post-flash automatic reset path.
+It skips esptool-managed reset sequencing before and after flashing.
 After a successful manual flash, the operator should press **RESET** to boot the new firmware image.
 
 ## Target hygiene commands

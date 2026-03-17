@@ -393,7 +393,7 @@ sdk_flash_common() {
 
         cat "$log_file" >&2
 
-        if grep -Eq "setDTR|setRTS|TIOCMBIC|TIOCMBIS|Input/output error|Errno 5|Failed to connect|Timed out waiting for packet header" "$log_file"; then
+        if grep -Eiq "setDTR|setRTS|TIOCMBIC|TIOCMBIS|Input/output error|Errno 5|Failed to connect|Timed out waiting for packet header|Invalid head of packet" "$log_file"; then
           retryable=1
           echo "note: serial auto-reset or bootloader handshake failed on $ESPPORT (attempt $attempt/$FLASH_RETRIES)." >&2
           echo "note: this is a known Docker/WSL2 USB-serial edge case." >&2
@@ -421,7 +421,7 @@ sdk_flash() {
 }
 
 sdk_flash_manual() {
-  echo "note: sdk-flash-manual disables DTR/RTS auto-reset before and after flashing." >&2
+  echo "note: sdk-flash-manual skips esptool-managed auto-reset before and after flashing." >&2
   echo "note: put the board into ROM bootloader mode manually before flashing." >&2
   run_in_sdk_with_device \
     sh -lc '
@@ -456,8 +456,8 @@ sdk_flash_manual() {
         --chip esp8266 \
         --port "$ESPPORT" \
         --baud 115200 \
-        --before no-reset \
-        --after no-reset \
+        --before no_reset \
+        --after no_reset \
         write_flash -z --flash_mode dio --flash_freq 40m --flash_size 2MB \
         0x0 "$boot_bin" \
         0x10000 "$app_bin" \
