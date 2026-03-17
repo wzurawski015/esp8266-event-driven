@@ -14,15 +14,16 @@ Scope of this target:
 Canonical commands from the repository root:
 
 ```bash
+PORT="$(./tools/fw sdk-port-resolve)"
 ./tools/fw sdk-defconfig
 ./tools/fw sdk-build
 ./tools/fw sdk-clean-target
 ./tools/fw sdk-distclean
 ./tools/fw sdk-build
 
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-simple-monitor
+FW_ESPPORT="$PORT" ./tools/fw sdk-flash
+FW_ESPPORT="$PORT" ./tools/fw sdk-flash-manual
+FW_ESPPORT="$PORT" ./tools/fw sdk-simple-monitor
 ```
 
 Notes:
@@ -31,7 +32,8 @@ Notes:
 - build artifacts remain inside this project-local target directory,
 - runtime logs from the shared boot/diagnostic harness are expected at `115200`,
 - `sdk-simple-monitor` is the preferred runtime path when Docker/WSL2 interactive monitor behavior is unstable,
-- this target is intentionally small but no longer bypasses the public platform ports.
+- this target is intentionally small but no longer bypasses the public platform ports,
+- the wrapper can auto-resolve the serial node when exactly one `/dev/ttyUSB*` or `/dev/ttyACM*` device is visible.
 
 ## CI policy
 

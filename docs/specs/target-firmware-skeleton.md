@@ -47,6 +47,8 @@ It is a controlled bring-up target used to verify:
 ## Canonical commands
 
 ```bash
+PORT="$(./tools/fw sdk-port-resolve)"
+
 ./tools/fw sdk-check
 ./tools/fw sdk-defconfig
 ./tools/fw sdk-build
@@ -54,9 +56,9 @@ It is a controlled bring-up target used to verify:
 ./tools/fw sdk-distclean
 ./tools/fw sdk-build
 
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
-FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
+FW_ESPPORT="$PORT" ./tools/fw sdk-flash
+FW_ESPPORT="$PORT" ./tools/fw sdk-flash-manual
+FW_ESPPORT="$PORT" FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
 ```
 
 `sdk-defconfig` uses `sdkconfig.defaults` as the project default configuration seed.

@@ -21,7 +21,7 @@ SDK_IMAGE="${FW_SDK_IMAGE:-esp8266-event-driven-sdk:local}"
 
 RUN_USER="${FW_RUN_USER:-$(id -u):$(id -g)}"
 SDK_PROJECT_DIR_REL="${FW_SDK_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev}"
-SDK_SERIAL_PORT="${FW_ESPPORT:-${ESPPORT:-/dev/ttyUSB0}}"
+SDK_SERIAL_PORT="${FW_ESPPORT:-${ESPPORT:-}}"
 SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-$(sdk_default_monitor_baud "$SDK_PROJECT_DIR_REL")}}"
 SDK_FLASH_BEFORE="${FW_FLASH_BEFORE:-default_reset}"
 SDK_FLASH_AFTER="${FW_FLASH_AFTER:-hard_reset}"
@@ -44,6 +44,9 @@ Usage:
   ./tools/fw shell-docs
   ./tools/fw shell-sdk
 
+  ./tools/fw sdk-ports
+  ./tools/fw sdk-port-resolve
+
   ./tools/fw sdk-check
   ./tools/fw sdk-defconfig
   ./tools/fw sdk-menuconfig
@@ -61,6 +64,8 @@ Notes:
   - Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, FW_SDK_IMAGE, FW_RUN_USER,
     FW_SDK_PROJECT_DIR, FW_ESPPORT, FW_MONITOR_BAUD, FW_FLASH_BEFORE,
     FW_FLASH_AFTER, FW_FLASH_RETRIES, or FW_FLASH_RETRY_DELAY_S to override defaults.
+  - If FW_ESPPORT is unset and exactly one /dev/ttyUSB* or /dev/ttyACM* node is visible,
+    the wrapper can resolve that serial device automatically.
 USAGE
 }
 
@@ -88,10 +93,64 @@ require_sdkconfig_file() {
   fi
 }
 
+serial_port_candidates() {
+  found=0
+  for path in /dev/ttyUSB* /dev/ttyACM*; do
+    if [ -e "$path" ]; then
+      printf '%s\n' "$path"
+      found=1
+    fi
+  done
+  [ "$found" -eq 1 ]
+}
+
+resolve_serial_port() {
+  if [ -n "$SDK_SERIAL_PORT" ]; then
+    return 0
+  fi
+
+  candidates=$(serial_port_candidates || true)
+  count=$(printf '%s\n' "$candidates" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+
+  case "$count" in
+    1)
+      SDK_SERIAL_PORT=$(printf '%s\n' "$candidates" | sed -n '1p')
+      return 0
+      ;;
+    0)
+      echo "error: no serial device found under /dev/ttyUSB* or /dev/ttyACM*" >&2
+      echo "use ./tools/fw sdk-ports to inspect visible serial devices" >&2
+      echo "or set FW_ESPPORT explicitly" >&2
+      return 1
+      ;;
+    *)
+      echo "error: multiple serial devices found and FW_ESPPORT is not set" >&2
+      printf '%s\n' "$candidates" >&2
+      echo "use ./tools/fw sdk-port-resolve only when exactly one candidate should exist" >&2
+      echo "or set FW_ESPPORT explicitly" >&2
+      return 1
+      ;;
+  esac
+}
+
+sdk_ports() {
+  if ! serial_port_candidates; then
+    echo "error: no serial device found under /dev/ttyUSB* or /dev/ttyACM*" >&2
+    exit 1
+  fi
+}
+
+sdk_port_resolve() {
+  require_serial_port
+  printf '%s\n' "$SDK_SERIAL_PORT"
+}
+
 require_serial_port() {
+  resolve_serial_port || exit 1
   if [ ! -e "$SDK_SERIAL_PORT" ]; then
     echo "error: serial device not found: $SDK_SERIAL_PORT" >&2
-    echo "set FW_ESPPORT to the host serial device, for example /dev/ttyUSB0" >&2
+    echo "use ./tools/fw sdk-ports to inspect visible serial devices" >&2
+    echo "or set FW_ESPPORT explicitly" >&2
     exit 1
   fi
 }
@@ -492,6 +551,7 @@ sdk_monitor() {
 
 sdk_simple_monitor() {
   require_sdkconfig_file
+  require_serial_port
   printf "simple serial monitor: %s @ %s\n" "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" >&2
   printf "quit with Ctrl+C\n" >&2
   printf "note: runtime logs are expected at %s; earliest ESP8266 ROM boot text may still appear at 74880 baud.\n" "$SDK_MONITOR_BAUD" >&2
@@ -539,6 +599,12 @@ case "$cmd" in
     require_sdk_project
     build_sdk_image
     run_in_sdk_it sh
+    ;;
+  sdk-ports)
+    sdk_ports
+    ;;
+  sdk-port-resolve)
+    sdk_port_resolve
     ;;
   sdk-check)
     sdk_check

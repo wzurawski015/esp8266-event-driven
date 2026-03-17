@@ -21,7 +21,8 @@ The foundation is considered green when all of the following are true:
 - `./tools/fw sdk-distclean` passes for `atnel_air_esp_motherboard`,
 - `./tools/fw sdk-build` passes again for `atnel_air_esp_motherboard` after `sdk-distclean`,
 - `./tools/fw sdk-flash` can program the ATNEL target through Docker,
-- `./tools/fw sdk-simple-monitor` shows readable runtime heartbeat logs at `115200`.
+- `./tools/fw sdk-simple-monitor` shows readable runtime heartbeat logs at `115200`,
+- `./tools/fw sdk-port-resolve` and `./tools/fw sdk-ports` reflect the same serial-resolution rules used by flash and monitor paths.
 
 ## Canonical operator truth
 
@@ -30,11 +31,13 @@ For the current ATNEL target, Docker remains the canonical operator path.
 Preferred day-to-day sequence:
 
 ```bash
+PORT="$(./tools/fw sdk-port-resolve)"
+
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-build
 
-FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT="$PORT" ./tools/fw sdk-flash
 
-FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-simple-monitor
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT="$PORT" ./tools/fw sdk-simple-monitor
 ```
 
 Use `sdk-monitor` only when you explicitly need the SDK-native interactive monitor behavior.
@@ -62,6 +65,7 @@ As a result:
 
 It assumes that the board is already placed into ROM bootloader mode manually.
 It skips esptool-managed reset sequencing before and after flashing.
+If it times out waiting for a packet header, the board did not reach ROM bootloader mode cleanly and the operator should retry the manual entry sequence.
 After a successful manual flash, the operator should press **RESET** to boot the new firmware image.
 
 ## Target hygiene commands

@@ -17,16 +17,21 @@ The simple monitor also disables software and hardware flow-control assumptions 
 From the repository root:
 
 ```bash
+PORT="$(./tools/fw sdk-port-resolve)"
+
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-build
 
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard \
-FW_ESPPORT=/dev/ttyUSB0 \
+FW_ESPPORT="$PORT" \
 ./tools/fw sdk-flash
 
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard \
-FW_ESPPORT=/dev/ttyUSB0 \
+FW_ESPPORT="$PORT" \
 ./tools/fw sdk-simple-monitor
 ```
+
+If exactly one `/dev/ttyUSB*` or `/dev/ttyACM*` node is visible, `sdk-flash`, `sdk-flash-manual`, `sdk-monitor`, and `sdk-simple-monitor` can resolve it automatically.
+Use `./tools/fw sdk-ports` to inspect visible candidates and `./tools/fw sdk-port-resolve` when you want the wrapper to print the resolved device path explicitly.
 
 ## When to use each command
 
@@ -84,13 +89,16 @@ Non-transient flash failures are returned immediately with a non-zero exit code.
 When auto-reset retries do not recover, the canonical Docker fallback is:
 
 ```bash
+PORT="$(./tools/fw sdk-port-resolve)"
+
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard \
-FW_ESPPORT=/dev/ttyUSB0 \
+FW_ESPPORT="$PORT" \
 ./tools/fw sdk-flash-manual
 ```
 
 `sdk-flash-manual` now calls `esptool.py` directly with `--before no_reset --after no_reset` and assumes the board is already in ROM bootloader mode.
 Use your board-specific equivalent of “hold BOOT/GPIO0 low, pulse RESET, then release into the loader” before starting that command.
+If the command times out waiting for a packet header, treat that as an operator-state failure: the board never entered the ROM loader cleanly.
 After a successful manual flash, press **RESET** to boot the new application image.
 
 ## Boot-capture rule
@@ -113,7 +121,7 @@ source if longer uninterrupted uptime diagnostics become a requirement.
 ## WSL2 note
 
 On WSL2, serial access still depends on `usbipd` attach flow from Windows into WSL.
-After attach, validate that `/dev/ttyUSB0` or `/dev/ttyACM0` exists before invoking `./tools/fw`.
+After attach, validate visible nodes with `./tools/fw sdk-ports` before invoking `./tools/fw`.
 
 When the SDK-native monitor path fails under pseudo-TTY handling, prefer `sdk-simple-monitor` instead of bypassing Docker.
 The simple monitor intentionally streams raw serial bytes and does not rely on `make simple_monitor`.
