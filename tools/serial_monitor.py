@@ -16,23 +16,27 @@ from typing import Any
 import serial
 
 _STOP = False
-_SIGINT_COUNT = 0
+_SERIAL = None
 
 
-def _request_stop(signum: int, _frame: Any) -> None:
-    global _STOP, _SIGINT_COUNT
+def _request_stop(_signum: int, _frame: Any) -> None:
+    global _STOP
     _STOP = True
-    if signum == signal.SIGINT:
-        _SIGINT_COUNT += 1
-        if _SIGINT_COUNT >= 3:
-            raise KeyboardInterrupt
+    ser = _SERIAL
+    if ser is not None:
+        cancel_read = getattr(ser, "cancel_read", None)
+        if callable(cancel_read):
+            try:
+                cancel_read()
+            except Exception:
+                pass
 
 
 def _open_serial(port: str, baud: int) -> serial.Serial:
     kwargs: dict[str, Any] = {
         "port": port,
         "baudrate": baud,
-        "timeout": 0.20,
+        "timeout": 0.05,
         "xonxoff": False,
         "rtscts": False,
         "dsrdtr": False,
@@ -47,6 +51,7 @@ def _open_serial(port: str, baud: int) -> serial.Serial:
 
 
 def main() -> int:
+    global _SERIAL
     if len(sys.argv) != 3:
         print("usage: serial_monitor.py <port> <baud>", file=sys.stderr)
         return 2
@@ -63,6 +68,8 @@ def main() -> int:
         print(f"error: could not open serial port {port}: {exc}", file=sys.stderr)
         return 1
 
+    _SERIAL = ser
+
     try:
         with ser:
             while not _STOP:
@@ -72,6 +79,7 @@ def main() -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        _SERIAL = None
         os.write(sys.stderr.fileno(), b"\n--- exit ---\n")
 
     return 0

@@ -72,7 +72,10 @@ The wrapper now retries only for transient connection/modem-control failures suc
 
 - DTR/RTS ioctl errors,
 - `Errno 5` I/O failures,
-- ROM-loader handshake timeouts / failed-connect paths.
+- ROM-loader handshake timeouts / failed-connect paths,
+- `Invalid head of packet (...)` during bootloader sync.
+
+`Invalid head of packet` means the serial line responded, but the target was not yet in a clean ROM-loader sync state. On Docker + WSL2 this is usually the same operator class as a partial auto-reset / partial bootloader-entry failure, not a sign that the built image is corrupt.
 
 Non-transient flash failures are returned immediately with a non-zero exit code.
 
@@ -84,7 +87,7 @@ FW_ESPPORT=/dev/ttyUSB0 \
 ./tools/fw sdk-flash-manual
 ```
 
-`sdk-flash-manual` now calls `esptool.py` directly with `--before no-reset --after no-reset` and assumes the board is already in ROM bootloader mode.
+`sdk-flash-manual` now calls `esptool.py` directly with `--before no_reset --after no_reset` and assumes the board is already in ROM bootloader mode.
 Use your board-specific equivalent of “hold BOOT/GPIO0 low, pulse RESET, then release into the loader” before starting that command.
 After a successful manual flash, press **RESET** to boot the new application image.
 

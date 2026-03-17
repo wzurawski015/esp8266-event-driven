@@ -36,6 +36,6 @@ Recommended early jumper baseline:
 
 `tools/fw` now selects the monitor baud from target context by default. For this target, the runtime default is `115200`.
 If `sdk-monitor` is unstable under Docker or WSL2, use `sdk-simple-monitor` as the canonical fallback.
-If `sdk-flash` fails with a DTR/RTS I/O error under Docker or WSL2, use `sdk-flash-manual` after putting the board into ROM bootloader mode manually. That path now bypasses pre-flash auto-reset and post-flash reset entirely, so press **RESET** once flashing finishes.
+If `sdk-flash` fails with a DTR/RTS I/O error, handshake timeout, or `Invalid head of packet (...)` under Docker or WSL2, use `sdk-flash-manual` after putting the board into ROM bootloader mode manually. That path now skips esptool-managed pre-flash auto-reset and post-flash reset, so press **RESET** once flashing finishes.
 If you need the log from the first application line, start `sdk-simple-monitor` first and then press **RESET** on the board.
 The frozen operator acceptance bar for this target lives in `docs/specs/stage2-foundation-quality-gate.md`.

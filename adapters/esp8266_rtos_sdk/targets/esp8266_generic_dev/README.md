@@ -22,7 +22,7 @@ Canonical commands from the repository root:
 
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
 FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
-FW_ESPPORT=/dev/ttyUSB0 FW_MONITOR_BAUD=115200 ./tools/fw sdk-simple-monitor
+FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-simple-monitor
 ```
 
 Notes:
