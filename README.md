@@ -73,32 +73,45 @@ Prerequisite: Docker must be installed and usable without interactive elevation.
 ./tools/fw shell-sdk
 ```
 
+### Serial port helper
+
+```bash
+./tools/fw sdk-ports
+PORT="$(./tools/fw sdk-port-resolve)"
+```
+
+If exactly one `/dev/ttyUSB*` or `/dev/ttyACM*` node is visible, the wrapper can resolve it automatically. Set `FW_ESPPORT` explicitly only when multiple serial devices are present.
+
 ### Generic ESP8266 golden-reference target
 
 ```bash
+PORT="$(./tools/fw sdk-port-resolve)"
+
 ./tools/fw sdk-defconfig
 ./tools/fw sdk-build
 ./tools/fw sdk-clean-target
 ./tools/fw sdk-distclean
 ./tools/fw sdk-build
 
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-simple-monitor
+FW_ESPPORT="$PORT" ./tools/fw sdk-flash
+FW_ESPPORT="$PORT" ./tools/fw sdk-flash-manual
+FW_ESPPORT="$PORT" ./tools/fw sdk-simple-monitor
 ```
 
 ### ATNEL AIR ESP motherboard board target
 
 ```bash
+PORT="$(./tools/fw sdk-port-resolve)"
+
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-defconfig
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-build
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-clean-target
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-distclean
 FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard ./tools/fw sdk-build
 
-FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
-FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash-manual
-FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-simple-monitor
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT="$PORT" ./tools/fw sdk-flash
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT="$PORT" ./tools/fw sdk-flash-manual
+FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard FW_ESPPORT="$PORT" ./tools/fw sdk-simple-monitor
 ```
 
 These commands are the canonical local entry points.
@@ -106,7 +119,7 @@ Do not validate the framework by invoking host toolchains directly.
 For Docker + WSL2 serial work, `sdk-simple-monitor` is the canonical runtime path for the current boot/diagnostic targets.
 `tools/fw` now chooses the monitor baud from target context by default; the current Stage 2 ESP8266 targets default to `115200`.
 Use `sdk-monitor` only when you explicitly need the SDK-native monitor behavior.
-If `sdk-flash` fails with a DTR/RTS I/O error, handshake timeout, or `Invalid head of packet (...)` under Docker + WSL2, use `sdk-flash-manual` after placing the board into ROM bootloader mode manually. `sdk-flash` now mirrors live flash output with Python unbuffering enabled, so if the terminal stalls at `Connecting....` the current esptool handshake is genuinely still running rather than being hidden by wrapper-side buffering. That path now calls `esptool.py` directly with `--before no_reset --after no_reset`, so esptool-managed pre-flash auto-reset and post-flash reset are skipped by the wrapper. Press **RESET** after a successful manual flash.
+If `sdk-flash` fails with a DTR/RTS I/O error, handshake timeout, or `Invalid head of packet (...)` under Docker + WSL2, use `sdk-flash-manual` after placing the board into ROM bootloader mode manually. `sdk-flash` now mirrors live flash output with Python unbuffering enabled, so if the terminal stalls at `Connecting....` the current esptool handshake is genuinely still running rather than being hidden by wrapper-side buffering. That path now calls `esptool.py` directly with `--before no_reset --after no_reset`, so esptool-managed pre-flash auto-reset and post-flash reset are skipped by the wrapper. If manual flashing times out, treat it as a board-state failure: the target did not actually enter the ROM bootloader cleanly. Press **RESET** after a successful manual flash.
 Cleanup symmetry is part of the supported operator surface: `./tools/fw sdk-clean-target` and `./tools/fw sdk-distclean` must remain usable for both the generic and ATNEL targets.
 See [`docs/specs/stage2-foundation-quality-gate.md`](docs/specs/stage2-foundation-quality-gate.md) for the frozen Stage 2 acceptance bar.
 
