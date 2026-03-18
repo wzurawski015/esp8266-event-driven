@@ -28,7 +28,6 @@
 !/docs/generated/.gitkeep
 
 # Runtime logs and captures
-# Keep an empty directory only when a .gitkeep is created intentionally.
 /log/*
 !/log/.gitkeep
 /logs/*
@@ -105,3 +104,4 @@ TAGS
 .LSOverride
 Thumbs.db
 Desktop.ini
+
