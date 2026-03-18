@@ -1,6 +1,15 @@
 # Professional .gitignore for the esp8266-event-driven repository.
+#
+# Design choices:
+# - repository-specific generated paths are root-anchored,
+# - SDK target artifacts are ignored at their source,
+# - empty log directories are kept intentionally via .gitkeep.
 
+# -----------------------------------------------------------------------------
 # Project-generated outputs
+# -----------------------------------------------------------------------------
+
+# Top-level build / packaging outputs
 /build/
 /out/
 /coverage/
@@ -22,25 +31,57 @@
 /logs/*
 !/logs/.gitkeep
 
+# -----------------------------------------------------------------------------
 # Native / embedded build artifacts
+# -----------------------------------------------------------------------------
+
 *.o
 *.obj
+*.lo
+*.la
 *.a
 *.so
+*.so.*
+*.dylib
+*.dll
 *.exe
+*.out
 
+# Coverage / profiling / sanitizer outputs
+*.gcda
+*.gcno
+*.gcov
+.coverage
+.coverage.*
+
+# -----------------------------------------------------------------------------
 # Tooling and local developer environment
+# -----------------------------------------------------------------------------
+
 compile_commands.json
 .cache/
 .clangd/
 .vscode/
 .idea/
+.vs/
+
+# Python / tooling caches
 __pycache__/
 *.py[cod]
+.pytest_cache/
 .venv/
 venv/
+env/
 
+# C / C++ navigation databases
+tags
+TAGS
+cscope.*
+
+# -----------------------------------------------------------------------------
 # Editor / OS noise
+# -----------------------------------------------------------------------------
+
 *~
 *.swp
 *.swo
@@ -48,4 +89,3 @@ venv/
 .AppleDouble
 Thumbs.db
 Desktop.ini
-
