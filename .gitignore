@@ -69,6 +69,8 @@ compile_commands.json
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
 venv/
 env/
@@ -87,5 +89,7 @@ cscope.*
 *.swo
 .DS_Store
 .AppleDouble
+.LSOverride
 Thumbs.db
 Desktop.ini
+
