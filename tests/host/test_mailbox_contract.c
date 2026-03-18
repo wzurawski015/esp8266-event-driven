@@ -160,10 +160,13 @@ int main(void)
     assert(ev_msg_dispose(&msg) == EV_OK);
     assert(lease_trace.releases == 15U);
 
-    /* Non-retainable external payloads remain unsupported for queueing. */
-    msg = make_lease_msg(&lease_trace, NULL);
+    /* Malformed lease envelopes are rejected before queueing. */
+    msg = make_lease_msg(&lease_trace, retain_count);
+    msg.payload.external.retain_fn = NULL;
+    assert(ev_msg_validate(&msg) == EV_ERR_CONTRACT);
     assert(ev_mailbox_init(&mailbox, EV_MAILBOX_FIFO_8, fifo_storage, 8U) == EV_OK);
-    assert(ev_mailbox_push(&mailbox, &msg) == EV_ERR_UNSUPPORTED);
+    assert(ev_mailbox_push(&mailbox, &msg) == EV_ERR_CONTRACT);
+    assert(ev_mailbox_count(&mailbox) == 0U);
     assert(ev_msg_dispose(&msg) == EV_OK);
     assert(lease_trace.releases == 16U);
 

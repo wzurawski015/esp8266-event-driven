@@ -35,3 +35,21 @@ compile_commands.json
 *~
 *.swp
 .DS_Store
+
+# Runtime logs and captures
+/log/
+/logs/
+
+# Python / tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Extra editor / OS noise
+*.swo
+Thumbs.db
