@@ -143,15 +143,16 @@ ev_result_t ev_msg_set_inline_payload(ev_msg_t *msg, const void *data, size_t si
  * STREAM_VIEW. Replacing an already attached payload first releases the
  * previous payload when needed.
  *
- * For LEASE payloads, release_fn is required for any non-empty payload. A
- * retain_fn is optional at construction time, but queueing and fan-out paths
- * that duplicate transport ownership require it.
+ * For LEASE payloads, both retain_fn and release_fn are required for any
+ * non-empty payload so that queueing, fan-out, and disposal all share one
+ * explicit ownership contract from the moment the payload is attached.
  *
  * @param msg Message to modify.
  * @param data External payload pointer. May be NULL only when size is zero.
  * @param size Payload size in bytes.
- * @param retain_fn Optional retain callback for duplicate transport ownership.
- * @param release_fn Optional release callback. Required for non-empty LEASE payloads.
+ * @param retain_fn Retain callback for duplicate transport ownership. Required for
+ *        non-empty LEASE payloads.
+ * @param release_fn Release callback. Required for non-empty LEASE payloads.
  * @param lifecycle_ctx Caller-provided context for retain and release callbacks.
  * @return EV_OK on success or an error code.
  */

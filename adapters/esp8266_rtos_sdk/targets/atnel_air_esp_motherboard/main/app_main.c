@@ -1,6 +1,7 @@
 #include <stdint.h>
 
 #include "ev/esp8266_boot_diag.h"
+#include "ev/esp8266_runtime_app.h"
 
 #define EV_BOARD_TAG "ev_atnel"
 #define EV_BOARD_NAME "atnel_air_esp_motherboard"
@@ -15,5 +16,5 @@ void app_main(void)
         .heartbeat_period_ms = 1000U,
     };
 
-    ev_esp8266_boot_diag_run(&k_boot_diag);
+    ev_esp8266_runtime_app_run(&k_boot_diag);
 }

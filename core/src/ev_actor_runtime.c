@@ -241,13 +241,13 @@ ev_result_t ev_actor_runtime_pump(
 
     while ((report->processed < budget) && !ev_mailbox_is_empty(runtime->mailbox)) {
         rc = ev_actor_runtime_process_one(runtime);
+        ++report->processed;
         if (rc != EV_OK) {
             report->pending_after = ev_actor_runtime_pending(runtime);
             report->stop_result = rc;
             runtime->stats.last_pump_processed = report->processed;
             return rc;
         }
-        ++report->processed;
     }
 
     report->pending_after = ev_actor_runtime_pending(runtime);

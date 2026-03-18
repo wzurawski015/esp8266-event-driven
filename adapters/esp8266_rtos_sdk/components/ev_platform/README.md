@@ -9,7 +9,8 @@ Current scope of this component:
 - log sink adapter,
 - reset/restart adapter,
 - UART adapter,
-- shared boot/diagnostic harness used by the current ESP8266 targets.
+- shared boot/diagnostic harness used by the generic ESP8266 target,
+- ATNEL-facing runtime wrapper that boots the first real cooperative demo application.
 
 This component is intentionally narrow.
 It exists to prove the `ports/` contracts on target hardware before wider BSP
