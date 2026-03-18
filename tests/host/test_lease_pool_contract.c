@@ -15,6 +15,7 @@ int main(void)
     ev_lease_handle_t handle_a = {0};
     ev_lease_handle_t handle_b = {0};
     ev_lease_handle_t handle_c = {0};
+    ev_lease_handle_t handle_zero = {0};
     void *data = NULL;
     ev_msg_t mailbox_storage[8] = {{0}};
     ev_mailbox_t mailbox;
@@ -46,6 +47,14 @@ int main(void)
     assert(ev_lease_handle_refcount(&handle_a) == 1U);
     assert(stats->releases == 1U);
 
+    {
+        ev_lease_slot_t forged_slot = *handle_a.slot;
+        ev_lease_handle_t forged_handle = {&forged_slot, forged_slot.generation};
+        assert(ev_lease_pool_retain(&forged_handle) == EV_ERR_STATE);
+        assert(ev_lease_handle_refcount(&handle_a) == 1U);
+        assert(stats->stale_handles == 1U);
+    }
+
     assert(ev_lease_pool_acquire(&pool, 4U, &handle_b, &data) == EV_OK);
     assert(ev_lease_handle_is_valid(&handle_b));
     assert(stats->in_use == 2U);
@@ -54,6 +63,19 @@ int main(void)
     assert(stats->failed_acquires == 1U);
     assert(ev_lease_pool_release(&handle_b) == EV_OK);
     assert(stats->in_use == 1U);
+
+    assert(ev_lease_pool_acquire(&pool, 0U, &handle_zero, &data) == EV_OK);
+    assert(ev_lease_handle_is_valid(&handle_zero));
+    assert(ev_lease_handle_size(&handle_zero) == 0U);
+    assert(ev_msg_init_publish(&msg, EV_DIAG_SNAPSHOT_RSP, ACT_DIAG) == EV_OK);
+    assert(ev_lease_pool_attach_msg(&msg, &handle_zero) == EV_OK);
+    assert(ev_msg_validate(&msg) == EV_OK);
+    assert(ev_msg_payload_size(&msg) == 0U);
+    assert(ev_lease_handle_refcount(&handle_zero) == 1U);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+    assert(ev_lease_handle_refcount(&handle_zero) == 1U);
+    assert(ev_lease_pool_release(&handle_zero) == EV_OK);
+    assert(!ev_lease_handle_is_valid(&handle_zero));
 
     assert(ev_msg_init_publish(&msg, EV_DIAG_SNAPSHOT_RSP, ACT_DIAG) == EV_OK);
     assert(ev_lease_pool_attach_msg(&msg, &handle_a) == EV_OK);
@@ -75,7 +97,7 @@ int main(void)
     assert(!ev_lease_handle_is_valid(&handle_a));
     assert(stats->in_use == 0U);
     assert(ev_lease_pool_release(&handle_a) == EV_ERR_STATE);
-    assert(stats->stale_handles == 1U);
+    assert(stats->stale_handles == 2U);
 
     return 0;
 }

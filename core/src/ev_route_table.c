@@ -2,6 +2,16 @@
 
 #include "ev/compiler.h"
 
+
+/* Compile-time duplicate-route guard: repeating the same (event_id, target_actor)
+ * pair generates the same enumerator name and fails the build immediately. */
+enum {
+#define EV_ROUTE(event_id, target_actor) EV_ROUTE_UNIQUE__##event_id##__##target_actor = 1,
+#include "routes.def"
+#undef EV_ROUTE
+    EV_ROUTE_UNIQUE__SENTINEL = 0
+};
+
 static const ev_route_t k_route_table[] = {
 #define EV_ROUTE(event_id, target_actor) { event_id, target_actor },
 #include "routes.def"

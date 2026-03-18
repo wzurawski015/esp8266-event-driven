@@ -1,7 +1,7 @@
 CC ?= cc
 PYTHON ?= python3
 
-CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Icore/include -Iconfig
+CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Icore/include -Iports/include -Iapp/include -Iconfig
 LDFLAGS ?=
 
 BUILD_DIR := build/host
@@ -22,6 +22,11 @@ CORE_SRCS := \
     core/src/ev_system_pump.c \
     core/src/ev_lease_pool.c
 
+APP_SRCS := \
+    app/ev_demo_app.c
+
+COMMON_SRCS := $(CORE_SRCS) $(APP_SRCS)
+
 HOST_TESTS := \
     test_catalog \
     test_msg_contract \
@@ -33,7 +38,8 @@ HOST_TESTS := \
     test_runtime_diagnostics \
     test_actor_pump_contract \
     test_domain_pump_contract \
-    test_system_pump_contract
+    test_system_pump_contract \
+    test_demo_app_contract
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
 
@@ -44,8 +50,8 @@ all: host-test
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/%: tests/host/%.c $(CORE_SRCS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(CORE_SRCS) $< $(LDFLAGS) -o $@
+$(BUILD_DIR)/%: tests/host/%.c $(COMMON_SRCS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(COMMON_SRCS) $< $(LDFLAGS) -o $@
 
 host-test: $(HOST_TEST_BINS)
 	@set -e; for t in $(HOST_TEST_BINS); do ./$$t; done

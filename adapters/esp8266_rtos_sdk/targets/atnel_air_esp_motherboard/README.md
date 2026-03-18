@@ -7,9 +7,10 @@ Current scope:
 
 - boot and diagnostics over UART0 / FT231X,
 - validation of the first concrete ESP8266 RTOS SDK port adapters,
-- validation of the shared boot/diagnostic harness also used by the generic target,
+- validation of the first real event-driven runtime on hardware,
 - board identification and reset-reason reporting,
-- monotonic-time heartbeat through the public clock port.
+- cooperative system-pump execution across APP and DIAG actors,
+- monotonic-time tick publication through the public clock port.
 
 Canonical commands from the repository root:
 

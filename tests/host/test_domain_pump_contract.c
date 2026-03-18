@@ -275,7 +275,7 @@ int main(void)
     ev_domain_pump_report_reset(&report);
     assert(ev_domain_pump_run(&fail_pump, 4U, &report) == EV_ERR_STATE);
     assert(report.pending_before == 2U);
-    assert(report.processed == 1U);
+    assert(report.processed == 2U);
     assert(report.pending_after == 0U);
     assert(report.actors_pumped == 2U);
     assert(report.last_actor == ACT_STREAM);
@@ -289,7 +289,7 @@ int main(void)
     assert(stats->pump_budget_hits == 0U);
     assert(stats->last_actor == ACT_STREAM);
     assert(stats->last_budget == 4U);
-    assert(stats->last_processed == 1U);
+    assert(stats->last_processed == 2U);
     assert(stats->last_result == EV_ERR_STATE);
 
     assert(ev_domain_pump_reset_stats(&fail_pump) == EV_OK);

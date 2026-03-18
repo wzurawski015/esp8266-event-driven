@@ -10,12 +10,21 @@
 #include "ev/msg.h"
 #include "ev/system_pump.h"
 
-static ev_result_t counting_handler(void *context, const ev_msg_t *msg)
+typedef struct {
+    uint32_t calls;
+    uint32_t fail_on_call;
+    ev_result_t fail_result;
+} system_trace_t;
+
+static ev_result_t system_handler(void *context, const ev_msg_t *msg)
 {
-    uint32_t *counter = (uint32_t *)context;
-    assert(counter != NULL);
+    system_trace_t *trace = (system_trace_t *)context;
+    assert(trace != NULL);
     assert(msg != NULL);
-    ++(*counter);
+    ++trace->calls;
+    if ((trace->fail_on_call != 0U) && (trace->calls == trace->fail_on_call)) {
+        return trace->fail_result;
+    }
     return EV_OK;
 }
 
@@ -35,9 +44,9 @@ static void test_system_pump_round_robin(void)
     ev_domain_pump_t slow_domain;
     ev_system_pump_t system_pump;
     ev_system_pump_report_t report;
-    uint32_t boot_count = 0U;
-    uint32_t diag_count = 0U;
-    uint32_t app_count = 0U;
+    system_trace_t boot_trace = {0};
+    system_trace_t diag_trace = {0};
+    system_trace_t app_trace = {0};
     ev_msg_t msg;
     size_t i;
 
@@ -46,9 +55,9 @@ static void test_system_pump_round_robin(void)
     assert(ev_mailbox_init(&diag_mailbox, EV_MAILBOX_FIFO_8, diag_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&app_mailbox, EV_MAILBOX_FIFO_8, app_storage, 8U) == EV_OK);
 
-    assert(ev_actor_runtime_init(&boot_runtime, ACT_BOOT, &boot_mailbox, counting_handler, &boot_count) == EV_OK);
-    assert(ev_actor_runtime_init(&diag_runtime, ACT_DIAG, &diag_mailbox, counting_handler, &diag_count) == EV_OK);
-    assert(ev_actor_runtime_init(&app_runtime, ACT_APP, &app_mailbox, counting_handler, &app_count) == EV_OK);
+    assert(ev_actor_runtime_init(&boot_runtime, ACT_BOOT, &boot_mailbox, system_handler, &boot_trace) == EV_OK);
+    assert(ev_actor_runtime_init(&diag_runtime, ACT_DIAG, &diag_mailbox, system_handler, &diag_trace) == EV_OK);
+    assert(ev_actor_runtime_init(&app_runtime, ACT_APP, &app_mailbox, system_handler, &app_trace) == EV_OK);
 
     assert(ev_actor_registry_bind(&registry, &boot_runtime) == EV_OK);
     assert(ev_actor_registry_bind(&registry, &diag_runtime) == EV_OK);
@@ -90,9 +99,9 @@ static void test_system_pump_round_robin(void)
     assert(ev_system_pump_run(&system_pump, 4U, &report) == EV_OK);
     assert(report.turns_processed >= 1U);
     assert(ev_system_pump_pending(&system_pump) == 0U);
-    assert(boot_count == 2U);
-    assert(diag_count == 3U);
-    assert(app_count == 8U);
+    assert(boot_trace.calls == 2U);
+    assert(diag_trace.calls == 3U);
+    assert(app_trace.calls == 8U);
 
     {
         const ev_system_pump_stats_t *stats = ev_system_pump_stats(&system_pump);
@@ -102,6 +111,57 @@ static void test_system_pump_round_robin(void)
         assert(stats->messages_processed == 13U);
         assert(stats->budget_hits == 1U);
         assert(stats->last_result == EV_OK);
+    }
+}
+
+static void test_system_pump_error_counts_failed_message(void)
+{
+    ev_actor_registry_t registry;
+    ev_mailbox_t diag_mailbox;
+    ev_msg_t diag_storage[8];
+    ev_actor_runtime_t diag_runtime;
+    ev_domain_pump_t slow_domain;
+    ev_system_pump_t system_pump;
+    ev_system_pump_report_t report;
+    ev_msg_t msg;
+    system_trace_t diag_trace = {0};
+
+    assert(ev_actor_registry_init(&registry) == EV_OK);
+    assert(ev_mailbox_init(&diag_mailbox, EV_MAILBOX_FIFO_8, diag_storage, 8U) == EV_OK);
+    diag_trace.fail_on_call = 1U;
+    diag_trace.fail_result = EV_ERR_STATE;
+    assert(ev_actor_runtime_init(&diag_runtime, ACT_DIAG, &diag_mailbox, system_handler, &diag_trace) == EV_OK);
+    assert(ev_actor_registry_bind(&registry, &diag_runtime) == EV_OK);
+
+    assert(ev_domain_pump_init(&slow_domain, &registry, EV_DOMAIN_SLOW_IO) == EV_OK);
+    assert(ev_system_pump_init(&system_pump) == EV_OK);
+    assert(ev_system_pump_bind(&system_pump, &slow_domain) == EV_OK);
+
+    assert(ev_msg_init_send(&msg, EV_DIAG_SNAPSHOT_REQ, ACT_APP, ACT_DIAG) == EV_OK);
+    assert(ev_actor_registry_delivery(ACT_DIAG, &msg, &registry) == EV_OK);
+
+    assert(ev_system_pump_run(&system_pump, 1U, &report) == EV_ERR_STATE);
+    assert(report.turn_budget == 1U);
+    assert(report.turns_processed == 1U);
+    assert(report.domains_pumped == 1U);
+    assert(report.messages_processed == 1U);
+    assert(report.pending_before == 1U);
+    assert(report.pending_after == 0U);
+    assert(!report.exhausted_turn_budget);
+    assert(report.last_domain == EV_DOMAIN_SLOW_IO);
+    assert(report.stop_result == EV_ERR_STATE);
+    assert(diag_trace.calls == 1U);
+
+    {
+        const ev_system_pump_stats_t *stats = ev_system_pump_stats(&system_pump);
+        assert(stats != NULL);
+        assert(stats->run_calls == 1U);
+        assert(stats->domains_pumped == 1U);
+        assert(stats->turns_processed == 1U);
+        assert(stats->messages_processed == 1U);
+        assert(stats->last_turns_processed == 1U);
+        assert(stats->last_domain == EV_DOMAIN_SLOW_IO);
+        assert(stats->last_result == EV_ERR_STATE);
     }
 }
 
@@ -135,6 +195,7 @@ static void test_system_pump_empty_and_bind_errors(void)
 int main(void)
 {
     test_system_pump_round_robin();
+    test_system_pump_error_counts_failed_message();
     test_system_pump_empty_and_bind_errors();
     return 0;
 }

@@ -179,7 +179,8 @@ ev_result_t ev_msg_set_external_payload(
     if (!ev_payload_kind_allows_external(meta->payload_kind)) {
         return EV_ERR_CONTRACT;
     }
-    if ((meta->payload_kind == EV_PAYLOAD_LEASE) && (size > 0U) && (release_fn == NULL)) {
+    if ((meta->payload_kind == EV_PAYLOAD_LEASE) && (size > 0U) &&
+        ((retain_fn == NULL) || (release_fn == NULL))) {
         return EV_ERR_CONTRACT;
     }
 
@@ -263,6 +264,9 @@ ev_result_t ev_msg_validate(const ev_msg_t *msg)
     if ((msg->storage == EV_MSG_STORAGE_NONE) && (msg->payload_size != 0U)) {
         return EV_ERR_CONTRACT;
     }
+    if ((msg->storage != EV_MSG_STORAGE_NONE) && (msg->payload_size == 0U)) {
+        return EV_ERR_CONTRACT;
+    }
 
     meta = ev_event_meta(msg->event_id);
     if (meta == NULL) {
@@ -285,7 +289,8 @@ ev_result_t ev_msg_validate(const ev_msg_t *msg)
             return EV_ERR_CONTRACT;
         }
         if ((msg->storage == EV_MSG_STORAGE_EXTERNAL) && (msg->payload_size > 0U) &&
-            ((msg->payload.external.data == NULL) || (msg->payload.external.release_fn == NULL))) {
+            ((msg->payload.external.data == NULL) || (msg->payload.external.size != msg->payload_size) ||
+             (msg->payload.external.retain_fn == NULL) || (msg->payload.external.release_fn == NULL))) {
             return EV_ERR_CONTRACT;
         }
         break;
@@ -295,7 +300,7 @@ ev_result_t ev_msg_validate(const ev_msg_t *msg)
             return EV_ERR_CONTRACT;
         }
         if ((msg->storage == EV_MSG_STORAGE_EXTERNAL) && (msg->payload_size > 0U) &&
-            (msg->payload.external.data == NULL)) {
+            ((msg->payload.external.data == NULL) || (msg->payload.external.size != msg->payload_size))) {
             return EV_ERR_CONTRACT;
         }
         break;

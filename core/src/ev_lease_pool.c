@@ -4,8 +4,19 @@
 
 static bool ev_lease_slot_metadata_is_valid(const ev_lease_slot_t *slot)
 {
-    return (slot != NULL) && (slot->pool != NULL) && (slot->slot_index < slot->pool->slot_count) &&
-           (slot->pool->slots == &slot->pool->slots[0]);
+    if ((slot == NULL) || (slot->pool == NULL) || (slot->pool->slots == NULL) || (slot->pool->storage == NULL) ||
+        (slot->pool->slot_count == 0U) || (slot->pool->slot_size == 0U) ||
+        (slot->slot_index >= slot->pool->slot_count)) {
+        return false;
+    }
+    if (slot != &slot->pool->slots[slot->slot_index]) {
+        return false;
+    }
+    if (slot->in_use && (slot->payload_size > slot->pool->slot_size)) {
+        return false;
+    }
+
+    return true;
 }
 
 static unsigned char *ev_lease_slot_data_ptr(const ev_lease_slot_t *slot)
@@ -226,6 +237,12 @@ ev_result_t ev_lease_pool_attach_msg(ev_msg_t *msg, const ev_lease_handle_t *han
     if ((msg == NULL) || (handle == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
+    if (!ev_lease_handle_is_live(handle)) {
+        if ((handle->slot != NULL) && (handle->slot->pool != NULL)) {
+            ++handle->slot->pool->stats.stale_handles;
+        }
+        return EV_ERR_STATE;
+    }
 
     data = ev_lease_handle_data(handle);
     size = ev_lease_handle_size(handle);
@@ -233,20 +250,24 @@ ev_result_t ev_lease_pool_attach_msg(ev_msg_t *msg, const ev_lease_handle_t *han
         return EV_ERR_STATE;
     }
 
-    rc = ev_lease_pool_retain(handle);
-    if (rc != EV_OK) {
-        return rc;
+    if (size > 0U) {
+        rc = ev_lease_pool_retain(handle);
+        if (rc != EV_OK) {
+            return rc;
+        }
     }
 
     rc = ev_msg_set_external_payload(
         msg,
-        data,
+        (size > 0U) ? data : NULL,
         size,
-        ev_lease_pool_retain_from_slot,
-        ev_lease_pool_release_from_slot,
+        (size > 0U) ? ev_lease_pool_retain_from_slot : NULL,
+        (size > 0U) ? ev_lease_pool_release_from_slot : NULL,
         handle->slot);
     if (rc != EV_OK) {
-        (void)ev_lease_pool_release(handle);
+        if (size > 0U) {
+            (void)ev_lease_pool_release(handle);
+        }
         return rc;
     }
 

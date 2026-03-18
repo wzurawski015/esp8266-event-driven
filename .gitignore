@@ -1,9 +1,24 @@
-# Build outputs
+# Professional .gitignore for the esp8266-event-driven repository.
+#
+# Design choices:
+# - repository-specific generated paths are root-anchored,
+# - SDK target artifacts are ignored at their source,
+# - empty log directories may be kept intentionally via .gitkeep,
+# - broad firmware globs such as *.bin or *.elf are intentionally omitted
+#   because this project already emits them under ignored build directories.
+
+# -----------------------------------------------------------------------------
+# Project-generated outputs
+# -----------------------------------------------------------------------------
+
+# Top-level build / packaging outputs
 /build/
 /out/
 /coverage/
 /dist/
+/htmlcov/
 
+# ESP8266 RTOS SDK target-local generated state
 /adapters/esp8266_rtos_sdk/targets/*/build/
 /adapters/esp8266_rtos_sdk/targets/*/sdkconfig
 /adapters/esp8266_rtos_sdk/targets/*/sdkconfig.old
@@ -12,26 +27,81 @@
 /docs/generated/*
 !/docs/generated/.gitkeep
 
-# C/C++ artifacts
+# Runtime logs and captures
+# Keep an empty directory only when a .gitkeep is created intentionally.
+/log/*
+!/log/.gitkeep
+/logs/*
+!/logs/.gitkeep
+
+# -----------------------------------------------------------------------------
+# Native / embedded build artifacts
+# -----------------------------------------------------------------------------
+
 *.o
 *.obj
+*.lo
+*.la
 *.a
 *.so
+*.so.*
 *.dylib
 *.dll
+*.exe
+*.out
+
+# Coverage / profiling / sanitizer outputs
 *.gcda
 *.gcno
+*.gcov
 *.profraw
 *.profdata
+*.prof
+*.su
+.coverage
+.coverage.*
 
-# Tooling
+# -----------------------------------------------------------------------------
+# Tooling and local developer environment
+# -----------------------------------------------------------------------------
+
 compile_commands.json
 .cache/
 .clangd/
+.direnv/
 .vscode/
 .idea/
+.vs/
 
+# Python caches used by local wrappers and helper tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+
+# C / C++ navigation databases
+cscope.out
+cscope.in.out
+cscope.po.out
+cscope.files
+tags
+TAGS
+
+# -----------------------------------------------------------------------------
 # Editor / OS noise
+# -----------------------------------------------------------------------------
+
 *~
 *.swp
+*.swo
 .DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini

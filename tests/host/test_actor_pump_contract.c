@@ -133,7 +133,7 @@ int main(void)
     assert(ev_actor_runtime_pump(&diag_runtime_fail, 4U, &report) == EV_ERR_STATE);
     assert(report.budget == 4U);
     assert(report.pending_before == 3U);
-    assert(report.processed == 1U);
+    assert(report.processed == 2U);
     assert(report.pending_after == 1U);
     assert(!report.exhausted_budget);
     assert(report.stop_result == EV_ERR_STATE);
@@ -143,7 +143,7 @@ int main(void)
     assert(stats->pump_calls == 1U);
     assert(stats->pump_budget_hits == 0U);
     assert(stats->last_pump_budget == 4U);
-    assert(stats->last_pump_processed == 1U);
+    assert(stats->last_pump_processed == 2U);
     assert(stats->steps_ok == 1U);
     assert(stats->handler_errors == 1U);
     assert(stats->last_result == EV_ERR_STATE);

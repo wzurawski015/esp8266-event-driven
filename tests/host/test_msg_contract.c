@@ -58,9 +58,27 @@ int main(void)
                &msg,
                lease_bytes,
                sizeof(lease_bytes),
+               NULL,
+               release_counter,
+               &lease_trace) == EV_ERR_CONTRACT);
+    assert(ev_msg_set_external_payload(
+               &msg,
+               lease_bytes,
+               sizeof(lease_bytes),
+               retain_counter,
+               NULL,
+               &lease_trace) == EV_ERR_CONTRACT);
+    assert(ev_msg_set_external_payload(
+               &msg,
+               lease_bytes,
+               sizeof(lease_bytes),
                retain_counter,
                release_counter,
                &lease_trace) == EV_OK);
+    assert(ev_msg_validate(&msg) == EV_OK);
+    msg.payload.external.size -= 1U;
+    assert(ev_msg_validate(&msg) == EV_ERR_CONTRACT);
+    msg.payload.external.size = sizeof(lease_bytes);
     assert(ev_msg_validate(&msg) == EV_OK);
     assert(ev_msg_retain(&msg) == EV_OK);
     assert(lease_trace.retains == 1U);
