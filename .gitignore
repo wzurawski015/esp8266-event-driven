@@ -1,9 +1,22 @@
-# Build outputs
+# Professional .gitignore for the esp8266-event-driven repository.
+#
+# Design choices:
+# - repository-specific generated paths are root-anchored,
+# - SDK target artifacts are ignored at their source,
+# - empty log directories are kept intentionally via .gitkeep.
+
+# -----------------------------------------------------------------------------
+# Project-generated outputs
+# -----------------------------------------------------------------------------
+
+# Top-level build / packaging outputs
 /build/
 /out/
 /coverage/
 /dist/
+/htmlcov/
 
+# ESP8266 RTOS SDK target-local generated state
 /adapters/esp8266_rtos_sdk/targets/*/build/
 /adapters/esp8266_rtos_sdk/targets/*/sdkconfig
 /adapters/esp8266_rtos_sdk/targets/*/sdkconfig.old
@@ -12,33 +25,45 @@
 /docs/generated/*
 !/docs/generated/.gitkeep
 
-# C/C++ artifacts
+# Runtime logs and captures
+/log/*
+!/log/.gitkeep
+/logs/*
+!/logs/.gitkeep
+
+# -----------------------------------------------------------------------------
+# Native / embedded build artifacts
+# -----------------------------------------------------------------------------
+
 *.o
 *.obj
+*.lo
+*.la
 *.a
 *.so
+*.so.*
 *.dylib
 *.dll
+*.exe
+*.out
+
+# Coverage / profiling / sanitizer outputs
 *.gcda
 *.gcno
-*.profraw
-*.profdata
+*.gcov
+.coverage
+.coverage.*
 
-# Tooling
+# -----------------------------------------------------------------------------
+# Tooling and local developer environment
+# -----------------------------------------------------------------------------
+
 compile_commands.json
 .cache/
 .clangd/
 .vscode/
 .idea/
-
-# Editor / OS noise
-*~
-*.swp
-.DS_Store
-
-# Runtime logs and captures
-/log/
-/logs/
+.vs/
 
 # Python / tooling caches
 __pycache__/
@@ -50,6 +75,21 @@ __pycache__/
 venv/
 env/
 
-# Extra editor / OS noise
+# C / C++ navigation databases
+tags
+TAGS
+cscope.*
+
+# -----------------------------------------------------------------------------
+# Editor / OS noise
+# -----------------------------------------------------------------------------
+
+*~
+*.swp
 *.swo
+.DS_Store
+.AppleDouble
+.LSOverride
 Thumbs.db
+Desktop.ini
+
