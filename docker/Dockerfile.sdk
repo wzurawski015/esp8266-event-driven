@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     make \
     ninja-build \
+    patch \
     python-is-python3 \
     python3 \
     python3-pip \
@@ -38,6 +39,8 @@ RUN mkdir -p /opt/esp /tmp/toolchain \
     && tar -xzf /tmp/toolchain/lx106.tar.gz -C /opt/esp \
     && rm -rf /tmp/toolchain
 
+COPY tools/patches/ /tmp/ev-sdk-patches/
+
 # Upstream ESP8266_RTOS_SDK v3.4 still references the retired Eclipse tinydtls
 # URL inside a nested libcoap submodule. Rewrite that exact URL to the active
 # GitHub mirror before recursive submodule checkout so sdk-image remains
@@ -50,6 +53,11 @@ RUN git config --global advice.detachedHead false \
        https://github.com/espressif/ESP8266_RTOS_SDK.git /opt/esp/ESP8266_RTOS_SDK \
     && cd /opt/esp/ESP8266_RTOS_SDK \
     && git submodule update --init --recursive \
+    && for p in /tmp/ev-sdk-patches/*.patch; do \
+           [ -f "$p" ] || continue; \
+           patch -p1 < "$p"; \
+       done \
+    && rm -rf /tmp/ev-sdk-patches \
     && git config --system --add safe.directory /opt/esp/ESP8266_RTOS_SDK
 
 RUN python3 -m venv /opt/esp/python-env \

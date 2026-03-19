@@ -1,10 +1,16 @@
 #include <stdint.h>
 
+#include "driver/uart.h"
+#include "esp_log.h"
+
 #include "ev/esp8266_boot_diag.h"
+#include "ev/esp8266_port_adapters.h"
 #include "ev/esp8266_runtime_app.h"
 
 #define EV_BOARD_TAG "ev_atnel"
 #define EV_BOARD_NAME "atnel_air_esp_motherboard"
+#define EV_BOARD_I2C_SCL_GPIO 4
+#define EV_BOARD_I2C_SDA_GPIO 5
 
 void app_main(void)
 {
@@ -15,6 +21,15 @@ void app_main(void)
         .uart_baud_rate = 115200U,
         .heartbeat_period_ms = 1000U,
     };
+    ev_i2c_port_t i2c_port;
+    ev_result_t rc;
+
+    (void)uart_set_baudrate(UART_NUM_0, 115200U);
+
+    rc = ev_esp8266_i2c_port_init(&i2c_port, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
+    if (rc != EV_OK) {
+        ESP_LOGE(EV_BOARD_TAG, "i2c adapter init failed rc=%d", (int)rc);
+    }
 
     ev_esp8266_runtime_app_run(&k_boot_diag);
 }
