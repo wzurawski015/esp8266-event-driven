@@ -1,15 +1,4 @@
-# Professional .gitignore for the esp8266-event-driven repository.
-#
-# Design choices:
-# - repository-specific generated paths are root-anchored,
-# - SDK target artifacts are ignored at their source,
-# - empty log directories are kept intentionally via .gitkeep.
-
-# -----------------------------------------------------------------------------
 # Project-generated outputs
-# -----------------------------------------------------------------------------
-
-# Top-level build / packaging outputs
 /build/
 /out/
 /coverage/
@@ -26,15 +15,10 @@
 !/docs/generated/.gitkeep
 
 # Runtime logs and captures
-/log/*
-!/log/.gitkeep
-/logs/*
-!/logs/.gitkeep
+/log/
+/logs/
 
-# -----------------------------------------------------------------------------
 # Native / embedded build artifacts
-# -----------------------------------------------------------------------------
-
 *.o
 *.obj
 *.lo
@@ -51,19 +35,19 @@
 *.gcda
 *.gcno
 *.gcov
+*.profraw
+*.profdata
 .coverage
 .coverage.*
 
-# -----------------------------------------------------------------------------
 # Tooling and local developer environment
-# -----------------------------------------------------------------------------
-
-compile_commands.json
-.cache/
-.clangd/
-.vscode/
-.idea/
-.vs/
+/compile_commands.json
+/.cache/
+/.clangd/
+/.vscode/
+/.idea/
+/.vs/
+/.direnv/
 
 # Python / tooling caches
 __pycache__/
@@ -71,19 +55,18 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tox/
+.nox/
 .venv/
 venv/
 env/
 
 # C / C++ navigation databases
-tags
-TAGS
+/tags
+/TAGS
 cscope.*
 
-# -----------------------------------------------------------------------------
 # Editor / OS noise
-# -----------------------------------------------------------------------------
-
 *~
 *.swp
 *.swo
@@ -92,4 +75,3 @@ cscope.*
 .LSOverride
 Thumbs.db
 Desktop.ini
-
