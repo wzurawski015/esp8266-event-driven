@@ -55,7 +55,7 @@ RUN git config --global advice.detachedHead false \
     && git submodule update --init --recursive \
     && for p in /tmp/ev-sdk-patches/*.patch; do \
            [ -f "$p" ] || continue; \
-           patch -p1 < "$p"; \
+           patch --batch -p1 < "$p"; \
        done \
     && rm -rf /tmp/ev-sdk-patches \
     && git config --system --add safe.directory /opt/esp/ESP8266_RTOS_SDK

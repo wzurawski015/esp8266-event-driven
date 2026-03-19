@@ -10,12 +10,13 @@ index 1de5eb3..15f3d5e 100644
 
                          if (i == 0) {
                              i2c_master_wait(1);   // wait slaver ack
-@@ -536,6 +535,10 @@ static void i2c_master_cmd_begin_static(i2c_port_t i2c_num)
+@@ -536,6 +535,11 @@ static void i2c_master_cmd_begin_static(i2c_port_t i2c_num)
                      if (cmd->ack.en == 1) {
                          if ((retVal & 0x01) != cmd->ack.exp) {
                              p_i2c->status = I2C_STATUS_ACK_ERROR;
++                            const uint8_t scl_state = i2c_last_state[i2c_num]->scl;
 +                            i2c_master_wait(1);
-+                            i2c_master_set_dc(i2c_num, 0, i2c_last_state[i2c_num]->scl);
++                            i2c_master_set_dc(i2c_num, 0, scl_state);
 +                            i2c_master_set_dc(i2c_num, 0, 1);
 +                            i2c_master_set_dc(i2c_num, 1, 1);
                              return ;

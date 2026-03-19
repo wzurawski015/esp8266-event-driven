@@ -67,7 +67,7 @@ static ev_i2c_status_t ev_esp8266_i2c_take_bus(void)
     }
 
     if (xSemaphoreTake(g_ev_i2c_bus_mutex, pdMS_TO_TICKS(15)) != pdTRUE) {
-        return EV_I2C_ERR_BUS_LOCKED;
+        return EV_I2C_ERR_TIMEOUT;
     }
 
     return EV_I2C_OK;
@@ -270,26 +270,53 @@ static const char *ev_esp8266_i2c_known_device_name(uint8_t device_address_7bit)
     return NULL;
 }
 
-static void ev_esp8266_i2c_scan(const ev_i2c_port_t *port)
+static ev_esp8266_i2c_adapter_ctx_t *ev_esp8266_i2c_ctx_from_port(ev_i2c_port_num_t port_num)
 {
+    if (port_num == EV_I2C_PORT_NUM_0) {
+        return &g_ev_i2c0_ctx;
+    }
+    return NULL;
+}
+
+ev_result_t ev_i2c_scan(ev_i2c_port_num_t port_num)
+{
+    ev_esp8266_i2c_adapter_ctx_t *ctx = ev_esp8266_i2c_ctx_from_port(port_num);
     bool found_any = false;
+    bool found_rtc = false;
+    bool found_oled = false;
+    bool found_mcp = false;
     uint8_t device_address_7bit;
 
-    if ((port == NULL) || (port->write_stream == NULL)) {
-        return;
+    if (ctx == NULL) {
+        return EV_ERR_UNSUPPORTED;
+    }
+    if (!ctx->configured) {
+        return EV_ERR_STATE;
     }
 
-    ESP_LOGI(k_ev_i2c_tag, "i2c-scan: start on SDA=%d SCL=%d", g_ev_i2c0_ctx.sda_pin, g_ev_i2c0_ctx.scl_pin);
+    ESP_LOGI(k_ev_i2c_tag,
+             "i2c-scan: start port=%u SDA=%d SCL=%d",
+             (unsigned)port_num,
+             ctx->sda_pin,
+             ctx->scl_pin);
 
     for (device_address_7bit = 0x03U; device_address_7bit < 0x78U; ++device_address_7bit) {
-        ev_i2c_status_t status = port->write_stream(port->ctx,
-                                                    EV_I2C_PORT_NUM_0,
-                                                    device_address_7bit,
-                                                    NULL,
-                                                    0U);
+        ev_i2c_status_t status = ev_esp8266_i2c_write_stream(ctx, port_num, device_address_7bit, NULL, 0U);
+
         if (status == EV_I2C_OK) {
             const char *device_name = ev_esp8266_i2c_known_device_name(device_address_7bit);
             found_any = true;
+
+            if (device_address_7bit == 0x68U) {
+                found_rtc = true;
+            }
+            if ((device_address_7bit >= 0x20U) && (device_address_7bit <= 0x27U)) {
+                found_mcp = true;
+            }
+            if ((device_address_7bit == 0x3CU) || (device_address_7bit == 0x3DU)) {
+                found_oled = true;
+            }
+
             if (device_name != NULL) {
                 ESP_LOGI(k_ev_i2c_tag,
                          "i2c-scan: found 0x%02X (%s)",
@@ -304,47 +331,23 @@ static void ev_esp8266_i2c_scan(const ev_i2c_port_t *port)
     if (!found_any) {
         ESP_LOGW(k_ev_i2c_tag, "i2c-scan: no devices acknowledged");
     }
-}
-
-static void ev_esp8266_i2c_probe_known_devices(const ev_i2c_port_t *port)
-{
-    ev_i2c_status_t status;
-    bool mcp_found = false;
-    uint8_t device_address_7bit;
-
-    if ((port == NULL) || (port->write_stream == NULL)) {
-        return;
-    }
-
-    status = port->write_stream(port->ctx, EV_I2C_PORT_NUM_0, 0x68U, NULL, 0U);
-    if (status == EV_I2C_OK) {
+    if (found_rtc) {
         ESP_LOGI(k_ev_i2c_tag, "rtc-probe: detected device at 0x68");
     } else {
-        ESP_LOGW(k_ev_i2c_tag, "rtc-probe: no response at 0x68 status=%d", (int)status);
+        ESP_LOGW(k_ev_i2c_tag, "rtc-probe: no response at 0x68");
     }
-
-    for (device_address_7bit = 0x20U; device_address_7bit <= 0x27U; ++device_address_7bit) {
-        status = port->write_stream(port->ctx, EV_I2C_PORT_NUM_0, device_address_7bit, NULL, 0U);
-        if (status == EV_I2C_OK) {
-            ESP_LOGI(k_ev_i2c_tag, "mcp23008-probe: detected device at 0x%02X", (unsigned)device_address_7bit);
-            mcp_found = true;
-        }
-    }
-    if (!mcp_found) {
+    if (found_mcp) {
+        ESP_LOGI(k_ev_i2c_tag, "mcp23008-probe: detected device in range 0x20-0x27");
+    } else {
         ESP_LOGW(k_ev_i2c_tag, "mcp23008-probe: no response in range 0x20-0x27");
     }
-
-    status = port->write_stream(port->ctx, EV_I2C_PORT_NUM_0, 0x3CU, NULL, 0U);
-    if (status == EV_I2C_OK) {
-        ESP_LOGI(k_ev_i2c_tag, "oled-probe: detected device at 0x3C");
+    if (found_oled) {
+        ESP_LOGI(k_ev_i2c_tag, "oled-probe: detected device at 0x3C or 0x3D");
     } else {
-        status = port->write_stream(port->ctx, EV_I2C_PORT_NUM_0, 0x3DU, NULL, 0U);
-        if (status == EV_I2C_OK) {
-            ESP_LOGI(k_ev_i2c_tag, "oled-probe: detected device at 0x3D");
-        } else {
-            ESP_LOGI(k_ev_i2c_tag, "oled-probe: optional OLED not detected");
-        }
+        ESP_LOGI(k_ev_i2c_tag, "oled-probe: optional OLED not detected");
     }
+
+    return EV_OK;
 }
 
 ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int scl_pin)
@@ -397,7 +400,5 @@ ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int s
     out_port->write_regs = ev_esp8266_i2c_write_regs;
     out_port->read_regs = ev_esp8266_i2c_read_regs;
 
-    ev_esp8266_i2c_scan(out_port);
-    ev_esp8266_i2c_probe_known_devices(out_port);
     return EV_OK;
 }

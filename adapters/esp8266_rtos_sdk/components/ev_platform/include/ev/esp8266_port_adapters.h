@@ -22,8 +22,8 @@ ev_result_t ev_esp8266_clock_port_init(ev_clock_port_t *out_port);
 /**
  * @brief Initialize the ESP8266-backed I2C adapter.
  *
- * The adapter installs the SDK master driver for `I2C_NUM_0`, creates one
- * global bus mutex, and performs the current board self-test scan.
+ * The adapter installs the SDK master driver for `I2C_NUM_0` and creates one
+ * global bus mutex used to serialize all bounded I2C transactions.
  *
  * @param out_port Destination public contract populated on success.
  * @param sda_pin GPIO number used for SDA.
@@ -31,6 +31,18 @@ ev_result_t ev_esp8266_clock_port_init(ev_clock_port_t *out_port);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int scl_pin);
+
+/**
+ * @brief Scan one initialized I2C controller and log detected slaves.
+ *
+ * The scan performs bounded address-only probes across the public 7-bit I2C
+ * address range and annotates the known Stage 1 motherboard devices in the
+ * diagnostic log stream.
+ *
+ * @param port_num Logical I2C controller identifier.
+ * @return EV_OK when the scan completed, even if no device acknowledged.
+ */
+ev_result_t ev_i2c_scan(ev_i2c_port_num_t port_num);
 
 /**
  * @brief Initialize the ESP8266-backed log adapter.

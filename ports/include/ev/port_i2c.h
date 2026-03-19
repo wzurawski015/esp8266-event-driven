@@ -106,6 +106,8 @@ typedef ev_i2c_status_t (*ev_i2c_read_regs_fn_t)(void *ctx,
  *
  * The public contract exposes only the operations required by the current
  * bring-up stages: raw stream writes, register writes, and register reads.
+ * Each call is expected to be bounded in time and safe to use from concurrent
+ * callers through adapter-owned synchronization.
  */
 typedef struct ev_i2c_port {
     void *ctx; /**< Caller-owned adapter context bound by the implementation. */

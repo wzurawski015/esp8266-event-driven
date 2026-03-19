@@ -1,5 +1,7 @@
 #include <stdint.h>
 
+#include "freertos/FreeRTOS.h"
+
 #include "driver/uart.h"
 #include "esp_log.h"
 
@@ -29,6 +31,11 @@ void app_main(void)
     rc = ev_esp8266_i2c_port_init(&i2c_port, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
     if (rc != EV_OK) {
         ESP_LOGE(EV_BOARD_TAG, "i2c adapter init failed rc=%d", (int)rc);
+    } else {
+        rc = ev_i2c_scan(EV_I2C_PORT_NUM_0);
+        if (rc != EV_OK) {
+            ESP_LOGE(EV_BOARD_TAG, "i2c self-test scan failed rc=%d", (int)rc);
+        }
     }
 
     ev_esp8266_runtime_app_run(&k_boot_diag);
