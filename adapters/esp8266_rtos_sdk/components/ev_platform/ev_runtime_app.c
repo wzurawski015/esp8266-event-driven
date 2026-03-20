@@ -46,7 +46,9 @@ static bool ev_runtime_app_config_is_valid(const ev_boot_diag_config_t *cfg)
     return (cfg != NULL) && (cfg->board_tag != NULL) && (cfg->board_name != NULL);
 }
 
-void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg)
+static ev_demo_app_t s_app;
+
+void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg, ev_i2c_port_t *i2c_port)
 {
     ev_clock_port_t clock_port;
     ev_log_port_t log_port;
@@ -54,8 +56,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg)
     ev_uart_port_t uart_port;
     ev_uart_config_t uart_cfg;
     ev_reset_reason_t reset_reason;
-    ev_demo_app_t app;
-    ev_demo_app_config_t app_cfg;
+    ev_demo_app_config_t app_cfg = {0};
     ev_result_t rc;
 
     if (!ev_runtime_app_config_is_valid(cfg)) {
@@ -107,10 +108,11 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg)
     app_cfg.tick_period_ms = (cfg->heartbeat_period_ms == 0U) ? EV_RUNTIME_APP_DEFAULT_TICK_MS : cfg->heartbeat_period_ms;
     app_cfg.clock_port = &clock_port;
     app_cfg.log_port = &log_port;
+    app_cfg.i2c_port = i2c_port;
 
-    rc = ev_demo_app_init(&app, &app_cfg);
+    rc = ev_demo_app_init(&s_app, &app_cfg);
     if (rc == EV_OK) {
-        rc = ev_demo_app_publish_boot(&app);
+        rc = ev_demo_app_publish_boot(&s_app);
     }
     if (rc != EV_OK) {
         ev_runtime_app_logf(&log_port, EV_LOG_FATAL, cfg->board_tag, "demo runtime init failed rc=%d", (int)rc);
@@ -120,7 +122,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg)
     }
 
     for (;;) {
-        rc = ev_demo_app_poll(&app);
+        rc = ev_demo_app_poll(&s_app);
         if (rc != EV_OK) {
             ev_runtime_app_logf(&log_port, EV_LOG_FATAL, cfg->board_tag, "demo runtime poll failed rc=%d", (int)rc);
             (void)log_port.flush(log_port.ctx);

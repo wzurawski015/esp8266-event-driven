@@ -23,6 +23,20 @@ typedef struct {
 
 EV_STATIC_ASSERT(sizeof(ev_demo_snapshot_t) == EV_DEMO_APP_SNAPSHOT_BYTES, "demo snapshot ABI mismatch");
 
+/* ========================================================================= */
+/* Dummy I2C dla środowiska testowego (PC), aby 'host-smoke' przechodziło.   */
+/* ========================================================================= */
+static ev_i2c_status_t ev_demo_dummy_i2c_write(void *ctx, ev_i2c_port_num_t port_num, uint8_t address_7bit, const uint8_t *data, size_t data_len)
+{
+    (void)ctx; (void)port_num; (void)address_7bit; (void)data; (void)data_len;
+    return EV_I2C_OK;
+}
+static ev_i2c_port_t s_dummy_i2c_port = {
+    .ctx = NULL,
+    .write_stream = ev_demo_dummy_i2c_write
+};
+/* ========================================================================= */
+
 static void ev_demo_app_logf(ev_demo_app_t *app, ev_log_level_t level, const char *fmt, ...)
 {
     char buffer[192];
@@ -194,6 +208,29 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
     case EV_BOOT_COMPLETED:
         ++app->stats.boot_completions;
         ev_demo_app_logf(app, EV_LOG_INFO, "app actor: boot complete -> requesting diag snapshot");
+
+        // --- PUBLIKACJA WIADOMOŚCI DO OLED ---
+        {
+            ev_msg_t text_msg;
+            ev_oled_display_text_cmd_t cmd = {0};
+
+            // Konfigurujemy zawartość wiadomości: na 0 stronie (pierwsza linijka), od 0 kolumny
+            cmd.page = 0;
+            cmd.column = 0;
+            snprintf(cmd.text, sizeof(cmd.text), "Witaj z ACT_APP!");
+
+            // Inicjalizujemy wiadomość kierowaną do ACT_OLED
+            if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_OLED) == EV_OK) {
+                // Załączamy nasz tekst jako ładunek (inline payload)
+                if (ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd)) == EV_OK) {
+                    // Wrzucamy do rejestru!
+                    (void)ev_demo_app_publish_owned(app, &text_msg);
+                    ev_demo_app_logf(app, EV_LOG_INFO, "app actor: sent text to OLED");
+                }
+            }
+        }
+        // -----------------------------------
+
         return ev_demo_app_publish_diag_request(state);
 
     case EV_DIAG_SNAPSHOT_RSP:
@@ -304,6 +341,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 {
     ev_result_t rc;
     uint32_t now_ms;
+    ev_i2c_port_t *active_i2c;
 
     if ((app == NULL) || !ev_demo_app_config_is_valid(cfg)) {
         return EV_ERR_INVALID_ARG;
@@ -318,73 +356,75 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     app->app_actor.app = app;
     app->diag_actor.app = app;
 
+    /* Wybieramy wstrzyknięty port I2C albo atrapę (na potrzeby testów) */
+    active_i2c = (cfg->i2c_port != NULL) ? cfg->i2c_port : &s_dummy_i2c_port;
+
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) {
         return rc;
     }
     app->next_tick_ms = now_ms + app->tick_period_ms;
 
-    rc = ev_mailbox_init(
-        &app->app_mailbox,
-        EV_MAILBOX_FIFO_8,
-        app->app_storage,
-        EV_ARRAY_LEN(app->app_storage));
-    if (rc != EV_OK) {
-        return rc;
-    }
-    rc = ev_mailbox_init(
-        &app->diag_mailbox,
-        EV_MAILBOX_FIFO_8,
-        app->diag_storage,
-        EV_ARRAY_LEN(app->diag_storage));
-    if (rc != EV_OK) {
-        return rc;
-    }
+    /* -------------------------------------------------------------
+       Inicjalizacja skrzynek pocztowych (Mailboxes)
+       ------------------------------------------------------------- */
+    rc = ev_mailbox_init(&app->app_mailbox, EV_MAILBOX_FIFO_8, app->app_storage, EV_ARRAY_LEN(app->app_storage));
+    if (rc != EV_OK) return rc;
+
+    rc = ev_mailbox_init(&app->diag_mailbox, EV_MAILBOX_FIFO_8, app->diag_storage, EV_ARRAY_LEN(app->diag_storage));
+    if (rc != EV_OK) return rc;
+
+    rc = ev_mailbox_init(&app->oled_mailbox, EV_MAILBOX_FIFO_8, app->oled_storage, EV_ARRAY_LEN(app->oled_storage));
+    if (rc != EV_OK) return rc;
+
+    /* -------------------------------------------------------------
+       Inicjalizacja Wątków Aktorów (Runtimes)
+       ------------------------------------------------------------- */
     rc = ev_actor_runtime_init(&app->app_runtime, ACT_APP, &app->app_mailbox, ev_demo_app_actor_handler, &app->app_actor);
-    if (rc != EV_OK) {
-        return rc;
-    }
-    rc = ev_actor_runtime_init(
-        &app->diag_runtime,
-        ACT_DIAG,
-        &app->diag_mailbox,
-        ev_demo_diag_actor_handler,
-        &app->diag_actor);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->diag_runtime, ACT_DIAG, &app->diag_mailbox, ev_demo_diag_actor_handler, &app->diag_actor);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_oled_actor_init(&app->oled_ctx, active_i2c, 0, EV_OLED_DEFAULT_ADDR_7BIT, EV_OLED_CONTROLLER_SH1106);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->oled_runtime, ACT_OLED, &app->oled_mailbox, ev_oled_actor_handle, &app->oled_ctx);
+    if (rc != EV_OK) return rc;
+
+    /* -------------------------------------------------------------
+       Rejestracja w Systemie Aktorów (Registry & Bind)
+       ------------------------------------------------------------- */
     rc = ev_actor_registry_init(&app->registry);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    if (rc != EV_OK) return rc;
+
     rc = ev_actor_registry_bind(&app->registry, &app->app_runtime);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    if (rc != EV_OK) return rc;
+
     rc = ev_actor_registry_bind(&app->registry, &app->diag_runtime);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_registry_bind(&app->registry, &app->oled_runtime);
+    if (rc != EV_OK) return rc;
+
+    /* -------------------------------------------------------------
+       Inicjalizacja pomp zdarzeń
+       ------------------------------------------------------------- */
     rc = ev_domain_pump_init(&app->fast_domain, &app->registry, EV_DOMAIN_FAST_LOOP);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    if (rc != EV_OK) return rc;
+
     rc = ev_domain_pump_init(&app->slow_domain, &app->registry, EV_DOMAIN_SLOW_IO);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    if (rc != EV_OK) return rc;
+
     rc = ev_system_pump_init(&app->system_pump);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    if (rc != EV_OK) return rc;
+
     rc = ev_system_pump_bind(&app->system_pump, &app->fast_domain);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    if (rc != EV_OK) return rc;
+
     rc = ev_system_pump_bind(&app->system_pump, &app->slow_domain);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    if (rc != EV_OK) return rc;
+
     rc = ev_lease_pool_init(
         &app->lease_pool,
         app->lease_slots,
@@ -484,3 +524,4 @@ const ev_system_pump_stats_t *ev_demo_app_system_pump_stats(const ev_demo_app_t 
 {
     return (app != NULL) ? ev_system_pump_stats(&app->system_pump) : NULL;
 }
+

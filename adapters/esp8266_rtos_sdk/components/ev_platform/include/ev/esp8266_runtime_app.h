@@ -2,6 +2,7 @@
 #define EV_ESP8266_RUNTIME_APP_H
 
 #include "ev/esp8266_boot_diag.h"
+#include "ev/port_i2c.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,8 +16,9 @@ extern "C" {
  * pump on hardware instead of staying on the boot/diagnostic heartbeat path.
  *
  * @param cfg Immutable board/runtime configuration.
+ * @param i2c_port Optional injected I2C port used by hardware actors.
  */
-void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg);
+void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg, ev_i2c_port_t *i2c_port);
 
 #ifdef __cplusplus
 }
