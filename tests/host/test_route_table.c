@@ -11,14 +11,22 @@ int main(void)
     size_t i;
     size_t j;
 
-    assert(ev_route_count() == 11U);
-    assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
+#ifdef EV_HOST_BUILD
+    assert(ev_route_count() == 8U);
+    assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 2U);
+#else
+    assert(ev_route_count() == 12U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 3U);
+    assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_OLED));
+    assert(ev_route_exists(EV_TICK_1S, ACT_RTC));
+#endif
+    assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
     assert(ev_route_count_for_event(EV_DIAG_SNAPSHOT_RSP) == 1U);
+    assert(ev_route_count_for_event(EV_TIME_UPDATED) == 1U);
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_DIAG));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_APP));
-    assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_OLED));
     assert(ev_route_exists(EV_DIAG_SNAPSHOT_RSP, ACT_APP));
+    assert(ev_route_exists(EV_TIME_UPDATED, ACT_APP));
     assert(!ev_route_exists(EV_BOOT_STARTED, ACT_STREAM));
 
     for (i = 0U; i < ev_route_count(); ++i) {
