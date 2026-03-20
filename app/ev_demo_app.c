@@ -208,6 +208,29 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
     case EV_BOOT_COMPLETED:
         ++app->stats.boot_completions;
         ev_demo_app_logf(app, EV_LOG_INFO, "app actor: boot complete -> requesting diag snapshot");
+
+        // --- PUBLIKACJA WIADOMOŚCI DO OLED ---
+        {
+            ev_msg_t text_msg;
+            ev_oled_display_text_cmd_t cmd = {0};
+
+            // Konfigurujemy zawartość wiadomości: na 0 stronie (pierwsza linijka), od 0 kolumny
+            cmd.page = 0;
+            cmd.column = 0;
+            snprintf(cmd.text, sizeof(cmd.text), "Witaj z ACT_APP!");
+
+            // Inicjalizujemy wiadomość kierowaną do ACT_OLED
+            if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_OLED) == EV_OK) {
+                // Załączamy nasz tekst jako ładunek (inline payload)
+                if (ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd)) == EV_OK) {
+                    // Wrzucamy do rejestru!
+                    (void)ev_demo_app_publish_owned(app, &text_msg);
+                    ev_demo_app_logf(app, EV_LOG_INFO, "app actor: sent text to OLED");
+                }
+            }
+        }
+        // -----------------------------------
+
         return ev_demo_app_publish_diag_request(state);
 
     case EV_DIAG_SNAPSHOT_RSP:
