@@ -14,8 +14,8 @@
 extern "C" {
 #endif
 
-#define EV_OLED_WIDTH 128U
-#define EV_OLED_HEIGHT 64U
+#define EV_OLED_WIDTH 72U
+#define EV_OLED_HEIGHT 40U
 #define EV_OLED_PAGE_COUNT (EV_OLED_HEIGHT / 8U)
 #define EV_OLED_DEFAULT_ADDR_7BIT 0x3CU
 #define EV_OLED_TEXT_MAX_CHARS 22U
@@ -77,7 +77,7 @@ typedef struct {
  *
  * The context is fully portable. It stores only the injected I2C contract,
  * current state-machine progress, and the local framebuffer cache required to
- * redraw one 128x64 panel.
+ * redraw the active OLED panel geometry.
  */
 typedef struct {
     ev_i2c_port_t *i2c_port;

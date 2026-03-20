@@ -15,6 +15,7 @@
 #define EV_OLED_CELL_ADVANCE (EV_OLED_GLYPH_WIDTH + EV_OLED_GLYPH_SPACING)
 #define EV_OLED_DATA_CHUNK_BYTES 32U
 #define EV_OLED_SH1106_COLUMN_OFFSET 2U
+#define EV_OLED_SSD1306_72X40_COLUMN_OFFSET 28U
 
 static const uint8_t k_ev_oled_font_5x7[][EV_OLED_GLYPH_WIDTH] = {
     {0x00, 0x00, 0x00, 0x00, 0x00}, /* space */
@@ -115,10 +116,10 @@ static const uint8_t k_ev_oled_font_5x7[][EV_OLED_GLYPH_WIDTH] = {
 };
 
 static const uint8_t k_ev_oled_ssd1306_init[] = {
-    0xAE, 0xD5, 0x80, 0xA8, 0x3F, 0xD3, 0x00, 0x40,
-    0x8D, 0x14, 0x20, 0x00, 0xA1, 0xC8, 0xDA, 0x12,
-    0x81, 0x7F, 0xD9, 0xF1, 0xDB, 0x40, 0xA4, 0xA6,
-    0xAF
+    0xAE, 0xD5, 0x80, 0xA8, 0x27, 0xD3, 0x00, 0xAD,
+    0x30, 0x8D, 0x14, 0x40, 0xA6, 0xA4, 0x20, 0x00,
+    0xA1, 0xC8, 0xDA, 0x12, 0x81, 0xAF, 0xD9, 0x22,
+    0xDB, 0x20, 0x2E, 0xAF
 };
 
 static const uint8_t k_ev_oled_sh1106_init[] = {
@@ -311,8 +312,8 @@ static ev_result_t ev_oled_actor_apply_address_window(ev_oled_actor_ctx_t *ctx,
     {
         const uint8_t commands[] = {
             0x21U,
-            start_column,
-            (uint8_t)(end_column - 1U),
+            (uint8_t)(start_column + EV_OLED_SSD1306_72X40_COLUMN_OFFSET),
+            (uint8_t)((end_column - 1U) + EV_OLED_SSD1306_72X40_COLUMN_OFFSET),
             0x22U,
             page,
             page

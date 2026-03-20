@@ -217,7 +217,7 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
             // Konfigurujemy zawartość wiadomości: na 0 stronie (pierwsza linijka), od 0 kolumny
             cmd.page = 0;
             cmd.column = 0;
-            snprintf(cmd.text, sizeof(cmd.text), "Witaj z ACT_APP!");
+            snprintf(cmd.text, sizeof(cmd.text), "ATNEL AIR");
 
             // Inicjalizujemy wiadomość kierowaną do ACT_OLED
             if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_OLED) == EV_OK) {
@@ -386,7 +386,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_runtime_init(&app->diag_runtime, ACT_DIAG, &app->diag_mailbox, ev_demo_diag_actor_handler, &app->diag_actor);
     if (rc != EV_OK) return rc;
 
-    rc = ev_oled_actor_init(&app->oled_ctx, active_i2c, 0, EV_OLED_DEFAULT_ADDR_7BIT, EV_OLED_CONTROLLER_SH1106);
+    rc = ev_oled_actor_init(&app->oled_ctx, active_i2c, 0, EV_OLED_DEFAULT_ADDR_7BIT, EV_OLED_CONTROLLER_SSD1306);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->oled_runtime, ACT_OLED, &app->oled_mailbox, ev_oled_actor_handle, &app->oled_ctx);
