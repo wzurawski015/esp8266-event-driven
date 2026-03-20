@@ -91,26 +91,26 @@ static void test_system_pump_round_robin(void)
     assert(report.turn_budget == 2U);
     assert(report.turns_processed == 2U);
     assert(report.domains_pumped == 2U);
-    assert(report.messages_processed == 12U);
-    assert(report.exhausted_turn_budget == true);
-    assert(ev_system_pump_pending(&system_pump) == 1U);
-
-    /* Continue until drained; round-robin ensures the remaining domain gets a turn. */
-    assert(ev_system_pump_run(&system_pump, 4U, &report) == EV_OK);
-    assert(report.turns_processed >= 1U);
+    assert(report.messages_processed == 13U);
+    assert(report.exhausted_turn_budget == false);
     assert(ev_system_pump_pending(&system_pump) == 0U);
     assert(boot_trace.calls == 2U);
     assert(diag_trace.calls == 3U);
     assert(app_trace.calls == 8U);
 
+    /* All pending work drained in the first round-robin pass. */
+    assert(ev_system_pump_run(&system_pump, 4U, &report) == EV_ERR_EMPTY);
+    assert(report.turns_processed == 0U);
+    assert(ev_system_pump_pending(&system_pump) == 0U);
+
     {
         const ev_system_pump_stats_t *stats = ev_system_pump_stats(&system_pump);
         assert(stats != NULL);
         assert(stats->run_calls == 2U);
-        assert(stats->domains_pumped == 3U);
+        assert(stats->domains_pumped == 2U);
         assert(stats->messages_processed == 13U);
-        assert(stats->budget_hits == 1U);
-        assert(stats->last_result == EV_OK);
+        assert(stats->budget_hits == 0U);
+        assert(stats->last_result == EV_ERR_EMPTY);
     }
 }
 

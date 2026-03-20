@@ -23,20 +23,6 @@ typedef struct {
 
 EV_STATIC_ASSERT(sizeof(ev_demo_snapshot_t) == EV_DEMO_APP_SNAPSHOT_BYTES, "demo snapshot ABI mismatch");
 
-/* ========================================================================= */
-/* Dummy I2C dla środowiska testowego (PC)                                   */
-/* ========================================================================= */
-static ev_i2c_status_t ev_demo_dummy_i2c_write(void *ctx, ev_i2c_port_num_t port_num, uint8_t address_7bit, const uint8_t *data, size_t data_len)
-{
-    (void)ctx; (void)port_num; (void)address_7bit; (void)data; (void)data_len;
-    return EV_I2C_OK;
-}
-static ev_i2c_port_t s_dummy_i2c_port = {
-    .ctx = NULL,
-    .write_stream = ev_demo_dummy_i2c_write
-};
-/* ========================================================================= */
-
 static void ev_demo_app_logf(ev_demo_app_t *app, ev_log_level_t level, const char *fmt, ...)
 {
     char buffer[192];
@@ -214,9 +200,9 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
             ev_msg_t text_msg;
             ev_oled_display_text_cmd_t cmd = {0};
 
-            cmd.page = 0;
-            cmd.column = 0;
-            snprintf(cmd.text, sizeof(cmd.text), "ATNEL AIR");
+            cmd.page = 0U;
+            cmd.column = 0U;
+            (void)snprintf(cmd.text, sizeof(cmd.text), "ATNEL AIR");
 
             if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP) == EV_OK) {
                 if (ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd)) == EV_OK) {
@@ -228,6 +214,39 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
 #endif
 
         return ev_demo_app_publish_diag_request(state);
+
+    case EV_TIME_UPDATED:
+        {
+            const ev_time_payload_t *time_payload = (const ev_time_payload_t *)ev_msg_payload_data(msg);
+
+            if ((time_payload == NULL) || (ev_msg_payload_size(msg) != sizeof(*time_payload))) {
+                return EV_ERR_CONTRACT;
+            }
+
+#ifndef EV_HOST_BUILD
+            {
+                ev_msg_t text_msg;
+                ev_oled_display_text_cmd_t cmd = {0};
+
+                cmd.page = 3U;
+                cmd.column = 28U;
+                (void)snprintf(cmd.text,
+                               sizeof(cmd.text),
+                               "%02u:%02u:%02u",
+                               (unsigned)time_payload->hours,
+                               (unsigned)time_payload->minutes,
+                               (unsigned)time_payload->seconds);
+
+                if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP) == EV_OK) {
+                    if (ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd)) == EV_OK) {
+                        (void)ev_demo_app_publish_owned(app, &text_msg);
+                    }
+                }
+            }
+#endif
+
+            return EV_OK;
+        }
 
     case EV_DIAG_SNAPSHOT_RSP:
         snapshot = (const ev_demo_snapshot_t *)ev_msg_payload_data(msg);
@@ -286,21 +305,6 @@ static ev_result_t ev_demo_diag_actor_handler(void *actor_context, const ev_msg_
                          (unsigned)state->ticks_seen,
                          (unsigned)state->last_tick_ms);
 
-#ifndef EV_HOST_BUILD
-        {
-            ev_msg_t text_msg;
-            ev_oled_display_text_cmd_t cmd = {0};
-            cmd.page = 3;
-            cmd.column = 0;
-            snprintf(cmd.text, sizeof(cmd.text), "Czas: %u sek", (unsigned)state->ticks_seen);
-
-            if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_DIAG) == EV_OK) {
-                if (ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd)) == EV_OK) {
-                    (void)ev_demo_app_publish_owned(app, &text_msg);
-                }
-            }
-        }
-#endif
 
         return ev_demo_app_publish_snapshot(state);
 
@@ -354,7 +358,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 {
     ev_result_t rc;
     uint32_t now_ms;
+#ifndef EV_HOST_BUILD
     ev_i2c_port_t *active_i2c;
+#endif
 
     if ((app == NULL) || !ev_demo_app_config_is_valid(cfg)) {
         return EV_ERR_INVALID_ARG;
@@ -369,8 +375,12 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     app->app_actor.app = app;
     app->diag_actor.app = app;
 
-    active_i2c = (cfg->i2c_port != NULL) ? cfg->i2c_port : &s_dummy_i2c_port;
-    (void)active_i2c;
+#ifndef EV_HOST_BUILD
+    active_i2c = cfg->i2c_port;
+    if (active_i2c == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+#endif
 
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) return rc;
@@ -384,6 +394,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
 #ifndef EV_HOST_BUILD
+    rc = ev_mailbox_init(&app->rtc_mailbox, EV_MAILBOX_FIFO_8, app->rtc_storage, EV_ARRAY_LEN(app->rtc_storage));
+    if (rc != EV_OK) return rc;
+
     rc = ev_mailbox_init(&app->oled_mailbox, EV_MAILBOX_FIFO_8, app->oled_storage, EV_ARRAY_LEN(app->oled_storage));
     if (rc != EV_OK) return rc;
 #endif
@@ -396,7 +409,22 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
 #ifndef EV_HOST_BUILD
-    rc = ev_oled_actor_init(&app->oled_ctx, active_i2c, 0, EV_OLED_DEFAULT_ADDR_7BIT, EV_OLED_CONTROLLER_SSD1306);
+    rc = ev_rtc_actor_init(&app->rtc_ctx,
+                           active_i2c,
+                           EV_I2C_PORT_NUM_0,
+                           EV_RTC_DEFAULT_ADDR_7BIT,
+                           ev_actor_registry_delivery,
+                           &app->registry);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->rtc_runtime, ACT_RTC, &app->rtc_mailbox, ev_rtc_actor_handle, &app->rtc_ctx);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_oled_actor_init(&app->oled_ctx,
+                            active_i2c,
+                            EV_I2C_PORT_NUM_0,
+                            EV_OLED_DEFAULT_ADDR_7BIT,
+                            EV_OLED_CONTROLLER_SSD1306);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->oled_runtime, ACT_OLED, &app->oled_mailbox, ev_oled_actor_handle, &app->oled_ctx);
@@ -414,6 +442,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
 #ifndef EV_HOST_BUILD
+    rc = ev_actor_registry_bind(&app->registry, &app->rtc_runtime);
+    if (rc != EV_OK) return rc;
+
     rc = ev_actor_registry_bind(&app->registry, &app->oled_runtime);
     if (rc != EV_OK) return rc;
 #endif
