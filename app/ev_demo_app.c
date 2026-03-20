@@ -370,6 +370,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     app->diag_actor.app = app;
 
     active_i2c = (cfg->i2c_port != NULL) ? cfg->i2c_port : &s_dummy_i2c_port;
+    (void)active_i2c;
 
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) return rc;

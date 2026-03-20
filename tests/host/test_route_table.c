@@ -11,7 +11,7 @@ int main(void)
     size_t i;
     size_t j;
 
-    assert(ev_route_count() == 10U);
+    assert(ev_route_count() == 11U);
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 3U);
     assert(ev_route_count_for_event(EV_DIAG_SNAPSHOT_RSP) == 1U);
