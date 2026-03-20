@@ -1,7 +1,7 @@
 CC ?= cc
 PYTHON ?= python3
 
-CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -Icore/include -Iports/include -Iapp/include -Iconfig
+CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -DEV_HOST_BUILD -Icore/include -Iports/include -Iapp/include -Iconfig
 LDFLAGS ?=
 
 BUILD_DIR := build/host
