@@ -11,6 +11,10 @@
 #include "ev/port_log.h"
 #include "ev/system_pump.h"
 
+/* Wstrzykiwane kontrakty i Aktorzy dodani w Stage 2 */
+#include "ev/port_i2c.h"
+#include "ev/oled_actor.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,6 +32,7 @@ typedef struct {
     uint32_t tick_period_ms;
     ev_clock_port_t *clock_port;
     ev_log_port_t *log_port;
+    ev_i2c_port_t *i2c_port; /* Wstrzyknięty kontrakt magistrali I2C */
 } ev_demo_app_config_t;
 
 /**
@@ -79,10 +84,16 @@ struct ev_demo_app {
     ev_actor_registry_t registry;
     ev_mailbox_t app_mailbox;
     ev_mailbox_t diag_mailbox;
+    ev_mailbox_t oled_mailbox; /* Skrzynka pocztowa dla OLED */
+
     ev_msg_t app_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
     ev_msg_t diag_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
+    ev_msg_t oled_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla OLED */
+
     ev_actor_runtime_t app_runtime;
     ev_actor_runtime_t diag_runtime;
+    ev_actor_runtime_t oled_runtime; /* Wątek logiczny Aktora OLED */
+
     ev_domain_pump_t fast_domain;
     ev_domain_pump_t slow_domain;
     ev_system_pump_t system_pump;
@@ -93,6 +104,8 @@ struct ev_demo_app {
 
     ev_demo_app_actor_state_t app_actor;
     ev_demo_diag_actor_state_t diag_actor;
+    ev_oled_actor_ctx_t oled_ctx; /* Fizyczny stan i bufor ekranu OLED */
+
     ev_demo_app_stats_t stats;
 };
 
@@ -156,3 +169,4 @@ const ev_system_pump_stats_t *ev_demo_app_system_pump_stats(const ev_demo_app_t 
 #endif
 
 #endif /* EV_DEMO_APP_H */
+
