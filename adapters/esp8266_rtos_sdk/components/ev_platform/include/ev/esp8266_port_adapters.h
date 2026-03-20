@@ -3,6 +3,7 @@
 
 #include "ev/port_clock.h"
 #include "ev/port_i2c.h"
+#include "ev/port_onewire.h"
 #include "ev/port_log.h"
 #include "ev/port_reset.h"
 #include "ev/port_uart.h"
@@ -43,6 +44,18 @@ ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int s
  * @return EV_OK when the scan completed, even if no device acknowledged.
  */
 ev_result_t ev_i2c_scan(ev_i2c_port_num_t port_num);
+
+/**
+ * @brief Initialize the ESP8266-backed 1-Wire adapter.
+ *
+ * The adapter configures one open-drain GPIO line used later by the DS18B20
+ * actor through the portable 1-Wire contract.
+ *
+ * @param out_port Destination public contract populated on success.
+ * @param data_pin GPIO number used for the shared 1-Wire data line.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_esp8266_onewire_port_init(ev_onewire_port_t *out_port, int data_pin);
 
 /**
  * @brief Initialize the ESP8266-backed log adapter.

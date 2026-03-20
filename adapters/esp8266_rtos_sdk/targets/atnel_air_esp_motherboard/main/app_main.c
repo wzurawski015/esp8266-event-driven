@@ -13,8 +13,10 @@
 #define EV_BOARD_NAME "atnel_air_esp_motherboard"
 #define EV_BOARD_I2C_SCL_GPIO 4
 #define EV_BOARD_I2C_SDA_GPIO 5
+#define EV_BOARD_ONEWIRE_GPIO 12
 
 static ev_i2c_port_t s_board_i2c_port;
+static ev_onewire_port_t s_board_onewire_port;
 
 void app_main(void)
 {
@@ -26,6 +28,7 @@ void app_main(void)
         .heartbeat_period_ms = 1000U,
     };
     ev_i2c_port_t *runtime_i2c_port = NULL;
+    ev_onewire_port_t *runtime_onewire_port = NULL;
     ev_result_t rc;
 
     (void)uart_set_baudrate(UART_NUM_0, 115200U);
@@ -41,5 +44,12 @@ void app_main(void)
         }
     }
 
-    ev_esp8266_runtime_app_run(&k_boot_diag, runtime_i2c_port);
+    rc = ev_esp8266_onewire_port_init(&s_board_onewire_port, EV_BOARD_ONEWIRE_GPIO);
+    if (rc != EV_OK) {
+        ESP_LOGE(EV_BOARD_TAG, "onewire adapter init failed rc=%d", (int)rc);
+    } else {
+        runtime_onewire_port = &s_board_onewire_port;
+    }
+
+    ev_esp8266_runtime_app_run(&k_boot_diag, runtime_i2c_port, runtime_onewire_port);
 }
