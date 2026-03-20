@@ -13,6 +13,8 @@
 
 /* Wstrzykiwane kontrakty i Aktorzy dodani w Stage 2 */
 #include "ev/port_i2c.h"
+#include "ev/port_onewire.h"
+#include "ev/ds18b20_actor.h"
 #include "ev/oled_actor.h"
 #include "ev/rtc_actor.h"
 
@@ -34,6 +36,7 @@ typedef struct {
     ev_clock_port_t *clock_port;
     ev_log_port_t *log_port;
     ev_i2c_port_t *i2c_port; /* Wstrzyknięty kontrakt magistrali I2C dla aktorów sprzętowych */
+    ev_onewire_port_t *onewire_port; /* Wstrzyknięty kontrakt 1-Wire dla aktorów sprzętowych */
 } ev_demo_app_config_t;
 
 /**
@@ -86,16 +89,19 @@ struct ev_demo_app {
     ev_mailbox_t app_mailbox;
     ev_mailbox_t diag_mailbox;
     ev_mailbox_t rtc_mailbox; /* Skrzynka pocztowa dla RTC */
+    ev_mailbox_t ds18b20_mailbox; /* Skrzynka pocztowa dla DS18B20 */
     ev_mailbox_t oled_mailbox; /* Skrzynka pocztowa dla OLED */
 
     ev_msg_t app_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
     ev_msg_t diag_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
     ev_msg_t rtc_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla RTC */
+    ev_msg_t ds18b20_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla DS18B20 */
     ev_msg_t oled_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla OLED */
 
     ev_actor_runtime_t app_runtime;
     ev_actor_runtime_t diag_runtime;
     ev_actor_runtime_t rtc_runtime; /* Wątek logiczny Aktora RTC */
+    ev_actor_runtime_t ds18b20_runtime; /* Wątek logiczny Aktora DS18B20 */
     ev_actor_runtime_t oled_runtime; /* Wątek logiczny Aktora OLED */
 
     ev_domain_pump_t fast_domain;
@@ -109,6 +115,7 @@ struct ev_demo_app {
     ev_demo_app_actor_state_t app_actor;
     ev_demo_diag_actor_state_t diag_actor;
     ev_rtc_actor_ctx_t rtc_ctx; /* Fizyczny stan i konfiguracja Aktora RTC */
+    ev_ds18b20_actor_ctx_t ds18b20_ctx; /* Fizyczny stan i konfiguracja Aktora DS18B20 */
     ev_oled_actor_ctx_t oled_ctx; /* Fizyczny stan i bufor ekranu OLED */
 
     ev_demo_app_stats_t stats;

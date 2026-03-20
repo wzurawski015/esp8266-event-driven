@@ -215,6 +215,42 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
 
         return ev_demo_app_publish_diag_request(state);
 
+    case EV_TEMP_UPDATED:
+        {
+            const ev_temp_payload_t *temp_payload = (const ev_temp_payload_t *)ev_msg_payload_data(msg);
+
+            if ((temp_payload == NULL) || (ev_msg_payload_size(msg) != sizeof(*temp_payload))) {
+                return EV_ERR_CONTRACT;
+            }
+
+#ifndef EV_HOST_BUILD
+            {
+                ev_msg_t text_msg;
+                ev_oled_display_text_cmd_t cmd = {0};
+                const int32_t centi_celsius = (int32_t)temp_payload->centi_celsius;
+                const uint32_t abs_centi_celsius = (centi_celsius < 0) ? (uint32_t)(-centi_celsius) : (uint32_t)centi_celsius;
+                const char *sign = (centi_celsius < 0) ? "-" : "";
+
+                cmd.page = 4U;
+                cmd.column = 12U;
+                (void)snprintf(cmd.text,
+                               sizeof(cmd.text),
+                               "%s%lu.%02lu C",
+                               sign,
+                               (unsigned long)(abs_centi_celsius / 100U),
+                               (unsigned long)(abs_centi_celsius % 100U));
+
+                if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP) == EV_OK) {
+                    if (ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd)) == EV_OK) {
+                        (void)ev_demo_app_publish_owned(app, &text_msg);
+                    }
+                }
+            }
+#endif
+
+            return EV_OK;
+        }
+
     case EV_TIME_UPDATED:
         {
             const ev_time_payload_t *time_payload = (const ev_time_payload_t *)ev_msg_payload_data(msg);
@@ -360,6 +396,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     uint32_t now_ms;
 #ifndef EV_HOST_BUILD
     ev_i2c_port_t *active_i2c;
+    ev_onewire_port_t *active_onewire;
 #endif
 
     if ((app == NULL) || !ev_demo_app_config_is_valid(cfg)) {
@@ -377,7 +414,8 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
 #ifndef EV_HOST_BUILD
     active_i2c = cfg->i2c_port;
-    if (active_i2c == NULL) {
+    active_onewire = cfg->onewire_port;
+    if ((active_i2c == NULL) || (active_onewire == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 #endif
@@ -395,6 +433,12 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
 #ifndef EV_HOST_BUILD
     rc = ev_mailbox_init(&app->rtc_mailbox, EV_MAILBOX_FIFO_8, app->rtc_storage, EV_ARRAY_LEN(app->rtc_storage));
+    if (rc != EV_OK) return rc;
+
+    rc = ev_mailbox_init(&app->ds18b20_mailbox,
+                         EV_MAILBOX_FIFO_8,
+                         app->ds18b20_storage,
+                         EV_ARRAY_LEN(app->ds18b20_storage));
     if (rc != EV_OK) return rc;
 
     rc = ev_mailbox_init(&app->oled_mailbox, EV_MAILBOX_FIFO_8, app->oled_storage, EV_ARRAY_LEN(app->oled_storage));
@@ -420,6 +464,16 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_runtime_init(&app->rtc_runtime, ACT_RTC, &app->rtc_mailbox, ev_rtc_actor_handle, &app->rtc_ctx);
     if (rc != EV_OK) return rc;
 
+    rc = ev_ds18b20_actor_init(&app->ds18b20_ctx, active_onewire, ev_actor_registry_delivery, &app->registry);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->ds18b20_runtime,
+                               ACT_DS18B20,
+                               &app->ds18b20_mailbox,
+                               ev_ds18b20_actor_handle,
+                               &app->ds18b20_ctx);
+    if (rc != EV_OK) return rc;
+
     rc = ev_oled_actor_init(&app->oled_ctx,
                             active_i2c,
                             EV_I2C_PORT_NUM_0,
@@ -443,6 +497,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
 #ifndef EV_HOST_BUILD
     rc = ev_actor_registry_bind(&app->registry, &app->rtc_runtime);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_registry_bind(&app->registry, &app->ds18b20_runtime);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_registry_bind(&app->registry, &app->oled_runtime);
