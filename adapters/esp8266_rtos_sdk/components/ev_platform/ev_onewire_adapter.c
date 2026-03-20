@@ -5,7 +5,7 @@
 
 #include "driver/gpio.h"
 #include "esp_err.h"
-#include "ets_sys.h"
+#include "rom/ets_sys.h"
 
 #include "ev/esp8266_port_adapters.h"
 
