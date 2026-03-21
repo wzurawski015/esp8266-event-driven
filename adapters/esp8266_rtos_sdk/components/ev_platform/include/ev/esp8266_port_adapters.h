@@ -3,6 +3,8 @@
 
 #include "ev/port_clock.h"
 #include "ev/port_i2c.h"
+#include "ev/port_irq.h"
+#include "ev/port_gpio_irq.h"
 #include "ev/port_onewire.h"
 #include "ev/port_log.h"
 #include "ev/port_reset.h"
@@ -44,6 +46,22 @@ ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int s
  * @return EV_OK when the scan completed, even if no device acknowledged.
  */
 ev_result_t ev_i2c_scan(ev_i2c_port_num_t port_num);
+
+/**
+ * @brief Initialize the ESP8266-backed GPIO interrupt ingress adapter.
+ *
+ * The adapter owns one static ring buffer populated from a very small ISR. The
+ * public Core-facing contract exposes only normalized interrupt samples through
+ * ev_irq_port_t::pop.
+ *
+ * @param out_port Destination public contract populated on success.
+ * @param line_cfgs Static line-to-GPIO mappings owned by the caller.
+ * @param line_count Number of entries in @p line_cfgs.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
+                                     const ev_gpio_irq_line_config_t *line_cfgs,
+                                     size_t line_count);
 
 /**
  * @brief Initialize the ESP8266-backed 1-Wire adapter.

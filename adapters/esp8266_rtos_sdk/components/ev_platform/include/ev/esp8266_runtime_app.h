@@ -3,6 +3,7 @@
 
 #include "ev/esp8266_boot_diag.h"
 #include "ev/port_i2c.h"
+#include "ev/port_irq.h"
 #include "ev/port_onewire.h"
 
 #ifdef __cplusplus
@@ -18,10 +19,12 @@ extern "C" {
  *
  * @param cfg Immutable board/runtime configuration.
  * @param i2c_port Optional injected I2C port used by hardware actors.
+ * @param irq_port Optional injected GPIO IRQ ingress port used by the runtime.
  * @param onewire_port Optional injected 1-Wire port used by hardware actors.
  */
 void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
                                 ev_i2c_port_t *i2c_port,
+                                ev_irq_port_t *irq_port,
                                 ev_onewire_port_t *onewire_port);
 
 #ifdef __cplusplus

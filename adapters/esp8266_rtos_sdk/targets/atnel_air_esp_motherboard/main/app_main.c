@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdint.h>
 
 #include "freertos/FreeRTOS.h"
@@ -14,9 +15,27 @@
 #define EV_BOARD_I2C_SCL_GPIO 4
 #define EV_BOARD_I2C_SDA_GPIO 5
 #define EV_BOARD_ONEWIRE_GPIO 12
+#define EV_BOARD_IRQ_IR0_GPIO 13U
+#define EV_BOARD_IRQ_INT0_GPIO 14U
 
 static ev_i2c_port_t s_board_i2c_port;
+static ev_irq_port_t s_board_irq_port;
 static ev_onewire_port_t s_board_onewire_port;
+
+static const ev_gpio_irq_line_config_t k_board_irq_lines[] = {
+    {
+        .line_id = 0U,
+        .gpio_num = EV_BOARD_IRQ_INT0_GPIO,
+        .trigger = EV_GPIO_IRQ_TRIGGER_ANYEDGE,
+        .pull_mode = EV_GPIO_IRQ_PULL_UP,
+    },
+    {
+        .line_id = 1U,
+        .gpio_num = EV_BOARD_IRQ_IR0_GPIO,
+        .trigger = EV_GPIO_IRQ_TRIGGER_ANYEDGE,
+        .pull_mode = EV_GPIO_IRQ_PULL_UP,
+    },
+};
 
 void app_main(void)
 {
@@ -28,6 +47,7 @@ void app_main(void)
         .heartbeat_period_ms = 1000U,
     };
     ev_i2c_port_t *runtime_i2c_port = NULL;
+    ev_irq_port_t *runtime_irq_port = NULL;
     ev_onewire_port_t *runtime_onewire_port = NULL;
     ev_result_t rc;
 
@@ -51,5 +71,14 @@ void app_main(void)
         runtime_onewire_port = &s_board_onewire_port;
     }
 
-    ev_esp8266_runtime_app_run(&k_boot_diag, runtime_i2c_port, runtime_onewire_port);
+    rc = ev_esp8266_irq_port_init(&s_board_irq_port,
+                                  k_board_irq_lines,
+                                  (sizeof(k_board_irq_lines) / sizeof(k_board_irq_lines[0])));
+    if (rc != EV_OK) {
+        ESP_LOGE(EV_BOARD_TAG, "irq adapter init failed rc=%d", (int)rc);
+    } else {
+        runtime_irq_port = &s_board_irq_port;
+    }
+
+    ev_esp8266_runtime_app_run(&k_boot_diag, runtime_i2c_port, runtime_irq_port, runtime_onewire_port);
 }
