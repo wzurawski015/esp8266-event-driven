@@ -63,6 +63,17 @@ typedef struct {
     ev_demo_app_t *app;
     uint32_t last_snapshot_sequence;
     uint32_t last_diag_ticks_seen;
+    ev_time_payload_t last_time;
+    ev_temp_payload_t last_temp;
+    bool time_valid;
+    bool temp_valid;
+    bool oled_frame_visible;
+    uint8_t current_page_offset;
+    uint8_t current_column_offset;
+    uint8_t last_page_offset;
+    uint8_t last_column_offset;
+    int8_t direction_x;
+    int8_t direction_y;
 } ev_demo_app_actor_state_t;
 
 /**

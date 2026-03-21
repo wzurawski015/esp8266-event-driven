@@ -6,6 +6,7 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 
+#include "ev/compiler.h"
 #include "ev/esp8266_boot_diag.h"
 #include "ev/esp8266_port_adapters.h"
 #include "ev/esp8266_runtime_app.h"
@@ -18,6 +19,9 @@
 #define EV_BOARD_IRQ_IR0_GPIO 13U
 #define EV_BOARD_IRQ_INT0_GPIO 14U
 
+EV_STATIC_ASSERT(EV_BOARD_ONEWIRE_GPIO != EV_BOARD_IRQ_INT0_GPIO,
+                 "1-Wire and RTC/INT0 ingress must stay on distinct GPIOs");
+
 static ev_i2c_port_t s_board_i2c_port;
 static ev_irq_port_t s_board_irq_port;
 static ev_onewire_port_t s_board_onewire_port;
@@ -26,7 +30,7 @@ static const ev_gpio_irq_line_config_t k_board_irq_lines[] = {
     {
         .line_id = 0U,
         .gpio_num = EV_BOARD_IRQ_INT0_GPIO,
-        .trigger = EV_GPIO_IRQ_TRIGGER_ANYEDGE,
+        .trigger = EV_GPIO_IRQ_TRIGGER_FALLING,
         .pull_mode = EV_GPIO_IRQ_PULL_UP,
     },
     {
