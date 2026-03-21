@@ -120,7 +120,11 @@ static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const
         return;
     }
 
-    PortDisableInt_NoNest();
+    /*
+     * The producer already runs in GPIO ISR context on the single-core ESP8266.
+     * Task-side consumers guard the shared ring with portENTER_CRITICAL(), so
+     * no additional ISR-local interrupt masking is required here.
+     */
 
     if (adapter->count < EV_ESP8266_IRQ_RING_CAPACITY) {
         head = adapter->head;
@@ -129,7 +133,6 @@ static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const
         ++adapter->count;
     }
 
-    PortEnableInt_NoNest();
 }
 
 static void IRAM_ATTR ev_esp8266_irq_isr(void *arg)
