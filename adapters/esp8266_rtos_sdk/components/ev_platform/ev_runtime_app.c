@@ -50,6 +50,7 @@ static ev_demo_app_t s_app;
 
 void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
                                 ev_i2c_port_t *i2c_port,
+                                ev_irq_port_t *irq_port,
                                 ev_onewire_port_t *onewire_port)
 {
     ev_clock_port_t clock_port;
@@ -111,6 +112,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
     app_cfg.clock_port = &clock_port;
     app_cfg.log_port = &log_port;
     app_cfg.i2c_port = i2c_port;
+    app_cfg.irq_port = irq_port;
     app_cfg.onewire_port = onewire_port;
 
     rc = ev_demo_app_init(&s_app, &app_cfg);
