@@ -14,6 +14,7 @@
 #define EV_DEMO_APP_DEFAULT_TICK_MS 1000U
 #define EV_DEMO_APP_FAST_TICK_MS 100U
 #define EV_DEMO_APP_TURN_BUDGET 4U
+#define EV_DEMO_APP_RTC_SQW_LINE_ID 0U
 
 typedef struct {
     uint32_t sequence;
@@ -512,6 +513,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
                            active_i2c,
                            EV_I2C_PORT_NUM_0,
                            EV_RTC_DEFAULT_ADDR_7BIT,
+                           EV_DEMO_APP_RTC_SQW_LINE_ID,
                            ev_actor_registry_delivery,
                            &app->registry);
     if (rc != EV_OK) return rc;

@@ -7,6 +7,7 @@
 #include "ev/delivery.h"
 #include "ev/msg.h"
 #include "ev/port_i2c.h"
+#include "ev/port_irq.h"
 #include "ev/result.h"
 
 #ifdef __cplusplus
@@ -16,9 +17,17 @@ extern "C" {
 #define EV_RTC_DEFAULT_ADDR_7BIT 0x68U
 
 /**
- * @brief Inline payload published when the hardware clock has been sampled.
+ * @brief Inline payload published when the DS3231 time source has been sampled.
+ *
+ * The payload transports both a decoded calendar/time snapshot and the
+ * corresponding UNIX timestamp derived inside the actor.
  */
 typedef struct {
+    uint32_t unix_time;
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t weekday;
     uint8_t hours;
     uint8_t minutes;
     uint8_t seconds;
@@ -34,6 +43,7 @@ typedef struct {
     ev_i2c_port_t *i2c_port;
     ev_i2c_port_num_t port_num;
     uint8_t device_address_7bit;
+    ev_irq_line_id_t sqw_line_id;
     ev_delivery_fn_t deliver;
     void *deliver_context;
 } ev_rtc_actor_ctx_t;
@@ -42,13 +52,15 @@ typedef struct {
  * @brief Initialize one RTC actor context.
  *
  * The actor performs no hardware I/O during initialization. It stores the
- * injected I2C contract and the delivery contract used later to publish
- * EV_TIME_UPDATED whenever EV_TICK_1S is observed.
+ * injected I2C contract, the logical IRQ ingress line carrying the DS3231 1 Hz
+ * SQW signal, and the delivery contract used later to publish EV_TIME_UPDATED
+ * whenever a matching EV_GPIO_IRQ sample is observed.
  *
  * @param ctx Context to initialize.
  * @param i2c_port Injected platform I2C contract.
  * @param port_num Logical I2C controller number.
  * @param device_address_7bit Target 7-bit RTC I2C address.
+ * @param sqw_line_id Logical IRQ line identifier used by the DS3231 SQW pin.
  * @param deliver Delivery callback used by ev_publish().
  * @param deliver_context Caller-owned context bound to @p deliver.
  * @return EV_OK on success or an error code.
@@ -57,6 +69,7 @@ ev_result_t ev_rtc_actor_init(ev_rtc_actor_ctx_t *ctx,
                               ev_i2c_port_t *i2c_port,
                               ev_i2c_port_num_t port_num,
                               uint8_t device_address_7bit,
+                              ev_irq_line_id_t sqw_line_id,
                               ev_delivery_fn_t deliver,
                               void *deliver_context);
 
@@ -64,7 +77,8 @@ ev_result_t ev_rtc_actor_init(ev_rtc_actor_ctx_t *ctx,
  * @brief Default actor handler for one RTC runtime instance.
  *
  * Supported events:
- * - EV_TICK_1S
+ * - EV_BOOT_COMPLETED
+ * - EV_GPIO_IRQ
  *
  * @param actor_context Pointer to ev_rtc_actor_ctx_t.
  * @param msg Runtime envelope delivered to the actor.
