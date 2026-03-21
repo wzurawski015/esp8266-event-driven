@@ -15,6 +15,18 @@
 #define EV_DEMO_APP_FAST_TICK_MS 100U
 #define EV_DEMO_APP_TURN_BUDGET 4U
 #define EV_DEMO_APP_RTC_SQW_LINE_ID 0U
+#define EV_DEMO_APP_OLED_TITLE_TEXT "ATNEL AIR"
+#define EV_DEMO_APP_OLED_TITLE_PAGES 3U
+#define EV_DEMO_APP_OLED_TITLE_PAGE_OFFSET 0U
+#define EV_DEMO_APP_OLED_TIME_PAGE_OFFSET 1U
+#define EV_DEMO_APP_OLED_TEMP_PAGE_OFFSET 2U
+#define EV_DEMO_APP_OLED_TEXT_CELL_ADVANCE 6U
+#define EV_DEMO_APP_OLED_BLOCK_WIDTH_PX ((uint8_t)((sizeof(EV_DEMO_APP_OLED_TITLE_TEXT) - 1U) * EV_DEMO_APP_OLED_TEXT_CELL_ADVANCE))
+#define EV_DEMO_APP_OLED_MAX_COLUMN_OFFSET ((uint8_t)(EV_OLED_WIDTH - EV_DEMO_APP_OLED_BLOCK_WIDTH_PX))
+#define EV_DEMO_APP_OLED_MAX_PAGE_OFFSET ((uint8_t)(EV_OLED_PAGE_COUNT - EV_DEMO_APP_OLED_TITLE_PAGES))
+
+EV_STATIC_ASSERT(EV_DEMO_APP_OLED_BLOCK_WIDTH_PX <= EV_OLED_WIDTH, "OLED block width must fit the panel");
+EV_STATIC_ASSERT(EV_DEMO_APP_OLED_TITLE_PAGES <= EV_OLED_PAGE_COUNT, "OLED block height must fit the panel");
 
 typedef struct {
     uint32_t sequence;
@@ -216,7 +228,218 @@ static ev_result_t ev_demo_app_publish_irq_sample(ev_demo_app_t *app, const ev_i
 
     return ev_demo_app_publish_system_event(app, EV_GPIO_IRQ, sample, sizeof(*sample));
 }
+
+static ev_result_t ev_demo_app_publish_oled_text(ev_demo_app_t *app, uint8_t page, uint8_t column, const char *text)
+{
+    ev_msg_t text_msg = {0};
+    ev_oled_display_text_cmd_t cmd = {0};
+    ev_result_t rc;
+
+    if ((app == NULL) || (text == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if ((page >= EV_OLED_PAGE_COUNT) || (column >= EV_OLED_WIDTH)) {
+        return EV_ERR_OUT_OF_RANGE;
+    }
+
+    cmd.page = page;
+    cmd.column = column;
+    (void)snprintf(cmd.text, sizeof(cmd.text), "%s", text);
+
+    rc = ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    rc = ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd));
+    if (rc != EV_OK) {
+        (void)ev_msg_dispose(&text_msg);
+        return rc;
+    }
+
+    return ev_demo_app_publish_owned(app, &text_msg);
+}
+
+static void ev_demo_app_format_time_text(const ev_demo_app_actor_state_t *state, char *out_text, size_t out_text_size)
+{
+    if ((state == NULL) || (out_text == NULL) || (out_text_size == 0U)) {
+        return;
+    }
+
+    if (!state->time_valid) {
+        (void)snprintf(out_text, out_text_size, "--:--:--");
+        return;
+    }
+
+    (void)snprintf(out_text,
+                   out_text_size,
+                   "%02u:%02u:%02u",
+                   (unsigned)state->last_time.hours,
+                   (unsigned)state->last_time.minutes,
+                   (unsigned)state->last_time.seconds);
+}
+
+static void ev_demo_app_format_temp_text(const ev_demo_app_actor_state_t *state, char *out_text, size_t out_text_size)
+{
+    int32_t centi_celsius;
+    uint32_t abs_centi_celsius;
+    const char *sign;
+
+    if ((state == NULL) || (out_text == NULL) || (out_text_size == 0U)) {
+        return;
+    }
+
+    if (!state->temp_valid) {
+        (void)snprintf(out_text, out_text_size, "--.-- C");
+        return;
+    }
+
+    centi_celsius = (int32_t)state->last_temp.centi_celsius;
+    abs_centi_celsius = (centi_celsius < 0) ? (uint32_t)(-centi_celsius) : (uint32_t)centi_celsius;
+    sign = (centi_celsius < 0) ? "-" : "";
+
+    (void)snprintf(out_text,
+                   out_text_size,
+                   "%s%lu.%02lu C",
+                   sign,
+                   (unsigned long)(abs_centi_celsius / 100U),
+                   (unsigned long)(abs_centi_celsius % 100U));
+}
+
+static ev_result_t ev_demo_app_clear_previous_oled_frame(ev_demo_app_actor_state_t *state)
+{
+    ev_demo_app_t *app;
+    ev_result_t rc;
+
+    if ((state == NULL) || (state->app == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!state->oled_frame_visible) {
+        return EV_OK;
+    }
+
+    app = state->app;
+    rc = ev_demo_app_publish_oled_text(app,
+                                       (uint8_t)(state->last_page_offset + EV_DEMO_APP_OLED_TITLE_PAGE_OFFSET),
+                                       state->last_column_offset,
+                                       "");
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    rc = ev_demo_app_publish_oled_text(app,
+                                       (uint8_t)(state->last_page_offset + EV_DEMO_APP_OLED_TIME_PAGE_OFFSET),
+                                       state->last_column_offset,
+                                       "");
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    return ev_demo_app_publish_oled_text(app,
+                                         (uint8_t)(state->last_page_offset + EV_DEMO_APP_OLED_TEMP_PAGE_OFFSET),
+                                         state->last_column_offset,
+                                         "");
+}
+
+static ev_result_t ev_demo_app_render_oled_frame(ev_demo_app_actor_state_t *state)
+{
+    ev_demo_app_t *app;
+    ev_result_t rc;
+    char time_text[EV_OLED_TEXT_MAX_CHARS] = {0};
+    char temp_text[EV_OLED_TEXT_MAX_CHARS] = {0};
+
+    if ((state == NULL) || (state->app == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    app = state->app;
+    ev_demo_app_format_time_text(state, time_text, sizeof(time_text));
+    ev_demo_app_format_temp_text(state, temp_text, sizeof(temp_text));
+
+    rc = ev_demo_app_clear_previous_oled_frame(state);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    rc = ev_demo_app_publish_oled_text(app,
+                                       (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TITLE_PAGE_OFFSET),
+                                       state->current_column_offset,
+                                       EV_DEMO_APP_OLED_TITLE_TEXT);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    rc = ev_demo_app_publish_oled_text(app,
+                                       (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TIME_PAGE_OFFSET),
+                                       state->current_column_offset,
+                                       time_text);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    rc = ev_demo_app_publish_oled_text(app,
+                                       (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TEMP_PAGE_OFFSET),
+                                       state->current_column_offset,
+                                       temp_text);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    state->last_page_offset = state->current_page_offset;
+    state->last_column_offset = state->current_column_offset;
+    state->oled_frame_visible = true;
+    return EV_OK;
+}
 #endif
+
+static void ev_demo_app_screensaver_step_axis(uint8_t *value, int8_t *direction, uint8_t max_value)
+{
+    if ((value == NULL) || (direction == NULL)) {
+        return;
+    }
+
+    if (max_value == 0U) {
+        *value = 0U;
+        *direction = (int8_t)1;
+        return;
+    }
+
+    if (*direction >= 0) {
+        if (*value >= max_value) {
+            *direction = (int8_t)-1;
+            if (*value > 0U) {
+                --(*value);
+            }
+        } else {
+            ++(*value);
+        }
+    } else if (*value == 0U) {
+        *direction = (int8_t)1;
+        ++(*value);
+    } else {
+        --(*value);
+    }
+}
+
+static ev_result_t ev_demo_app_handle_tick_for_oled(ev_demo_app_actor_state_t *state)
+{
+    if ((state == NULL) || (state->app == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    ev_demo_app_screensaver_step_axis(&state->current_column_offset,
+                                      &state->direction_x,
+                                      EV_DEMO_APP_OLED_MAX_COLUMN_OFFSET);
+    ev_demo_app_screensaver_step_axis(&state->current_page_offset,
+                                      &state->direction_y,
+                                      EV_DEMO_APP_OLED_MAX_PAGE_OFFSET);
+
+#ifndef EV_HOST_BUILD
+    return ev_demo_app_render_oled_frame(state);
+#else
+    return EV_OK;
+#endif
+}
 
 static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t *msg)
 {
@@ -233,27 +456,18 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
     switch (msg->event_id) {
     case EV_BOOT_COMPLETED:
         ++app->stats.boot_completions;
+        state->current_page_offset = 0U;
+        state->current_column_offset = 0U;
+        state->last_page_offset = 0U;
+        state->last_column_offset = 0U;
+        state->direction_x = (int8_t)1;
+        state->direction_y = (int8_t)1;
+        state->oled_frame_visible = false;
         ev_demo_app_logf(app, EV_LOG_INFO, "app actor: boot complete -> requesting diag snapshot");
-
-#ifndef EV_HOST_BUILD
-        {
-            ev_msg_t text_msg;
-            ev_oled_display_text_cmd_t cmd = {0};
-
-            cmd.page = 0U;
-            cmd.column = 0U;
-            (void)snprintf(cmd.text, sizeof(cmd.text), "ATNEL AIR");
-
-            if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP) == EV_OK) {
-                if (ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd)) == EV_OK) {
-                    (void)ev_demo_app_publish_owned(app, &text_msg);
-                    ev_demo_app_logf(app, EV_LOG_INFO, "app actor: sent welcome text to OLED");
-                }
-            }
-        }
-#endif
-
         return ev_demo_app_publish_diag_request(state);
+
+    case EV_TICK_1S:
+        return ev_demo_app_handle_tick_for_oled(state);
 
     case EV_TEMP_UPDATED:
         {
@@ -263,31 +477,8 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
                 return EV_ERR_CONTRACT;
             }
 
-#ifndef EV_HOST_BUILD
-            {
-                ev_msg_t text_msg;
-                ev_oled_display_text_cmd_t cmd = {0};
-                const int32_t centi_celsius = (int32_t)temp_payload->centi_celsius;
-                const uint32_t abs_centi_celsius = (centi_celsius < 0) ? (uint32_t)(-centi_celsius) : (uint32_t)centi_celsius;
-                const char *sign = (centi_celsius < 0) ? "-" : "";
-
-                cmd.page = 4U;
-                cmd.column = 12U;
-                (void)snprintf(cmd.text,
-                               sizeof(cmd.text),
-                               "%s%lu.%02lu C",
-                               sign,
-                               (unsigned long)(abs_centi_celsius / 100U),
-                               (unsigned long)(abs_centi_celsius % 100U));
-
-                if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP) == EV_OK) {
-                    if (ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd)) == EV_OK) {
-                        (void)ev_demo_app_publish_owned(app, &text_msg);
-                    }
-                }
-            }
-#endif
-
+            state->last_temp = *temp_payload;
+            state->temp_valid = true;
             return EV_OK;
         }
 
@@ -299,28 +490,8 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
                 return EV_ERR_CONTRACT;
             }
 
-#ifndef EV_HOST_BUILD
-            {
-                ev_msg_t text_msg;
-                ev_oled_display_text_cmd_t cmd = {0};
-
-                cmd.page = 3U;
-                cmd.column = 28U;
-                (void)snprintf(cmd.text,
-                               sizeof(cmd.text),
-                               "%02u:%02u:%02u",
-                               (unsigned)time_payload->hours,
-                               (unsigned)time_payload->minutes,
-                               (unsigned)time_payload->seconds);
-
-                if (ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP) == EV_OK) {
-                    if (ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd)) == EV_OK) {
-                        (void)ev_demo_app_publish_owned(app, &text_msg);
-                    }
-                }
-            }
-#endif
-
+            state->last_time = *time_payload;
+            state->time_valid = true;
             return EV_OK;
         }
 
@@ -465,6 +636,8 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     app->board_name = cfg->board_name;
     app->tick_period_ms = (cfg->tick_period_ms == 0U) ? EV_DEMO_APP_DEFAULT_TICK_MS : cfg->tick_period_ms;
     app->app_actor.app = app;
+    app->app_actor.direction_x = (int8_t)1;
+    app->app_actor.direction_y = (int8_t)1;
     app->diag_actor.app = app;
 
 #ifndef EV_HOST_BUILD
