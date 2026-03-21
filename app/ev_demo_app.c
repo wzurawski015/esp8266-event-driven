@@ -12,6 +12,7 @@
 #include "ev/publish.h"
 
 #define EV_DEMO_APP_DEFAULT_TICK_MS 1000U
+#define EV_DEMO_APP_FAST_TICK_MS 100U
 #define EV_DEMO_APP_TURN_BUDGET 4U
 
 typedef struct {
@@ -156,27 +157,65 @@ static ev_result_t ev_demo_app_publish_diag_request(ev_demo_app_actor_state_t *s
     return ev_demo_app_publish_owned(app, &msg);
 }
 
-static ev_result_t ev_demo_app_publish_tick(ev_demo_app_t *app)
+static ev_result_t ev_demo_app_publish_system_event(ev_demo_app_t *app,
+                                                 ev_event_id_t event_id,
+                                                 const void *payload,
+                                                 size_t payload_size)
 {
     ev_msg_t msg;
+    ev_result_t rc;
+
+    if ((app == NULL) || ((payload == NULL) && (payload_size != 0U))) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    rc = ev_msg_init_publish(&msg, event_id, ACT_BOOT);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    if (payload_size > 0U) {
+        rc = ev_msg_set_inline_payload(&msg, payload, payload_size);
+        if (rc != EV_OK) {
+            (void)ev_msg_dispose(&msg);
+            return rc;
+        }
+    }
+
+    return ev_demo_app_publish_owned(app, &msg);
+}
+
+static ev_result_t ev_demo_app_publish_tick(ev_demo_app_t *app)
+{
     ev_result_t rc;
 
     if (app == NULL) {
         return EV_ERR_INVALID_ARG;
     }
 
-    rc = ev_msg_init_publish(&msg, EV_TICK_1S, ACT_BOOT);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_owned(app, &msg);
+    rc = ev_demo_app_publish_system_event(app, EV_TICK_1S, NULL, 0U);
     if (rc == EV_OK) {
         ++app->stats.ticks_published;
     }
 
     return rc;
 }
+
+static ev_result_t ev_demo_app_publish_tick_100ms(ev_demo_app_t *app)
+{
+    return ev_demo_app_publish_system_event(app, EV_TICK_100MS, NULL, 0U);
+}
+
+#ifndef EV_HOST_BUILD
+static ev_result_t ev_demo_app_publish_irq_sample(ev_demo_app_t *app, const ev_irq_sample_t *sample)
+{
+    if ((app == NULL) || (sample == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    return ev_demo_app_publish_system_event(app, EV_GPIO_IRQ, sample, sizeof(*sample));
+}
+#endif
 
 static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t *msg)
 {
@@ -344,6 +383,20 @@ static ev_result_t ev_demo_diag_actor_handler(void *actor_context, const ev_msg_
 
         return ev_demo_app_publish_snapshot(state);
 
+    case EV_TICK_100MS:
+        return EV_OK;
+
+    case EV_GPIO_IRQ:
+        {
+            const ev_irq_sample_t *sample = (const ev_irq_sample_t *)ev_msg_payload_data(msg);
+
+            if ((sample == NULL) || (ev_msg_payload_size(msg) != sizeof(*sample))) {
+                return EV_ERR_CONTRACT;
+            }
+
+            return EV_OK;
+        }
+
     case EV_DIAG_SNAPSHOT_REQ:
         return ev_demo_app_publish_snapshot(state);
 
@@ -406,6 +459,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     memset(app, 0, sizeof(*app));
     app->clock_port = cfg->clock_port;
     app->log_port = cfg->log_port;
+    app->irq_port = cfg->irq_port;
     app->app_tag = cfg->app_tag;
     app->board_name = cfg->board_name;
     app->tick_period_ms = (cfg->tick_period_ms == 0U) ? EV_DEMO_APP_DEFAULT_TICK_MS : cfg->tick_period_ms;
@@ -423,6 +477,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) return rc;
     app->next_tick_ms = now_ms + app->tick_period_ms;
+    app->next_tick_100ms_ms = now_ms + EV_DEMO_APP_FAST_TICK_MS;
 
     /* Inicjalizacja skrzynek pocztowych */
     rc = ev_mailbox_init(&app->app_mailbox, EV_MAILBOX_FIFO_8, app->app_storage, EV_ARRAY_LEN(app->app_storage));
@@ -564,13 +619,59 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
     rc = ev_demo_app_drain_until_idle(app);
     if (rc != EV_OK) return rc;
 
+#ifndef EV_HOST_BUILD
+    if ((app->irq_port != NULL) && (app->irq_port->pop != NULL)) {
+        ev_irq_sample_t sample = {0};
+
+        for (;;) {
+            rc = app->irq_port->pop(app->irq_port->ctx, &sample);
+            if (rc == EV_ERR_EMPTY) {
+                break;
+            }
+            if (rc != EV_OK) {
+                return rc;
+            }
+
+            rc = ev_demo_app_publish_irq_sample(app, &sample);
+            if (rc != EV_OK) {
+                return rc;
+            }
+
+            rc = ev_demo_app_drain_until_idle(app);
+            if (rc != EV_OK) {
+                return rc;
+            }
+        }
+    }
+#endif
+
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) return rc;
 
-    while ((int32_t)(now_ms - app->next_tick_ms) >= 0) {
+    for (;;) {
+        const bool tick_100ms_due = ((int32_t)(now_ms - app->next_tick_100ms_ms) >= 0);
+        const bool tick_1s_due = ((int32_t)(now_ms - app->next_tick_ms) >= 0);
+
+        if (!tick_100ms_due && !tick_1s_due) {
+            break;
+        }
+
+        if (tick_100ms_due && (!tick_1s_due || ((int32_t)(app->next_tick_100ms_ms - app->next_tick_ms) <= 0))) {
+            rc = ev_demo_app_publish_tick_100ms(app);
+            if (rc != EV_OK) return rc;
+            app->next_tick_100ms_ms += EV_DEMO_APP_FAST_TICK_MS;
+
+            rc = ev_demo_app_drain_until_idle(app);
+            if (rc != EV_OK) return rc;
+            continue;
+        }
+
         rc = ev_demo_app_publish_tick(app);
         if (rc != EV_OK) return rc;
         app->next_tick_ms += app->tick_period_ms;
+
+        rc = ev_demo_app_drain_until_idle(app);
+        if (rc != EV_OK) return rc;
     }
 
     return ev_demo_app_drain_until_idle(app);

@@ -12,12 +12,12 @@ int main(void)
     size_t j;
 
 #ifdef EV_HOST_BUILD
-    assert(ev_route_count() == 9U);
+    assert(ev_route_count() == 11U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 2U);
     assert(!ev_route_exists(EV_BOOT_COMPLETED, ACT_DS18B20));
     assert(!ev_route_exists(EV_TICK_1S, ACT_DS18B20));
 #else
-    assert(ev_route_count() == 15U);
+    assert(ev_route_count() == 17U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 4U);
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_OLED));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_DS18B20));
@@ -26,11 +26,15 @@ int main(void)
 #endif
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
     assert(ev_route_count_for_event(EV_DIAG_SNAPSHOT_RSP) == 1U);
+    assert(ev_route_count_for_event(EV_TICK_100MS) == 1U);
+    assert(ev_route_count_for_event(EV_GPIO_IRQ) == 1U);
     assert(ev_route_count_for_event(EV_TIME_UPDATED) == 1U);
     assert(ev_route_count_for_event(EV_TEMP_UPDATED) == 1U);
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_DIAG));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_APP));
     assert(ev_route_exists(EV_DIAG_SNAPSHOT_RSP, ACT_APP));
+    assert(ev_route_exists(EV_TICK_100MS, ACT_DIAG));
+    assert(ev_route_exists(EV_GPIO_IRQ, ACT_DIAG));
     assert(ev_route_exists(EV_TIME_UPDATED, ACT_APP));
     assert(ev_route_exists(EV_TEMP_UPDATED, ACT_APP));
     assert(!ev_route_exists(EV_BOOT_STARTED, ACT_STREAM));
