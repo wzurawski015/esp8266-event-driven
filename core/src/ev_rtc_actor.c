@@ -180,6 +180,8 @@ static ev_result_t ev_rtc_actor_read_time_payload(ev_rtc_actor_ctx_t *ctx, ev_ti
         return EV_ERR_INVALID_ARG;
     }
 
+    memset(payload, 0, sizeof(*payload));
+
     status = ctx->i2c_port->read_regs(ctx->i2c_port->ctx,
                                       ctx->port_num,
                                       ctx->device_address_7bit,
@@ -189,8 +191,6 @@ static ev_result_t ev_rtc_actor_read_time_payload(ev_rtc_actor_ctx_t *ctx, ev_ti
     if (status != EV_I2C_OK) {
         return EV_OK;
     }
-
-    memset(payload, 0, sizeof(*payload));
     payload->seconds = ev_rtc_actor_bcd_to_decimal((uint8_t)(raw_time[0] & EV_RTC_SECONDS_MASK));
     payload->minutes = ev_rtc_actor_bcd_to_decimal((uint8_t)(raw_time[1] & EV_RTC_MINUTES_MASK));
     payload->hours = ev_rtc_actor_decode_hours(raw_time[2]);
