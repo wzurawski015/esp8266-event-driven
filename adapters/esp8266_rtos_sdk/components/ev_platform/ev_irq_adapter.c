@@ -9,6 +9,7 @@
 #include "esp_attr.h"
 #include "esp_err.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "esp8266/gpio_register.h"
 
 #include "ev/esp8266_port_adapters.h"
@@ -157,7 +158,7 @@ static void IRAM_ATTR ev_esp8266_irq_isr(void *arg)
             sample.line_id = line->line_id;
             sample.edge = ev_esp8266_irq_edge_from_sample(line, level);
             sample.level = level;
-            sample.timestamp_us = (uint32_t)system_get_time();
+            sample.timestamp_us = (uint32_t)esp_timer_get_time();
             line->last_level = level;
             ev_esp8266_irq_push_isr(adapter, &sample);
         }
