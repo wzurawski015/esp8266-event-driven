@@ -15,6 +15,8 @@
 #define EV_DEMO_APP_FAST_TICK_MS 100U
 #define EV_DEMO_APP_TURN_BUDGET 4U
 #define EV_DEMO_APP_RTC_SQW_LINE_ID 0U
+#define EV_DEMO_APP_BUTTON_TOGGLE_SCREENSAVER 0U
+#define EV_DEMO_APP_LED_SCREENSAVER_PAUSED 0x01U
 #define EV_DEMO_APP_OLED_TITLE_TEXT "ATNEL AIR"
 #define EV_DEMO_APP_OLED_TITLE_PAGES 3U
 #define EV_DEMO_APP_OLED_TITLE_PAGE_OFFSET 0U
@@ -217,6 +219,38 @@ static ev_result_t ev_demo_app_publish_tick(ev_demo_app_t *app)
 static ev_result_t ev_demo_app_publish_tick_100ms(ev_demo_app_t *app)
 {
     return ev_demo_app_publish_system_event(app, EV_TICK_100MS, NULL, 0U);
+}
+
+static ev_result_t ev_demo_app_publish_panel_led_command(ev_demo_app_t *app, uint8_t value_mask, uint8_t valid_mask)
+{
+#ifndef EV_HOST_BUILD
+    ev_msg_t msg = {0};
+    ev_panel_led_set_cmd_t cmd = {0};
+    ev_result_t rc;
+
+    if (app == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    cmd.value_mask = (uint8_t)(value_mask & EV_MCP23008_LED_MASK);
+    cmd.valid_mask = (uint8_t)(valid_mask & EV_MCP23008_LED_MASK);
+
+    rc = ev_msg_init_publish(&msg, EV_PANEL_LED_SET_CMD, ACT_APP);
+    if (rc == EV_OK) {
+        rc = ev_msg_set_inline_payload(&msg, &cmd, sizeof(cmd));
+    }
+    if (rc != EV_OK) {
+        (void)ev_msg_dispose(&msg);
+        return rc;
+    }
+
+    return ev_demo_app_publish_owned(app, &msg);
+#else
+    (void)app;
+    (void)value_mask;
+    (void)valid_mask;
+    return EV_OK;
+#endif
 }
 
 #ifndef EV_HOST_BUILD
@@ -427,12 +461,14 @@ static ev_result_t ev_demo_app_handle_tick_for_oled(ev_demo_app_actor_state_t *s
         return EV_ERR_INVALID_ARG;
     }
 
-    ev_demo_app_screensaver_step_axis(&state->current_column_offset,
-                                      &state->direction_x,
-                                      EV_DEMO_APP_OLED_MAX_COLUMN_OFFSET);
-    ev_demo_app_screensaver_step_axis(&state->current_page_offset,
-                                      &state->direction_y,
-                                      EV_DEMO_APP_OLED_MAX_PAGE_OFFSET);
+    if (!state->screensaver_paused) {
+        ev_demo_app_screensaver_step_axis(&state->current_column_offset,
+                                          &state->direction_x,
+                                          EV_DEMO_APP_OLED_MAX_COLUMN_OFFSET);
+        ev_demo_app_screensaver_step_axis(&state->current_page_offset,
+                                          &state->direction_y,
+                                          EV_DEMO_APP_OLED_MAX_PAGE_OFFSET);
+    }
 
 #ifndef EV_HOST_BUILD
     return ev_demo_app_render_oled_frame(state);
@@ -455,16 +491,28 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
 
     switch (msg->event_id) {
     case EV_BOOT_COMPLETED:
-        ++app->stats.boot_completions;
-        state->current_page_offset = 0U;
-        state->current_column_offset = 0U;
-        state->last_page_offset = 0U;
-        state->last_column_offset = 0U;
-        state->direction_x = (int8_t)1;
-        state->direction_y = (int8_t)1;
-        state->oled_frame_visible = false;
-        ev_demo_app_logf(app, EV_LOG_INFO, "app actor: boot complete -> requesting diag snapshot");
-        return ev_demo_app_publish_diag_request(state);
+        {
+            ev_result_t rc;
+
+            ++app->stats.boot_completions;
+            state->current_page_offset = 0U;
+            state->current_column_offset = 0U;
+            state->last_page_offset = 0U;
+            state->last_column_offset = 0U;
+            state->direction_x = (int8_t)1;
+            state->direction_y = (int8_t)1;
+            state->oled_frame_visible = false;
+            state->screensaver_paused = false;
+            state->panel_led_mask = 0U;
+            ev_demo_app_logf(app, EV_LOG_INFO, "app actor: boot complete -> requesting diag snapshot");
+
+            rc = ev_demo_app_publish_panel_led_command(app, 0U, EV_MCP23008_LED_MASK);
+            if (rc != EV_OK) {
+                return rc;
+            }
+
+            return ev_demo_app_publish_diag_request(state);
+        }
 
     case EV_TICK_1S:
         return ev_demo_app_handle_tick_for_oled(state);
@@ -492,6 +540,43 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
 
             state->last_time = *time_payload;
             state->time_valid = true;
+            return EV_OK;
+        }
+
+    case EV_BUTTON_EVENT:
+        {
+            const ev_button_event_payload_t *button_payload =
+                (const ev_button_event_payload_t *)ev_msg_payload_data(msg);
+
+            if ((button_payload == NULL) || (ev_msg_payload_size(msg) != sizeof(*button_payload))) {
+                return EV_ERR_CONTRACT;
+            }
+
+            if ((button_payload->button_id == EV_DEMO_APP_BUTTON_TOGGLE_SCREENSAVER) &&
+                (button_payload->action == EV_BUTTON_ACTION_SHORT)) {
+                ev_result_t rc;
+
+                state->screensaver_paused = !state->screensaver_paused;
+                if (state->screensaver_paused) {
+                    state->panel_led_mask = (uint8_t)(state->panel_led_mask | EV_DEMO_APP_LED_SCREENSAVER_PAUSED);
+                } else {
+                    state->panel_led_mask =
+                        (uint8_t)(state->panel_led_mask & (uint8_t)(~EV_DEMO_APP_LED_SCREENSAVER_PAUSED));
+                }
+
+                rc = ev_demo_app_publish_panel_led_command(app,
+                                                           state->panel_led_mask,
+                                                           EV_DEMO_APP_LED_SCREENSAVER_PAUSED);
+                if (rc != EV_OK) {
+                    return rc;
+                }
+
+                ev_demo_app_logf(app,
+                                 EV_LOG_INFO,
+                                 "app actor: screensaver %s",
+                                 state->screensaver_paused ? "paused" : "resumed");
+            }
+
             return EV_OK;
         }
 
@@ -660,8 +745,17 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_mailbox_init(&app->diag_mailbox, EV_MAILBOX_FIFO_8, app->diag_storage, EV_ARRAY_LEN(app->diag_storage));
     if (rc != EV_OK) return rc;
 
+    rc = ev_mailbox_init(&app->panel_mailbox, EV_MAILBOX_FIFO_8, app->panel_storage, EV_ARRAY_LEN(app->panel_storage));
+    if (rc != EV_OK) return rc;
+
 #ifndef EV_HOST_BUILD
     rc = ev_mailbox_init(&app->rtc_mailbox, EV_MAILBOX_FIFO_8, app->rtc_storage, EV_ARRAY_LEN(app->rtc_storage));
+    if (rc != EV_OK) return rc;
+
+    rc = ev_mailbox_init(&app->mcp23008_mailbox,
+                         EV_MAILBOX_FIFO_8,
+                         app->mcp23008_storage,
+                         EV_ARRAY_LEN(app->mcp23008_storage));
     if (rc != EV_OK) return rc;
 
     rc = ev_mailbox_init(&app->ds18b20_mailbox,
@@ -681,7 +775,28 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_runtime_init(&app->diag_runtime, ACT_DIAG, &app->diag_mailbox, ev_demo_diag_actor_handler, &app->diag_actor);
     if (rc != EV_OK) return rc;
 
+    rc = ev_panel_actor_init(&app->panel_ctx, ev_actor_registry_delivery, &app->registry);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->panel_runtime, ACT_PANEL, &app->panel_mailbox, ev_panel_actor_handle, &app->panel_ctx);
+    if (rc != EV_OK) return rc;
+
 #ifndef EV_HOST_BUILD
+    rc = ev_mcp23008_actor_init(&app->mcp23008_ctx,
+                                  active_i2c,
+                                  EV_I2C_PORT_NUM_0,
+                                  EV_MCP23008_DEFAULT_ADDR_7BIT,
+                                  ev_actor_registry_delivery,
+                                  &app->registry);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->mcp23008_runtime,
+                               ACT_MCP23008,
+                               &app->mcp23008_mailbox,
+                               ev_mcp23008_actor_handle,
+                               &app->mcp23008_ctx);
+    if (rc != EV_OK) return rc;
+
     rc = ev_rtc_actor_init(&app->rtc_ctx,
                            active_i2c,
                            EV_I2C_PORT_NUM_0,
@@ -725,7 +840,13 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_registry_bind(&app->registry, &app->diag_runtime);
     if (rc != EV_OK) return rc;
 
+    rc = ev_actor_registry_bind(&app->registry, &app->panel_runtime);
+    if (rc != EV_OK) return rc;
+
 #ifndef EV_HOST_BUILD
+    rc = ev_actor_registry_bind(&app->registry, &app->mcp23008_runtime);
+    if (rc != EV_OK) return rc;
+
     rc = ev_actor_registry_bind(&app->registry, &app->rtc_runtime);
     if (rc != EV_OK) return rc;
 

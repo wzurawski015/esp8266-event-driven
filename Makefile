@@ -22,7 +22,9 @@ CORE_SRCS := \
     core/src/ev_system_pump.c \
     core/src/ev_lease_pool.c \
     core/src/ev_rtc_actor.c \
-    core/src/ev_ds18b20_actor.c
+    core/src/ev_ds18b20_actor.c \
+    core/src/ev_mcp23008_actor.c \
+    core/src/ev_panel_actor.c
 
 APP_SRCS := \
     app/ev_demo_app.c
