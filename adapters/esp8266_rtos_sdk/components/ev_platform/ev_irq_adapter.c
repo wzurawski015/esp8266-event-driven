@@ -216,7 +216,10 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
 
         sdk_cfg.pin_bit_mask = (1UL << src->gpio_num);
         sdk_cfg.mode = GPIO_MODE_INPUT;
-        sdk_cfg.pull_up_en = (src->pull_mode == EV_GPIO_IRQ_PULL_UP) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
+        /* Shared open-drain interrupt sources must be able to return to
+         * HIGH between falling edges. Keep the internal pull-up enabled
+         * for GPIO-backed IRQ ingress lines on ESP8266. */
+        sdk_cfg.pull_up_en = GPIO_PULLUP_ENABLE;
         sdk_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
         sdk_cfg.intr_type = GPIO_INTR_DISABLE;
 
