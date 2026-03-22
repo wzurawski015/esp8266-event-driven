@@ -41,6 +41,7 @@ EV_STATIC_ASSERT(sizeof(ev_time_payload_t) <= EV_MSG_INLINE_CAPACITY,
  */
 typedef struct {
     ev_i2c_port_t *i2c_port;
+    ev_irq_port_t *irq_port;
     ev_i2c_port_num_t port_num;
     uint8_t device_address_7bit;
     ev_irq_line_id_t sqw_line_id;
@@ -58,6 +59,7 @@ typedef struct {
  *
  * @param ctx Context to initialize.
  * @param i2c_port Injected platform I2C contract.
+ * @param irq_port Injected platform IRQ ingress contract used to arm the SQW line.
  * @param port_num Logical I2C controller number.
  * @param device_address_7bit Target 7-bit RTC I2C address.
  * @param sqw_line_id Logical IRQ line identifier used by the DS3231 SQW pin.
@@ -67,6 +69,7 @@ typedef struct {
  */
 ev_result_t ev_rtc_actor_init(ev_rtc_actor_ctx_t *ctx,
                               ev_i2c_port_t *i2c_port,
+                              ev_irq_port_t *irq_port,
                               ev_i2c_port_num_t port_num,
                               uint8_t device_address_7bit,
                               ev_irq_line_id_t sqw_line_id,

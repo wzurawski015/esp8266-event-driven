@@ -51,8 +51,8 @@ ev_result_t ev_i2c_scan(ev_i2c_port_num_t port_num);
  * @brief Initialize the ESP8266-backed GPIO interrupt ingress adapter.
  *
  * The adapter owns one static ring buffer populated from a very small ISR. The
- * public Core-facing contract exposes only normalized interrupt samples through
- * ev_irq_port_t::pop.
+ * public Core-facing contract exposes normalized interrupt samples through
+ * ev_irq_port_t::pop and explicit per-line arming through ev_irq_port_t::enable.
  *
  * @param out_port Destination public contract populated on success.
  * @param line_cfgs Static line-to-GPIO mappings owned by the caller.

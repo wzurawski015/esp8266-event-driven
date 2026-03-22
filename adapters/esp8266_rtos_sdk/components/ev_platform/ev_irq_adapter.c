@@ -196,6 +196,41 @@ static ev_result_t ev_esp8266_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
     return EV_OK;
 }
 
+static ev_result_t ev_esp8266_irq_enable(void *ctx, ev_irq_line_id_t line_id, bool enabled)
+{
+    ev_esp8266_irq_adapter_ctx_t *adapter = (ev_esp8266_irq_adapter_ctx_t *)ctx;
+    size_t i;
+
+    if (adapter == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!adapter->configured) {
+        return EV_ERR_STATE;
+    }
+
+    for (i = 0U; i < adapter->line_count; ++i) {
+        ev_esp8266_irq_line_t *line = &adapter->lines[i];
+        esp_err_t sdk_rc;
+        gpio_int_type_t intr_type;
+
+        if ((!line->configured) || (line->line_id != line_id)) {
+            continue;
+        }
+
+        line->last_level = (uint8_t)((gpio_get_level((gpio_num_t)line->gpio_num) != 0) ? 1U : 0U);
+        GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, (1UL << line->gpio_num));
+        intr_type = enabled ? ev_esp8266_gpio_intr_type_from_cfg(line->trigger) : GPIO_INTR_DISABLE;
+        sdk_rc = gpio_set_intr_type((gpio_num_t)line->gpio_num, intr_type);
+        if (sdk_rc != ESP_OK) {
+            return EV_ERR_STATE;
+        }
+
+        return EV_OK;
+    }
+
+    return EV_ERR_NOT_FOUND;
+}
+
 ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
                                      const ev_gpio_irq_line_config_t *line_cfgs,
                                      size_t line_count)
@@ -240,19 +275,11 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
         return EV_ERR_STATE;
     }
 
-    for (i = 0U; i < line_count; ++i) {
-        const ev_esp8266_irq_line_t *line = &g_ev_irq_ctx.lines[i];
-
-        sdk_rc = gpio_set_intr_type((gpio_num_t)line->gpio_num, ev_esp8266_gpio_intr_type_from_cfg(line->trigger));
-        if (sdk_rc != ESP_OK) {
-            return EV_ERR_STATE;
-        }
-    }
-
     g_ev_irq_ctx.line_count = line_count;
     g_ev_irq_ctx.configured = true;
 
     out_port->ctx = &g_ev_irq_ctx;
     out_port->pop = ev_esp8266_irq_pop;
+    out_port->enable = ev_esp8266_irq_enable;
     return EV_OK;
 }

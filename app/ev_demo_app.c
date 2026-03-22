@@ -799,6 +799,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_rtc_actor_init(&app->rtc_ctx,
                            active_i2c,
+                           app->irq_port,
                            EV_I2C_PORT_NUM_0,
                            EV_RTC_DEFAULT_ADDR_7BIT,
                            EV_DEMO_APP_RTC_SQW_LINE_ID,

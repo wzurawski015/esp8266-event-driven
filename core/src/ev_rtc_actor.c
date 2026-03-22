@@ -153,8 +153,10 @@ static ev_result_t ev_rtc_actor_enable_square_wave(ev_rtc_actor_ctx_t *ctx)
 {
     const uint8_t control = EV_RTC_CONTROL_1HZ_SQW;
     ev_i2c_status_t status;
+    ev_result_t rc;
 
-    if ((ctx == NULL) || (ctx->i2c_port == NULL) || (ctx->i2c_port->write_regs == NULL)) {
+    if ((ctx == NULL) || (ctx->i2c_port == NULL) || (ctx->i2c_port->write_regs == NULL) || (ctx->irq_port == NULL) ||
+        (ctx->irq_port->enable == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 
@@ -165,7 +167,12 @@ static ev_result_t ev_rtc_actor_enable_square_wave(ev_rtc_actor_ctx_t *ctx)
                                        &control,
                                        1U);
     if (status != EV_I2C_OK) {
-        return EV_OK;
+        return EV_ERR_STATE;
+    }
+
+    rc = ctx->irq_port->enable(ctx->irq_port->ctx, ctx->sqw_line_id, true);
+    if (rc != EV_OK) {
+        return rc;
     }
 
     return EV_OK;
@@ -242,6 +249,7 @@ static ev_result_t ev_rtc_actor_handle_gpio_irq(ev_rtc_actor_ctx_t *ctx, const e
 
 ev_result_t ev_rtc_actor_init(ev_rtc_actor_ctx_t *ctx,
                               ev_i2c_port_t *i2c_port,
+                              ev_irq_port_t *irq_port,
                               ev_i2c_port_num_t port_num,
                               uint8_t device_address_7bit,
                               ev_irq_line_id_t sqw_line_id,
@@ -249,12 +257,14 @@ ev_result_t ev_rtc_actor_init(ev_rtc_actor_ctx_t *ctx,
                               void *deliver_context)
 {
     if ((ctx == NULL) || (i2c_port == NULL) || (i2c_port->read_regs == NULL) || (i2c_port->write_regs == NULL) ||
-        (deliver == NULL) || (deliver_context == NULL) || (device_address_7bit > 0x7FU)) {
+        (irq_port == NULL) || (irq_port->enable == NULL) || (deliver == NULL) || (deliver_context == NULL) ||
+        (device_address_7bit > 0x7FU)) {
         return EV_ERR_INVALID_ARG;
     }
 
     memset(ctx, 0, sizeof(*ctx));
     ctx->i2c_port = i2c_port;
+    ctx->irq_port = irq_port;
     ctx->port_num = port_num;
     ctx->device_address_7bit = device_address_7bit;
     ctx->sqw_line_id = sqw_line_id;
