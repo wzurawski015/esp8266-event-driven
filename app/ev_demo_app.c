@@ -643,6 +643,10 @@ static ev_result_t ev_demo_diag_actor_handler(void *actor_context, const ev_msg_
     case EV_TICK_100MS:
         return EV_OK;
 
+    case EV_MCP23008_READY:
+        ev_demo_app_logf(app, EV_LOG_INFO, "diag actor: mcp23008 ready -> rtc may arm sqw irq");
+        return EV_OK;
+
     case EV_GPIO_IRQ:
         {
             const ev_irq_sample_t *sample = (const ev_irq_sample_t *)ev_msg_payload_data(msg);
