@@ -95,9 +95,33 @@ static ev_result_t ev_mcp23008_actor_publish_input_changed(ev_mcp23008_actor_ctx
     return rc;
 }
 
+static ev_result_t ev_mcp23008_actor_publish_ready(ev_mcp23008_actor_ctx_t *ctx)
+{
+    ev_msg_t msg = {0};
+    ev_result_t rc;
+    ev_result_t dispose_rc;
+
+    if ((ctx == NULL) || (ctx->deliver == NULL) || (ctx->deliver_context == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    rc = ev_msg_init_publish(&msg, EV_MCP23008_READY, ACT_MCP23008);
+    if (rc == EV_OK) {
+        rc = ev_publish(&msg, ctx->deliver, ctx->deliver_context, NULL);
+    }
+
+    dispose_rc = ev_msg_dispose(&msg);
+    if ((rc == EV_OK) && (dispose_rc != EV_OK)) {
+        rc = dispose_rc;
+    }
+
+    return rc;
+}
+
 static bool ev_mcp23008_actor_try_configure(ev_mcp23008_actor_ctx_t *ctx)
 {
     uint8_t raw_gpio = 0U;
+    ev_result_t rc;
 
     if (ctx == NULL) {
         return false;
@@ -105,28 +129,41 @@ static bool ev_mcp23008_actor_try_configure(ev_mcp23008_actor_ctx_t *ctx)
 
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_IOCON, EV_MCP23008_IOCON_ODR)) {
         ctx->configured = false;
+        ctx->inputs_valid = false;
         return false;
     }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_IODIR, EV_MCP23008_INPUT_DIR_MASK)) {
         ctx->configured = false;
+        ctx->inputs_valid = false;
         return false;
     }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_GPPU, EV_MCP23008_INPUT_PULLUP_MASK)) {
         ctx->configured = false;
+        ctx->inputs_valid = false;
         return false;
     }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_OLAT, ev_mcp23008_actor_build_olat(ctx->output_shadow))) {
         ctx->configured = false;
+        ctx->inputs_valid = false;
         return false;
     }
     if (!ev_mcp23008_actor_read_gpio(ctx, &raw_gpio)) {
         ctx->configured = false;
+        ctx->inputs_valid = false;
         return false;
     }
 
     ctx->input_shadow = ev_mcp23008_actor_normalize_buttons(raw_gpio);
     ctx->inputs_valid = true;
     ctx->configured = true;
+
+    rc = ev_mcp23008_actor_publish_ready(ctx);
+    if (rc != EV_OK) {
+        ctx->configured = false;
+        ctx->inputs_valid = false;
+        return false;
+    }
+
     return true;
 }
 
