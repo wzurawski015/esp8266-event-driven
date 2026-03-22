@@ -16,7 +16,9 @@
 #include "ev/port_irq.h"
 #include "ev/port_onewire.h"
 #include "ev/ds18b20_actor.h"
+#include "ev/mcp23008_actor.h"
 #include "ev/oled_actor.h"
+#include "ev/panel_actor.h"
 #include "ev/rtc_actor.h"
 
 #ifdef __cplusplus
@@ -68,6 +70,8 @@ typedef struct {
     bool time_valid;
     bool temp_valid;
     bool oled_frame_visible;
+    bool screensaver_paused;
+    uint8_t panel_led_mask;
     uint8_t current_page_offset;
     uint8_t current_column_offset;
     uint8_t last_page_offset;
@@ -103,19 +107,25 @@ struct ev_demo_app {
     ev_actor_registry_t registry;
     ev_mailbox_t app_mailbox;
     ev_mailbox_t diag_mailbox;
+    ev_mailbox_t panel_mailbox; /* Skrzynka pocztowa dla logicznego panelu */
     ev_mailbox_t rtc_mailbox; /* Skrzynka pocztowa dla RTC */
+    ev_mailbox_t mcp23008_mailbox; /* Skrzynka pocztowa dla MCP23008 */
     ev_mailbox_t ds18b20_mailbox; /* Skrzynka pocztowa dla DS18B20 */
     ev_mailbox_t oled_mailbox; /* Skrzynka pocztowa dla OLED */
 
     ev_msg_t app_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
     ev_msg_t diag_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
+    ev_msg_t panel_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla logicznego panelu */
     ev_msg_t rtc_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla RTC */
+    ev_msg_t mcp23008_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla MCP23008 */
     ev_msg_t ds18b20_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla DS18B20 */
     ev_msg_t oled_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla OLED */
 
     ev_actor_runtime_t app_runtime;
     ev_actor_runtime_t diag_runtime;
+    ev_actor_runtime_t panel_runtime; /* Wątek logiczny Aktora Panelu */
     ev_actor_runtime_t rtc_runtime; /* Wątek logiczny Aktora RTC */
+    ev_actor_runtime_t mcp23008_runtime; /* Wątek logiczny Aktora MCP23008 */
     ev_actor_runtime_t ds18b20_runtime; /* Wątek logiczny Aktora DS18B20 */
     ev_actor_runtime_t oled_runtime; /* Wątek logiczny Aktora OLED */
 
@@ -129,7 +139,9 @@ struct ev_demo_app {
 
     ev_demo_app_actor_state_t app_actor;
     ev_demo_diag_actor_state_t diag_actor;
+    ev_panel_actor_ctx_t panel_ctx; /* Stan logicznego Aktora Panelu */
     ev_rtc_actor_ctx_t rtc_ctx; /* Fizyczny stan i konfiguracja Aktora RTC */
+    ev_mcp23008_actor_ctx_t mcp23008_ctx; /* Fizyczny stan i konfiguracja Aktora MCP23008 */
     ev_ds18b20_actor_ctx_t ds18b20_ctx; /* Fizyczny stan i konfiguracja Aktora DS18B20 */
     ev_oled_actor_ctx_t oled_ctx; /* Fizyczny stan i bufor ekranu OLED */
 

@@ -14,3 +14,6 @@ EV_EVENT(EV_TIME_UPDATED, EV_PAYLOAD_INLINE, "RTC time updated from hardware clo
 EV_EVENT(EV_TEMP_UPDATED, EV_PAYLOAD_INLINE, "DS18B20 temperature updated from hardware sensor")
 EV_EVENT(EV_TICK_100MS, EV_PAYLOAD_INLINE, "One-hundred-millisecond system tick")
 EV_EVENT(EV_GPIO_IRQ, EV_PAYLOAD_INLINE, "Normalized GPIO interrupt sample")
+EV_EVENT(EV_MCP23008_INPUT_CHANGED, EV_PAYLOAD_INLINE, "Normalized MCP23008 button input state changed")
+EV_EVENT(EV_BUTTON_EVENT, EV_PAYLOAD_INLINE, "Logical user button event")
+EV_EVENT(EV_PANEL_LED_SET_CMD, EV_PAYLOAD_INLINE, "Logical panel LED set command")
