@@ -11,6 +11,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp8266/gpio_register.h"
+#include "rom/ets_sys.h"
 
 #include "ev/esp8266_port_adapters.h"
 
@@ -274,6 +275,14 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
     if (sdk_rc != ESP_OK) {
         return EV_ERR_STATE;
     }
+
+    /* gpio_isr_register() only attaches the ISR. The Xtensa GPIO interrupt
+     * source remains masked until it is explicitly unmasked, matching how the
+     * SDK does it inside gpio_isr_handler_add(). Keep per-line trigger arming
+     * separate via gpio_set_intr_type() in ev_esp8266_irq_enable(). */
+    portENTER_CRITICAL();
+    _xt_isr_unmask((uint32_t)(1UL << ETS_GPIO_INUM));
+    portEXIT_CRITICAL();
 
     g_ev_irq_ctx.line_count = line_count;
     g_ev_irq_ctx.configured = true;

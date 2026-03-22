@@ -646,9 +646,24 @@ static ev_result_t ev_demo_diag_actor_handler(void *actor_context, const ev_msg_
     case EV_GPIO_IRQ:
         {
             const ev_irq_sample_t *sample = (const ev_irq_sample_t *)ev_msg_payload_data(msg);
+            const char *edge_name;
 
             if ((sample == NULL) || (ev_msg_payload_size(msg) != sizeof(*sample))) {
                 return EV_ERR_CONTRACT;
+            }
+
+            if (sample->line_id == EV_DEMO_APP_RTC_SQW_LINE_ID) {
+                edge_name = (sample->edge == EV_IRQ_EDGE_FALLING) ? "falling" :
+                            ((sample->edge == EV_IRQ_EDGE_RISING) ? "rising" : "unknown");
+                ++state->rtc_irq_samples_seen;
+                ev_demo_app_logf(app,
+                                 EV_LOG_INFO,
+                                 "diag actor: rtc irq count=%u line=%u edge=%s level=%u ts_us=%lu",
+                                 (unsigned)state->rtc_irq_samples_seen,
+                                 (unsigned)sample->line_id,
+                                 edge_name,
+                                 (unsigned)sample->level,
+                                 (unsigned long)sample->timestamp_us);
             }
 
             return EV_OK;

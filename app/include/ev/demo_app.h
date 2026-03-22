@@ -88,6 +88,7 @@ typedef struct {
     uint32_t ticks_seen;
     uint32_t snapshots_sent;
     uint32_t last_tick_ms;
+    uint32_t rtc_irq_samples_seen;
 } ev_demo_diag_actor_state_t;
 
 /**
