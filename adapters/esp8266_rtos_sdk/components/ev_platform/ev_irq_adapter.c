@@ -11,6 +11,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp8266/gpio_register.h"
+#include "rom/ets_sys.h"
 
 #include "ev/esp8266_port_adapters.h"
 
@@ -196,6 +197,41 @@ static ev_result_t ev_esp8266_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
     return EV_OK;
 }
 
+static ev_result_t ev_esp8266_irq_enable(void *ctx, ev_irq_line_id_t line_id, bool enabled)
+{
+    ev_esp8266_irq_adapter_ctx_t *adapter = (ev_esp8266_irq_adapter_ctx_t *)ctx;
+    size_t i;
+
+    if (adapter == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!adapter->configured) {
+        return EV_ERR_STATE;
+    }
+
+    for (i = 0U; i < adapter->line_count; ++i) {
+        ev_esp8266_irq_line_t *line = &adapter->lines[i];
+        esp_err_t sdk_rc;
+        gpio_int_type_t intr_type;
+
+        if ((!line->configured) || (line->line_id != line_id)) {
+            continue;
+        }
+
+        line->last_level = (uint8_t)((gpio_get_level((gpio_num_t)line->gpio_num) != 0) ? 1U : 0U);
+        GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, (1UL << line->gpio_num));
+        intr_type = enabled ? ev_esp8266_gpio_intr_type_from_cfg(line->trigger) : GPIO_INTR_DISABLE;
+        sdk_rc = gpio_set_intr_type((gpio_num_t)line->gpio_num, intr_type);
+        if (sdk_rc != ESP_OK) {
+            return EV_ERR_STATE;
+        }
+
+        return EV_OK;
+    }
+
+    return EV_ERR_NOT_FOUND;
+}
+
 ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
                                      const ev_gpio_irq_line_config_t *line_cfgs,
                                      size_t line_count)
@@ -216,7 +252,10 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
 
         sdk_cfg.pin_bit_mask = (1UL << src->gpio_num);
         sdk_cfg.mode = GPIO_MODE_INPUT;
-        sdk_cfg.pull_up_en = (src->pull_mode == EV_GPIO_IRQ_PULL_UP) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
+        /* Shared open-drain interrupt sources must be able to return to
+         * HIGH between falling edges. Keep the internal pull-up enabled
+         * for GPIO-backed IRQ ingress lines on ESP8266. */
+        sdk_cfg.pull_up_en = GPIO_PULLUP_ENABLE;
         sdk_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
         sdk_cfg.intr_type = GPIO_INTR_DISABLE;
 
@@ -237,19 +276,19 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
         return EV_ERR_STATE;
     }
 
-    for (i = 0U; i < line_count; ++i) {
-        const ev_esp8266_irq_line_t *line = &g_ev_irq_ctx.lines[i];
-
-        sdk_rc = gpio_set_intr_type((gpio_num_t)line->gpio_num, ev_esp8266_gpio_intr_type_from_cfg(line->trigger));
-        if (sdk_rc != ESP_OK) {
-            return EV_ERR_STATE;
-        }
-    }
+    /* gpio_isr_register() only attaches the ISR. The Xtensa GPIO interrupt
+     * source remains masked until it is explicitly unmasked, matching how the
+     * SDK does it inside gpio_isr_handler_add(). Keep per-line trigger arming
+     * separate via gpio_set_intr_type() in ev_esp8266_irq_enable(). */
+    portENTER_CRITICAL();
+    _xt_isr_unmask((uint32_t)(1UL << ETS_GPIO_INUM));
+    portEXIT_CRITICAL();
 
     g_ev_irq_ctx.line_count = line_count;
     g_ev_irq_ctx.configured = true;
 
     out_port->ctx = &g_ev_irq_ctx;
     out_port->pop = ev_esp8266_irq_pop;
+    out_port->enable = ev_esp8266_irq_enable;
     return EV_OK;
 }

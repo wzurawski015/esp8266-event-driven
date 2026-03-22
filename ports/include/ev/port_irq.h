@@ -1,6 +1,7 @@
 #ifndef EV_PORT_IRQ_H
 #define EV_PORT_IRQ_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "ev/result.h"
@@ -47,11 +48,23 @@ typedef struct {
 typedef ev_result_t (*ev_irq_pop_fn_t)(void *ctx, ev_irq_sample_t *out_sample);
 
 /**
+ * @brief Enable or disable one logical IRQ ingress line owned by the adapter.
+ *
+ * @param ctx Adapter-owned context bound into the public port object.
+ * @param line_id Stable logical line identifier to modify.
+ * @param enabled True to arm the line, false to mask it.
+ * @return EV_OK on success or another error code when the adapter cannot honor
+ *         the request.
+ */
+typedef ev_result_t (*ev_irq_enable_fn_t)(void *ctx, ev_irq_line_id_t line_id, bool enabled);
+
+/**
  * @brief Platform interrupt-ingress contract.
  */
 typedef struct ev_irq_port {
     void *ctx;
     ev_irq_pop_fn_t pop;
+    ev_irq_enable_fn_t enable;
 } ev_irq_port_t;
 
 #ifdef __cplusplus
