@@ -77,7 +77,7 @@ ev_result_t ev_rtc_actor_init(ev_rtc_actor_ctx_t *ctx,
  * @brief Default actor handler for one RTC runtime instance.
  *
  * Supported events:
- * - EV_BOOT_COMPLETED
+ * - EV_MCP23008_READY
  * - EV_GPIO_IRQ
  *
  * @param actor_context Pointer to ev_rtc_actor_ctx_t.

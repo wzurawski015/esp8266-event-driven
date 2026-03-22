@@ -272,7 +272,7 @@ ev_result_t ev_rtc_actor_handle(void *actor_context, const ev_msg_t *msg)
     }
 
     switch (msg->event_id) {
-    case EV_BOOT_COMPLETED:
+    case EV_MCP23008_READY:
         return ev_rtc_actor_enable_square_wave(ctx);
 
     case EV_GPIO_IRQ:
