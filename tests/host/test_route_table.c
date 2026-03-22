@@ -28,6 +28,7 @@ int main(void)
     assert(ev_route_exists(EV_TICK_1S, ACT_DS18B20));
     assert(ev_route_exists(EV_TICK_100MS, ACT_MCP23008));
     assert(ev_route_exists(EV_PANEL_LED_SET_CMD, ACT_MCP23008));
+    assert(!ev_route_exists(EV_TICK_1S, ACT_RTC));
 #endif
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
 #ifdef EV_HOST_BUILD

@@ -9,12 +9,14 @@
 #include "ev/publish.h"
 
 #define EV_MCP23008_REG_IODIR 0x00U
+#define EV_MCP23008_REG_IOCON 0x05U
 #define EV_MCP23008_REG_GPPU 0x06U
 #define EV_MCP23008_REG_GPIO 0x09U
 #define EV_MCP23008_REG_OLAT 0x0AU
 #define EV_MCP23008_INPUT_DIR_MASK 0x0FU
 #define EV_MCP23008_INPUT_PULLUP_MASK 0x0FU
 #define EV_MCP23008_OUTPUT_SHIFT 4U
+#define EV_MCP23008_IOCON_ODR 0x04U
 
 static uint8_t ev_mcp23008_actor_normalize_buttons(uint8_t raw_gpio)
 {
@@ -101,6 +103,10 @@ static bool ev_mcp23008_actor_try_configure(ev_mcp23008_actor_ctx_t *ctx)
         return false;
     }
 
+    if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_IOCON, EV_MCP23008_IOCON_ODR)) {
+        ctx->configured = false;
+        return false;
+    }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_IODIR, EV_MCP23008_INPUT_DIR_MASK)) {
         ctx->configured = false;
         return false;
