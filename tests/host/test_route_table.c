@@ -12,7 +12,7 @@ int main(void)
     size_t j;
 
 #ifdef EV_HOST_BUILD
-    assert(ev_route_count() == 15U);
+    assert(ev_route_count() == 16U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 2U);
     assert(!ev_route_exists(EV_BOOT_COMPLETED, ACT_DS18B20));
     assert(!ev_route_exists(EV_BOOT_COMPLETED, ACT_MCP23008));
@@ -35,7 +35,7 @@ int main(void)
 #ifdef EV_HOST_BUILD
     assert(ev_route_count_for_event(EV_TICK_1S) == 2U);
 #else
-    assert(ev_route_count_for_event(EV_TICK_1S) == 4U);
+    assert(ev_route_count_for_event(EV_TICK_1S) == 3U);
 #endif
     assert(ev_route_count_for_event(EV_DIAG_SNAPSHOT_RSP) == 1U);
 #ifdef EV_HOST_BUILD
@@ -52,7 +52,7 @@ int main(void)
     assert(ev_route_count_for_event(EV_MCP23008_INPUT_CHANGED) == 1U);
     assert(ev_route_count_for_event(EV_BUTTON_EVENT) == 1U);
 #ifdef EV_HOST_BUILD
-    assert(ev_route_count_for_event(EV_MCP23008_READY) == 0U);
+    assert(ev_route_count_for_event(EV_MCP23008_READY) == 1U);
 #else
     assert(ev_route_count_for_event(EV_MCP23008_READY) == 1U);
 #endif
