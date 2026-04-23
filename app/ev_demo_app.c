@@ -719,6 +719,13 @@ static ev_result_t ev_demo_app_drain_until_idle(ev_demo_app_t *app)
     return EV_OK;
 }
 
+static ev_result_t ev_runtime_actor_handler(void *actor_context, const ev_msg_t *msg)
+{
+    (void)actor_context;
+    (void)msg;
+    return EV_OK;
+}
+
 ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg)
 {
     ev_result_t rc;
@@ -767,6 +774,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_mailbox_init(&app->panel_mailbox, EV_MAILBOX_FIFO_8, app->panel_storage, EV_ARRAY_LEN(app->panel_storage));
     if (rc != EV_OK) return rc;
 
+    rc = ev_mailbox_init(&app->runtime_mailbox, EV_MAILBOX_FIFO_8, app->runtime_storage, EV_ARRAY_LEN(app->runtime_storage));
+    if (rc != EV_OK) return rc;
+
 #ifndef EV_HOST_BUILD
     rc = ev_mailbox_init(&app->rtc_mailbox, EV_MAILBOX_FIFO_8, app->rtc_storage, EV_ARRAY_LEN(app->rtc_storage));
     if (rc != EV_OK) return rc;
@@ -798,6 +808,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->panel_runtime, ACT_PANEL, &app->panel_mailbox, ev_panel_actor_handle, &app->panel_ctx);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->runtime_actor, ACT_RUNTIME, &app->runtime_mailbox, ev_runtime_actor_handler, NULL);
     if (rc != EV_OK) return rc;
 
 #ifndef EV_HOST_BUILD
@@ -861,6 +874,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_registry_bind(&app->registry, &app->panel_runtime);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_registry_bind(&app->registry, &app->runtime_actor);
     if (rc != EV_OK) return rc;
 
 #ifndef EV_HOST_BUILD

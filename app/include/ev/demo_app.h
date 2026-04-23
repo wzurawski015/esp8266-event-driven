@@ -105,6 +105,9 @@ struct ev_demo_app {
     bool boot_published;
     ev_irq_port_t *irq_port;
 
+    ev_mailbox_t runtime_mailbox;
+    ev_msg_t runtime_storage[8];
+    ev_actor_runtime_t runtime_actor;
     ev_actor_registry_t registry;
     ev_mailbox_t app_mailbox;
     ev_mailbox_t diag_mailbox;
