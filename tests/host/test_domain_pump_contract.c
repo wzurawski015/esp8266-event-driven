@@ -26,7 +26,7 @@ static ev_result_t domain_handler(void *actor_context, const ev_msg_t *msg)
 
 static void enqueue_boot(ev_mailbox_t *mailbox, size_t count)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = {0};
     size_t i;
 
     for (i = 0U; i < count; ++i) {

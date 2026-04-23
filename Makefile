@@ -1,8 +1,8 @@
 CC ?= cc
 PYTHON ?= python3
 
-CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -DEV_HOST_BUILD -Icore/include -Iports/include -Iapp/include -Iconfig
-LDFLAGS ?=
+CFLAGS ?= -std=c11 -Wall -Wextra -g -O0  -pedantic -DEV_HOST_BUILD -Icore/include -Iports/include -Iapp/include -Iconfig
+LDFLAGS ?= 
 
 BUILD_DIR := build/host
 DOC_SITE_DIR := docs/generated/site
