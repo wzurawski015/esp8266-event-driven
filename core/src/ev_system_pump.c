@@ -179,7 +179,7 @@ ev_result_t ev_system_pump_run(
         for (offset = 0U; offset < EV_DOMAIN_COUNT; ++offset) {
             size_t index = (pump->next_domain_index + offset) % EV_DOMAIN_COUNT;
             ev_domain_pump_t *domain_pump = pump->slots[index];
-            ev_domain_pump_report_t domain_report;
+            ev_domain_pump_report_t domain_report = {0};
             size_t domain_budget;
             ev_result_t rc;
 

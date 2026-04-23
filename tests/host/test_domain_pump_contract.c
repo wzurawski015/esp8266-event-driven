@@ -80,7 +80,7 @@ static void domain_pump_cursor_regression(void)
     ev_actor_runtime_t boot_runtime;
     ev_actor_runtime_t stream_runtime;
     ev_actor_runtime_t app_runtime;
-    ev_actor_registry_t registry;
+    ev_actor_registry_t registry = {0};
     ev_domain_pump_t fast_pump;
     ev_domain_pump_report_t report;
     domain_trace_t boot_trace = {0};
@@ -138,8 +138,8 @@ int main(void)
     ev_actor_runtime_t diag_runtime;
     ev_actor_runtime_t fail_boot_runtime;
     ev_actor_runtime_t fail_stream_runtime;
-    ev_actor_registry_t registry;
-    ev_actor_registry_t fail_registry;
+    ev_actor_registry_t registry = {0};
+    ev_actor_registry_t fail_registry = {0};
     ev_domain_pump_t fast_pump;
     ev_domain_pump_t slow_pump;
     ev_domain_pump_t fail_pump;

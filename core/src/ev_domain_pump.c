@@ -198,7 +198,7 @@ ev_result_t ev_domain_pump_run(
             size_t index = (start_index + offset) % actor_count;
             ev_actor_runtime_t *runtime;
             size_t actor_budget;
-            ev_actor_pump_report_t actor_report;
+            ev_actor_pump_report_t actor_report = {0};
             ev_result_t rc;
 
             if (!ev_domain_pump_actor_matches((ev_actor_id_t)index, pump->domain)) {

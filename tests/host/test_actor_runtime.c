@@ -65,8 +65,8 @@ int main(void)
     ev_actor_runtime_t rtc_runtime;
     ev_actor_runtime_t ds18b20_runtime;
     ev_actor_runtime_t oled_runtime;
-    ev_actor_registry_t registry;
-    ev_actor_registry_t partial_registry;
+    ev_actor_registry_t registry = {0};
+    ev_actor_registry_t partial_registry = {0};
     handler_trace_t diag_trace = {0};
     handler_trace_t app_trace = {0};
     handler_trace_t mcp_trace = {0};

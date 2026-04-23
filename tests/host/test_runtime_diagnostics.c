@@ -48,8 +48,8 @@ int main(void)
     ev_actor_runtime_t oled_runtime;
     ev_actor_runtime_t diag_runtime_partial;
     ev_actor_runtime_t diag_runtime_fail;
-    ev_actor_registry_t registry;
-    ev_actor_registry_t partial_registry;
+    ev_actor_registry_t registry = {0};
+    ev_actor_registry_t partial_registry = {0};
     ev_msg_t msg;
     ev_publish_report_t report;
     const ev_actor_registry_stats_t *registry_stats;
