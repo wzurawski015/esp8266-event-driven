@@ -4,6 +4,7 @@
 // EV_ACTOR(ACTOR_ID, EXECUTION_DOMAIN, MAILBOX_KIND, DRAIN_BUDGET, "summary")
 
 EV_ACTOR(ACT_BOOT, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 4U, "Bootstrap orchestrator")
+EV_ACTOR(ACT_RUNTIME, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 1U, "Runtime ingress and system-event publisher")
 EV_ACTOR(ACT_STREAM, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_16, 8U, "Streaming pipeline coordinator")
 EV_ACTOR(ACT_DIAG, EV_DOMAIN_SLOW_IO, EV_MAILBOX_FIFO_8, 2U, "Diagnostics and observability actor")
 EV_ACTOR(ACT_APP, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 4U, "Application composition actor")

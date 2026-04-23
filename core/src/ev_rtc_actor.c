@@ -196,7 +196,7 @@ static ev_result_t ev_rtc_actor_read_time_payload(ev_rtc_actor_ctx_t *ctx, ev_ti
                                       raw_time,
                                       EV_RTC_TIME_BYTES);
     if (status != EV_I2C_OK) {
-        return EV_OK;
+        return EV_ERR_STATE;
     }
     payload->seconds = ev_rtc_actor_bcd_to_decimal((uint8_t)(raw_time[0] & EV_RTC_SECONDS_MASK));
     payload->minutes = ev_rtc_actor_bcd_to_decimal((uint8_t)(raw_time[1] & EV_RTC_MINUTES_MASK));
@@ -210,6 +210,7 @@ static ev_result_t ev_rtc_actor_read_time_payload(ev_rtc_actor_ctx_t *ctx, ev_ti
     }
 
     if (!ev_rtc_actor_payload_is_valid(payload)) {
+        /* Data read from I2C is valid, but RTC registers contain invalid time (e.g. after power loss). */
         return EV_OK;
     }
 
@@ -240,10 +241,6 @@ static ev_result_t ev_rtc_actor_handle_gpio_irq(ev_rtc_actor_ctx_t *ctx, const e
     if (rc != EV_OK) {
         return rc;
     }
-    if (!ev_rtc_actor_payload_is_valid(&payload)) {
-        return EV_OK;
-    }
-
     return ev_rtc_actor_publish_time_update(ctx, &payload);
 }
 

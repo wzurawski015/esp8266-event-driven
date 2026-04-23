@@ -168,6 +168,7 @@ static ev_result_t ev_ds18b20_actor_handle_boot(ev_ds18b20_actor_ctx_t *ctx)
 static ev_result_t ev_ds18b20_actor_handle_tick(ev_ds18b20_actor_ctx_t *ctx)
 {
     uint8_t scratchpad[EV_DS18B20_SCRATCHPAD_BYTES] = {0};
+    ev_result_t rc = EV_OK;
 
     if (ctx == NULL) {
         return EV_ERR_INVALID_ARG;
@@ -175,12 +176,12 @@ static ev_result_t ev_ds18b20_actor_handle_tick(ev_ds18b20_actor_ctx_t *ctx)
 
     if (ctx->conversion_pending) {
         if (ev_ds18b20_actor_read_scratchpad(ctx, scratchpad) == EV_OK) {
-            (void)ev_ds18b20_actor_publish_temperature(ctx, ev_ds18b20_actor_decode_centi_celsius(scratchpad));
+            rc = ev_ds18b20_actor_publish_temperature(ctx, ev_ds18b20_actor_decode_centi_celsius(scratchpad));
         }
     }
 
     ctx->conversion_pending = ev_ds18b20_actor_start_conversion(ctx);
-    return EV_OK;
+    return rc;
 }
 
 ev_result_t ev_ds18b20_actor_init(ev_ds18b20_actor_ctx_t *ctx,
