@@ -13,8 +13,10 @@
 
 #define EV_ESP8266_I2C_PORT_NUM I2C_NUM_0
 #define EV_ESP8266_I2C_CLK_STRETCH_TICK 300U
-#define EV_ESP8266_I2C_CMD_TIMEOUT_TICKS pdMS_TO_TICKS(15U)
-#define EV_ESP8266_I2C_MUTEX_TIMEOUT_TICKS pdMS_TO_TICKS(15U)
+#define EV_ESP8266_I2C_CMD_TIMEOUT_MS 150U
+#define EV_ESP8266_I2C_MUTEX_TIMEOUT_MS 250U
+#define EV_ESP8266_I2C_CMD_TIMEOUT_TICKS pdMS_TO_TICKS(EV_ESP8266_I2C_CMD_TIMEOUT_MS)
+#define EV_ESP8266_I2C_MUTEX_TIMEOUT_TICKS pdMS_TO_TICKS(EV_ESP8266_I2C_MUTEX_TIMEOUT_MS)
 
 static const char *const k_ev_i2c_tag = "ev_i2c";
 
@@ -62,6 +64,14 @@ static ev_i2c_status_t ev_esp8266_i2c_status_from_esp_err(esp_err_t sdk_rc)
     }
 }
 
+/*
+ * Shared-bus timing policy:
+ * - command timeout must tolerate full OLED page writes on the software-backed
+ *   ESP8266 I2C master,
+ * - mutex timeout must be longer than one command budget so slower bulk OLED
+ *   flushes do not starve MCP23008/RTC access behind a too-aggressive bus lock
+ *   window.
+ */
 static ev_i2c_status_t ev_esp8266_i2c_take_bus(void)
 {
     if (g_ev_i2c_bus_mutex == NULL) {
