@@ -131,19 +131,19 @@ static ev_result_t ev_mcp23008_actor_try_configure(ev_mcp23008_actor_ctx_t *ctx)
     ctx->inputs_valid = false;
 
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_IOCON, EV_MCP23008_IOCON_ODR)) {
-        return EV_ERR_STATE;
+        return EV_OK;
     }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_IODIR, EV_MCP23008_INPUT_DIR_MASK)) {
-        return EV_ERR_STATE;
+        return EV_OK;
     }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_GPPU, EV_MCP23008_INPUT_PULLUP_MASK)) {
-        return EV_ERR_STATE;
+        return EV_OK;
     }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_OLAT, ev_mcp23008_actor_build_olat(ctx->output_shadow))) {
-        return EV_ERR_STATE;
+        return EV_OK;
     }
     if (!ev_mcp23008_actor_read_gpio(ctx, &raw_gpio)) {
-        return EV_ERR_STATE;
+        return EV_OK;
     }
 
     ctx->input_shadow = ev_mcp23008_actor_normalize_buttons(raw_gpio);
@@ -185,11 +185,14 @@ static ev_result_t ev_mcp23008_actor_handle_tick(ev_mcp23008_actor_ctx_t *ctx)
         if (rc != EV_OK) {
             return rc;
         }
+        if (!ctx->configured) {
+            return EV_OK;
+        }
     }
     if (!ev_mcp23008_actor_read_gpio(ctx, &raw_gpio)) {
         ctx->configured = false;
         ctx->inputs_valid = false;
-        return EV_ERR_STATE;
+        return EV_OK;
     }
 
     pressed_mask = ev_mcp23008_actor_normalize_buttons(raw_gpio);
@@ -227,13 +230,13 @@ static ev_result_t ev_mcp23008_actor_handle_led_cmd(ev_mcp23008_actor_ctx_t *ctx
                                    (cmd->value_mask & valid_mask & EV_MCP23008_LED_MASK));
 
     if (!ctx->configured) {
-        return EV_ERR_STATE;
+        return EV_OK;
     }
 
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_OLAT, ev_mcp23008_actor_build_olat(ctx->output_shadow))) {
         ctx->configured = false;
         ctx->inputs_valid = false;
-        return EV_ERR_STATE;
+        return EV_OK;
     }
 
     return EV_OK;

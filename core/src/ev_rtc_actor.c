@@ -239,7 +239,7 @@ static ev_result_t ev_rtc_actor_handle_gpio_irq(ev_rtc_actor_ctx_t *ctx, const e
 
     rc = ev_rtc_actor_read_time_payload(ctx, &payload);
     if (rc != EV_OK) {
-        return rc;
+        return EV_OK;
     }
     return ev_rtc_actor_publish_time_update(ctx, &payload);
 }
@@ -279,8 +279,14 @@ ev_result_t ev_rtc_actor_handle(void *actor_context, const ev_msg_t *msg)
     }
 
     switch (msg->event_id) {
-    case EV_MCP23008_READY:
-        return ev_rtc_actor_enable_square_wave(ctx);
+    case EV_MCP23008_READY: {
+        ev_result_t rc = ev_rtc_actor_enable_square_wave(ctx);
+
+        if (rc == EV_ERR_STATE) {
+            return EV_OK;
+        }
+        return rc;
+    }
 
     case EV_GPIO_IRQ:
         return ev_rtc_actor_handle_gpio_irq(ctx, msg);

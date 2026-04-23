@@ -264,12 +264,12 @@ static void test_mcp_nack(void)
 
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
-    assert(ev_demo_app_poll(&app) == EV_ERR_STATE);
+    assert(ev_demo_app_poll(&app) == EV_OK);
 
     stats = ev_demo_app_stats(&app);
     assert(stats != NULL);
     assert(app.mcp23008_ctx.configured == false);
-    assert(stats->pump_errors >= 1U);
+    assert(stats->pump_errors == 0U);
 }
 
 static void test_rtc_timeout(void)
@@ -318,12 +318,12 @@ static void test_rtc_timeout(void)
 
     fake_i2c_port_set_status(&fake_i2c, EV_RTC_DEFAULT_ADDR_7BIT, EV_I2C_ERR_TIMEOUT);
     assert(fake_irq_port_push(&fake_irq, &irq_sample) == EV_OK);
-    assert(ev_demo_app_poll(&app) == EV_ERR_STATE);
+    assert(ev_demo_app_poll(&app) == EV_OK);
 
     stats = ev_demo_app_stats(&app);
     assert(stats != NULL);
     assert(app.app_actor.time_valid == false);
-    assert(stats->pump_errors >= 1U);
+    assert(stats->pump_errors == 0U);
 }
 
 int main(void)
