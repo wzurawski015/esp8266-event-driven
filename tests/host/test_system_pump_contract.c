@@ -110,6 +110,11 @@ static void test_system_pump_round_robin(void)
         assert(stats->domains_pumped == 2U);
         assert(stats->messages_processed == 13U);
         assert(stats->budget_hits == 0U);
+        assert(stats->pending_high_watermark == 13U);
+        assert(stats->max_domains_examined_per_call >= 2U);
+        assert(stats->max_domains_pumped_per_call >= 2U);
+        assert(stats->max_turns_per_call >= 2U);
+        assert(stats->max_messages_per_call == 13U);
         assert(stats->last_result == EV_ERR_EMPTY);
     }
 }

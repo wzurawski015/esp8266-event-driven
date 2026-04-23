@@ -7,6 +7,7 @@
 
 typedef struct {
     ev_time_mono_us_t now_us;
+    ev_time_mono_us_t auto_increment_us;
     uint32_t delay_calls;
 } fake_clock_t;
 
@@ -21,6 +22,7 @@ static ev_result_t fake_mono_now_us(void *ctx, ev_time_mono_us_t *out_now)
     assert(clock != NULL);
     assert(out_now != NULL);
     *out_now = clock->now_us;
+    clock->now_us += clock->auto_increment_us;
     return EV_OK;
 }
 
@@ -90,6 +92,8 @@ int main(void)
     const ev_demo_app_stats_t *stats;
     const ev_system_pump_stats_t *pump_stats;
 
+    clock.auto_increment_us = 1000ULL;
+
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
     assert(ev_demo_app_pending(&app) == 3U);
@@ -105,6 +109,11 @@ int main(void)
     assert(stats->snapshots_received == 1U);
     assert(stats->publish_errors == 0U);
     assert(stats->pump_errors == 0U);
+    assert(stats->max_pending_before_poll >= 1U);
+    assert(stats->max_pump_calls_per_poll >= 1U);
+    assert(stats->max_turns_per_poll >= 1U);
+    assert(stats->max_messages_per_poll >= 1U);
+    assert(stats->max_poll_elapsed_ms > 0U);
     assert(app.app_actor.last_snapshot_sequence == 1U);
     assert(app.app_actor.last_diag_ticks_seen == 0U);
 

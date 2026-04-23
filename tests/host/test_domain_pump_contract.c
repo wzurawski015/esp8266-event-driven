@@ -250,6 +250,10 @@ int main(void)
     assert(stats->last_actor == ACT_APP);
     assert(stats->last_budget == 1U);
     assert(stats->last_processed == 1U);
+    assert(stats->pending_high_watermark >= 3U);
+    assert(stats->max_actors_examined_per_call >= 1U);
+    assert(stats->max_actors_pumped_per_call >= 1U);
+    assert(stats->max_messages_per_call >= 1U);
     assert(stats->last_result == EV_OK);
 
     enqueue_diag(&diag_mailbox, 2U);

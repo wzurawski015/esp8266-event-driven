@@ -20,6 +20,11 @@ typedef struct {
     size_t messages_processed;
     size_t last_turn_budget;
     size_t last_turns_processed;
+    size_t pending_high_watermark;
+    size_t max_domains_examined_per_call;
+    size_t max_domains_pumped_per_call;
+    size_t max_turns_per_call;
+    size_t max_messages_per_call;
     ev_execution_domain_t last_domain;
     ev_result_t last_result;
 } ev_system_pump_stats_t;

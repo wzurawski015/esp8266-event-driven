@@ -681,13 +681,62 @@ static ev_result_t ev_demo_diag_actor_handler(void *actor_context, const ev_msg_
     }
 }
 
+typedef struct {
+    size_t irq_samples;
+    size_t pump_calls;
+    size_t turns;
+    size_t messages;
+} ev_demo_app_poll_diag_t;
+
+static void ev_demo_app_poll_diag_reset(ev_demo_app_poll_diag_t *diag)
+{
+    if (diag != NULL) {
+        memset(diag, 0, sizeof(*diag));
+    }
+}
+
+static void ev_demo_app_record_poll_diag(ev_demo_app_t *app,
+                                         const ev_demo_app_poll_diag_t *diag,
+                                         size_t pending_before,
+                                         size_t pending_after,
+                                         uint32_t elapsed_ms)
+{
+    if ((app == NULL) || (diag == NULL)) {
+        return;
+    }
+
+    app->stats.irq_samples_drained += (uint32_t)diag->irq_samples;
+    if (pending_before > app->stats.max_pending_before_poll) {
+        app->stats.max_pending_before_poll = pending_before;
+    }
+    if (pending_after > app->stats.max_pending_after_poll) {
+        app->stats.max_pending_after_poll = pending_after;
+    }
+    if (diag->irq_samples > app->stats.max_irq_samples_per_poll) {
+        app->stats.max_irq_samples_per_poll = diag->irq_samples;
+    }
+    if (diag->pump_calls > app->stats.max_pump_calls_per_poll) {
+        app->stats.max_pump_calls_per_poll = diag->pump_calls;
+    }
+    if (diag->turns > app->stats.max_turns_per_poll) {
+        app->stats.max_turns_per_poll = diag->turns;
+    }
+    if (diag->messages > app->stats.max_messages_per_poll) {
+        app->stats.max_messages_per_poll = diag->messages;
+    }
+    app->stats.last_poll_elapsed_ms = elapsed_ms;
+    if (elapsed_ms > app->stats.max_poll_elapsed_ms) {
+        app->stats.max_poll_elapsed_ms = elapsed_ms;
+    }
+}
+
 static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
 {
     return (cfg != NULL) && (cfg->app_tag != NULL) && (cfg->board_name != NULL) && (cfg->clock_port != NULL) &&
            (cfg->clock_port->mono_now_us != NULL) && (cfg->log_port != NULL) && (cfg->log_port->write != NULL);
 }
 
-static ev_result_t ev_demo_app_drain_until_idle(ev_demo_app_t *app)
+static ev_result_t ev_demo_app_drain_until_idle(ev_demo_app_t *app, ev_demo_app_poll_diag_t *diag)
 {
     ev_system_pump_report_t report;
     ev_result_t rc;
@@ -698,6 +747,11 @@ static ev_result_t ev_demo_app_drain_until_idle(ev_demo_app_t *app)
 
     while (ev_system_pump_pending(&app->system_pump) > 0U) {
         rc = ev_system_pump_run(&app->system_pump, EV_DEMO_APP_TURN_BUDGET, &report);
+        if (diag != NULL) {
+            ++diag->pump_calls;
+            diag->turns += report.turns_processed;
+            diag->messages += report.messages_processed;
+        }
         if (rc == EV_OK) {
             continue;
         }
@@ -942,14 +996,33 @@ ev_result_t ev_demo_app_publish_boot(ev_demo_app_t *app)
 
 ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
 {
-    ev_result_t rc;
-    uint32_t now_ms;
+    ev_result_t rc = EV_OK;
+    ev_demo_app_poll_diag_t diag;
+    uint32_t now_ms = 0U;
+    uint32_t start_ms = 0U;
+    uint32_t end_ms = 0U;
+    uint32_t elapsed_ms = 0U;
+    size_t pending_before = 0U;
+    size_t pending_after = 0U;
+    bool have_timing = false;
 
-    if (app == NULL) return EV_ERR_INVALID_ARG;
-    if (!app->boot_published) return EV_ERR_STATE;
+    if (app == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!app->boot_published) {
+        return EV_ERR_STATE;
+    }
 
-    rc = ev_demo_app_drain_until_idle(app);
-    if (rc != EV_OK) return rc;
+    ev_demo_app_poll_diag_reset(&diag);
+    pending_before = ev_system_pump_pending(&app->system_pump);
+    if (ev_demo_app_now_ms(app, &start_ms) == EV_OK) {
+        have_timing = true;
+    }
+
+    rc = ev_demo_app_drain_until_idle(app, &diag);
+    if (rc != EV_OK) {
+        goto finalize;
+    }
 
 #ifndef EV_HOST_BUILD
     if ((app->irq_port != NULL) && (app->irq_port->pop != NULL)) {
@@ -958,27 +1031,31 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
         for (;;) {
             rc = app->irq_port->pop(app->irq_port->ctx, &sample);
             if (rc == EV_ERR_EMPTY) {
+                rc = EV_OK;
                 break;
             }
             if (rc != EV_OK) {
-                return rc;
+                goto finalize;
             }
 
+            ++diag.irq_samples;
             rc = ev_demo_app_publish_irq_sample(app, &sample);
             if (rc != EV_OK) {
-                return rc;
+                goto finalize;
             }
 
-            rc = ev_demo_app_drain_until_idle(app);
+            rc = ev_demo_app_drain_until_idle(app, &diag);
             if (rc != EV_OK) {
-                return rc;
+                goto finalize;
             }
         }
     }
 #endif
 
     rc = ev_demo_app_now_ms(app, &now_ms);
-    if (rc != EV_OK) return rc;
+    if (rc != EV_OK) {
+        goto finalize;
+    }
 
     for (;;) {
         const bool tick_100ms_due = ((int32_t)(now_ms - app->next_tick_100ms_ms) >= 0);
@@ -990,23 +1067,39 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
 
         if (tick_100ms_due && (!tick_1s_due || ((int32_t)(app->next_tick_100ms_ms - app->next_tick_ms) <= 0))) {
             rc = ev_demo_app_publish_tick_100ms(app);
-            if (rc != EV_OK) return rc;
+            if (rc != EV_OK) {
+                goto finalize;
+            }
             app->next_tick_100ms_ms += EV_DEMO_APP_FAST_TICK_MS;
 
-            rc = ev_demo_app_drain_until_idle(app);
-            if (rc != EV_OK) return rc;
+            rc = ev_demo_app_drain_until_idle(app, &diag);
+            if (rc != EV_OK) {
+                goto finalize;
+            }
             continue;
         }
 
         rc = ev_demo_app_publish_tick(app);
-        if (rc != EV_OK) return rc;
+        if (rc != EV_OK) {
+            goto finalize;
+        }
         app->next_tick_ms += app->tick_period_ms;
 
-        rc = ev_demo_app_drain_until_idle(app);
-        if (rc != EV_OK) return rc;
+        rc = ev_demo_app_drain_until_idle(app, &diag);
+        if (rc != EV_OK) {
+            goto finalize;
+        }
     }
 
-    return ev_demo_app_drain_until_idle(app);
+    rc = ev_demo_app_drain_until_idle(app, &diag);
+
+finalize:
+    pending_after = ev_system_pump_pending(&app->system_pump);
+    if (have_timing && (ev_demo_app_now_ms(app, &end_ms) == EV_OK)) {
+        elapsed_ms = end_ms - start_ms;
+    }
+    ev_demo_app_record_poll_diag(app, &diag, pending_before, pending_after, elapsed_ms);
+    return rc;
 }
 
 size_t ev_demo_app_pending(const ev_demo_app_t *app)

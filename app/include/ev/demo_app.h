@@ -54,6 +54,15 @@ typedef struct {
     uint32_t snapshots_received;
     uint32_t publish_errors;
     uint32_t pump_errors;
+    uint32_t irq_samples_drained;
+    size_t max_pending_before_poll;
+    size_t max_pending_after_poll;
+    size_t max_irq_samples_per_poll;
+    size_t max_pump_calls_per_poll;
+    size_t max_turns_per_poll;
+    size_t max_messages_per_poll;
+    uint32_t last_poll_elapsed_ms;
+    uint32_t max_poll_elapsed_ms;
 } ev_demo_app_stats_t;
 
 typedef struct ev_demo_app ev_demo_app_t;

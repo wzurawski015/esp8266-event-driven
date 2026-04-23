@@ -22,6 +22,30 @@ static bool ev_domain_pump_actor_matches(ev_actor_id_t actor_id, ev_execution_do
     const ev_actor_meta_t *meta = ev_actor_meta(actor_id);
     return (meta != NULL) && (meta->execution_domain == domain);
 }
+static void ev_domain_pump_record_pending_high_watermark(ev_domain_pump_t *pump, size_t pending)
+{
+    if ((pump != NULL) && (pending > pump->stats.pending_high_watermark)) {
+        pump->stats.pending_high_watermark = pending;
+    }
+}
+
+static void ev_domain_pump_record_call_maxima(ev_domain_pump_t *pump, const ev_domain_pump_report_t *report)
+{
+    if ((pump == NULL) || (report == NULL)) {
+        return;
+    }
+
+    if (report->actors_examined > pump->stats.max_actors_examined_per_call) {
+        pump->stats.max_actors_examined_per_call = report->actors_examined;
+    }
+    if (report->actors_pumped > pump->stats.max_actors_pumped_per_call) {
+        pump->stats.max_actors_pumped_per_call = report->actors_pumped;
+    }
+    if (report->processed > pump->stats.max_messages_per_call) {
+        pump->stats.max_messages_per_call = report->processed;
+    }
+}
+
 static size_t ev_domain_pump_domain_default_budget(ev_execution_domain_t domain)
 {
     size_t total = 0U;
@@ -152,11 +176,13 @@ ev_result_t ev_domain_pump_run(
 
     pending_before = ev_domain_pump_pending(pump);
     report->pending_before = pending_before;
+    ev_domain_pump_record_pending_high_watermark(pump, pending_before);
     if (pending_before == 0U) {
         ++pump->stats.pump_empty_calls;
         pump->stats.last_result = EV_ERR_EMPTY;
         report->pending_after = 0U;
         report->stop_result = EV_ERR_EMPTY;
+        ev_domain_pump_record_call_maxima(pump, report);
         return EV_ERR_EMPTY;
     }
 
@@ -195,6 +221,7 @@ ev_result_t ev_domain_pump_run(
                 report->last_actor = runtime->actor_id;
                 report->pending_after = ev_domain_pump_pending(pump);
                 report->stop_result = EV_ERR_CONTRACT;
+                ev_domain_pump_record_call_maxima(pump, report);
                 return EV_ERR_CONTRACT;
             }
             if (actor_budget > remaining) {
@@ -217,6 +244,7 @@ ev_result_t ev_domain_pump_run(
                 report->stop_result = rc;
                 pump->stats.last_processed = report->processed;
                 pump->stats.last_result = rc;
+                ev_domain_pump_record_call_maxima(pump, report);
                 return rc;
             }
 
@@ -242,6 +270,7 @@ ev_result_t ev_domain_pump_run(
     if (!made_progress) {
         pump->stats.last_result = EV_ERR_STATE;
         report->stop_result = EV_ERR_STATE;
+        ev_domain_pump_record_call_maxima(pump, report);
         return EV_ERR_STATE;
     }
 
@@ -250,10 +279,12 @@ ev_result_t ev_domain_pump_run(
         ++pump->stats.pump_budget_hits;
         pump->stats.last_result = EV_OK;
         report->stop_result = EV_OK;
+        ev_domain_pump_record_call_maxima(pump, report);
         return EV_OK;
     }
 
     pump->stats.last_result = EV_OK;
     report->stop_result = EV_ERR_EMPTY;
+    ev_domain_pump_record_call_maxima(pump, report);
     return EV_OK;
 }
