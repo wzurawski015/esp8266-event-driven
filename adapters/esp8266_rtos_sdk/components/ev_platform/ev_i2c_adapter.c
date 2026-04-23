@@ -14,6 +14,7 @@
 #define EV_ESP8266_I2C_PORT_NUM I2C_NUM_0
 #define EV_ESP8266_I2C_CLK_STRETCH_TICK 300U
 #define EV_ESP8266_I2C_CMD_TIMEOUT_TICKS pdMS_TO_TICKS(15U)
+#define EV_ESP8266_I2C_MUTEX_TIMEOUT_TICKS pdMS_TO_TICKS(15U)
 
 static const char *const k_ev_i2c_tag = "ev_i2c";
 
@@ -67,7 +68,7 @@ static ev_i2c_status_t ev_esp8266_i2c_take_bus(void)
         return EV_I2C_ERR_BUS_LOCKED;
     }
 
-    if (xSemaphoreTake(g_ev_i2c_bus_mutex, pdMS_TO_TICKS(15)) != pdTRUE) {
+    if (xSemaphoreTake(g_ev_i2c_bus_mutex, EV_ESP8266_I2C_MUTEX_TIMEOUT_TICKS) != pdTRUE) {
         return EV_I2C_ERR_TIMEOUT;
     }
 
@@ -99,12 +100,9 @@ static ev_i2c_status_t ev_esp8266_i2c_write_stream(void *ctx,
         return EV_I2C_ERR_BUS_LOCKED;
     }
 
-    if (g_ev_i2c_bus_mutex == NULL) {
-        return EV_I2C_ERR_BUS_LOCKED;
-    }
-
-    if (xSemaphoreTake(g_ev_i2c_bus_mutex, portMAX_DELAY) != pdTRUE) {
-        return EV_I2C_ERR_BUS_LOCKED;
+    status = ev_esp8266_i2c_take_bus();
+    if (status != EV_I2C_OK) {
+        return status;
     }
 
     cmd = i2c_cmd_link_create();
@@ -133,7 +131,7 @@ cleanup:
     if (cmd != NULL) {
         i2c_cmd_link_delete(cmd);
     }
-    (void)xSemaphoreGive(g_ev_i2c_bus_mutex);
+    ev_esp8266_i2c_give_bus();
     return status;
 }
 
@@ -181,7 +179,7 @@ static ev_i2c_status_t ev_esp8266_i2c_write_regs(void *ctx,
         sdk_rc = i2c_master_stop(cmd);
     }
     if (sdk_rc == ESP_OK) {
-        sdk_rc = i2c_master_cmd_begin(EV_ESP8266_I2C_PORT_NUM, cmd, pdMS_TO_TICKS(15));
+        sdk_rc = i2c_master_cmd_begin(EV_ESP8266_I2C_PORT_NUM, cmd, EV_ESP8266_I2C_CMD_TIMEOUT_TICKS);
     }
 
     status = ev_esp8266_i2c_status_from_esp_err(sdk_rc);
@@ -247,7 +245,7 @@ static ev_i2c_status_t ev_esp8266_i2c_read_regs(void *ctx,
         sdk_rc = i2c_master_stop(cmd);
     }
     if (sdk_rc == ESP_OK) {
-        sdk_rc = i2c_master_cmd_begin(EV_ESP8266_I2C_PORT_NUM, cmd, pdMS_TO_TICKS(15));
+        sdk_rc = i2c_master_cmd_begin(EV_ESP8266_I2C_PORT_NUM, cmd, EV_ESP8266_I2C_CMD_TIMEOUT_TICKS);
     }
 
     status = ev_esp8266_i2c_status_from_esp_err(sdk_rc);
