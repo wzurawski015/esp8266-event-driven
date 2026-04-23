@@ -45,28 +45,35 @@ static uint8_t ev_ds18b20_actor_crc8(const uint8_t *data, size_t data_len)
     return crc;
 }
 
-static bool ev_ds18b20_actor_start_conversion(ev_ds18b20_actor_ctx_t *ctx)
+static ev_onewire_status_t ev_ds18b20_actor_start_conversion(ev_ds18b20_actor_ctx_t *ctx)
 {
+    ev_onewire_status_t status;
+
     if ((ctx == NULL) || (ctx->onewire_port == NULL) || (ctx->onewire_port->reset == NULL) ||
         (ctx->onewire_port->write_byte == NULL)) {
-        return false;
+        return EV_ONEWIRE_ERR_BUS;
     }
 
-    if (ctx->onewire_port->reset(ctx->onewire_port->ctx) != EV_ONEWIRE_OK) {
-        return false;
+    status = ctx->onewire_port->reset(ctx->onewire_port->ctx);
+    if (status != EV_ONEWIRE_OK) {
+        return status;
     }
-    if (ctx->onewire_port->write_byte(ctx->onewire_port->ctx, EV_DS18B20_CMD_SKIP_ROM) != EV_ONEWIRE_OK) {
-        return false;
+    status = ctx->onewire_port->write_byte(ctx->onewire_port->ctx, EV_DS18B20_CMD_SKIP_ROM);
+    if (status != EV_ONEWIRE_OK) {
+        return status;
     }
-    if (ctx->onewire_port->write_byte(ctx->onewire_port->ctx, EV_DS18B20_CMD_CONVERT_T) != EV_ONEWIRE_OK) {
-        return false;
+    status = ctx->onewire_port->write_byte(ctx->onewire_port->ctx, EV_DS18B20_CMD_CONVERT_T);
+    if (status != EV_ONEWIRE_OK) {
+        return status;
     }
 
-    return true;
+    return EV_ONEWIRE_OK;
 }
 
-static ev_result_t ev_ds18b20_actor_read_scratchpad(ev_ds18b20_actor_ctx_t *ctx, uint8_t scratchpad[EV_DS18B20_SCRATCHPAD_BYTES])
+static ev_result_t ev_ds18b20_actor_read_scratchpad(ev_ds18b20_actor_ctx_t *ctx,
+                                                    uint8_t scratchpad[EV_DS18B20_SCRATCHPAD_BYTES])
 {
+    ev_onewire_status_t status;
     size_t i;
 
     if ((ctx == NULL) || (scratchpad == NULL) || (ctx->onewire_port == NULL) || (ctx->onewire_port->reset == NULL) ||
@@ -74,8 +81,12 @@ static ev_result_t ev_ds18b20_actor_read_scratchpad(ev_ds18b20_actor_ctx_t *ctx,
         return EV_ERR_INVALID_ARG;
     }
 
-    if (ctx->onewire_port->reset(ctx->onewire_port->ctx) != EV_ONEWIRE_OK) {
+    status = ctx->onewire_port->reset(ctx->onewire_port->ctx);
+    if (status == EV_ONEWIRE_ERR_NO_DEVICE) {
         return EV_ERR_NOT_FOUND;
+    }
+    if (status != EV_ONEWIRE_OK) {
+        return EV_ERR_STATE;
     }
     if (ctx->onewire_port->write_byte(ctx->onewire_port->ctx, EV_DS18B20_CMD_SKIP_ROM) != EV_ONEWIRE_OK) {
         return EV_ERR_STATE;
@@ -155,33 +166,74 @@ static ev_result_t ev_ds18b20_actor_publish_temperature(ev_ds18b20_actor_ctx_t *
     return rc;
 }
 
+static void ev_ds18b20_actor_record_start_result(ev_ds18b20_actor_ctx_t *ctx, ev_onewire_status_t status)
+{
+    if (ctx == NULL) {
+        return;
+    }
+
+    if (status == EV_ONEWIRE_OK) {
+        ctx->sensor_present = true;
+        ctx->conversion_pending = true;
+        ++ctx->conversions_started;
+        return;
+    }
+
+    ctx->sensor_present = false;
+    ctx->conversion_pending = false;
+    if (status == EV_ONEWIRE_ERR_NO_DEVICE) {
+        ++ctx->no_device_failures;
+    } else {
+        ++ctx->io_failures;
+    }
+}
+
 static ev_result_t ev_ds18b20_actor_handle_boot(ev_ds18b20_actor_ctx_t *ctx)
 {
     if (ctx == NULL) {
         return EV_ERR_INVALID_ARG;
     }
 
-    ctx->conversion_pending = ev_ds18b20_actor_start_conversion(ctx);
+    ev_ds18b20_actor_record_start_result(ctx, ev_ds18b20_actor_start_conversion(ctx));
     return EV_OK;
 }
 
 static ev_result_t ev_ds18b20_actor_handle_tick(ev_ds18b20_actor_ctx_t *ctx)
 {
     uint8_t scratchpad[EV_DS18B20_SCRATCHPAD_BYTES] = {0};
-    ev_result_t rc = EV_OK;
+    ev_result_t publish_rc = EV_OK;
 
     if (ctx == NULL) {
         return EV_ERR_INVALID_ARG;
     }
 
     if (ctx->conversion_pending) {
-        if (ev_ds18b20_actor_read_scratchpad(ctx, scratchpad) == EV_OK) {
-            rc = ev_ds18b20_actor_publish_temperature(ctx, ev_ds18b20_actor_decode_centi_celsius(scratchpad));
+        ev_result_t rc = ev_ds18b20_actor_read_scratchpad(ctx, scratchpad);
+
+        if (rc == EV_OK) {
+            const int16_t centi_celsius = ev_ds18b20_actor_decode_centi_celsius(scratchpad);
+
+            ctx->sensor_present = true;
+            ctx->last_read_ok = true;
+            ctx->temp_valid = true;
+            ctx->last_centi_celsius = centi_celsius;
+            ++ctx->scratchpad_reads_ok;
+            publish_rc = ev_ds18b20_actor_publish_temperature(ctx, centi_celsius);
+        } else {
+            ctx->last_read_ok = false;
+            if (rc == EV_ERR_CONTRACT) {
+                ++ctx->crc_failures;
+            } else if (rc == EV_ERR_NOT_FOUND) {
+                ctx->sensor_present = false;
+                ++ctx->no_device_failures;
+            } else if (rc == EV_ERR_STATE) {
+                ++ctx->io_failures;
+            }
         }
     }
 
-    ctx->conversion_pending = ev_ds18b20_actor_start_conversion(ctx);
-    return rc;
+    ev_ds18b20_actor_record_start_result(ctx, ev_ds18b20_actor_start_conversion(ctx));
+    return publish_rc;
 }
 
 ev_result_t ev_ds18b20_actor_init(ev_ds18b20_actor_ctx_t *ctx,

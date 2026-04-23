@@ -10,6 +10,7 @@ EV_EVENT(EV_STREAM_CHUNK_READY, EV_PAYLOAD_LEASE, "Streaming chunk ready for dow
 EV_EVENT(EV_DIAG_SNAPSHOT_REQ, EV_PAYLOAD_INLINE, "Diagnostic snapshot requested")
 EV_EVENT(EV_DIAG_SNAPSHOT_RSP, EV_PAYLOAD_LEASE, "Diagnostic snapshot prepared")
 EV_EVENT(EV_OLED_DISPLAY_TEXT_CMD, EV_PAYLOAD_INLINE, "OLED display text command")
+EV_EVENT(EV_OLED_COMMIT_FRAME, EV_PAYLOAD_INLINE, "OLED frame commit command")
 EV_EVENT(EV_TIME_UPDATED, EV_PAYLOAD_INLINE, "RTC time updated from hardware clock")
 EV_EVENT(EV_TEMP_UPDATED, EV_PAYLOAD_INLINE, "DS18B20 temperature updated from hardware sensor")
 EV_EVENT(EV_TICK_100MS, EV_PAYLOAD_INLINE, "One-hundred-millisecond system tick")

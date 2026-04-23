@@ -30,6 +30,7 @@
 #define EV_RTC_HOURS_PER_DAY 24U
 #define EV_RTC_SECONDS_PER_HOUR (EV_RTC_SECONDS_PER_MINUTE * EV_RTC_MINUTES_PER_HOUR)
 #define EV_RTC_SECONDS_PER_DAY (EV_RTC_SECONDS_PER_HOUR * EV_RTC_HOURS_PER_DAY)
+#define EV_RTC_FALLBACK_POLL_THRESHOLD_TICKS 2U
 
 static uint8_t ev_rtc_actor_bcd_to_decimal(uint8_t bcd)
 {
@@ -123,6 +124,11 @@ static uint32_t ev_rtc_actor_build_unix_time(const ev_time_payload_t *payload)
            ((uint32_t)payload->minutes * EV_RTC_SECONDS_PER_MINUTE) + (uint32_t)payload->seconds;
 }
 
+static bool ev_rtc_actor_payload_equals(const ev_time_payload_t *lhs, const ev_time_payload_t *rhs)
+{
+    return (lhs != NULL) && (rhs != NULL) && (memcmp(lhs, rhs, sizeof(*lhs)) == 0);
+}
+
 static ev_result_t ev_rtc_actor_publish_time_update(ev_rtc_actor_ctx_t *ctx, const ev_time_payload_t *payload)
 {
     ev_msg_t msg = {0};
@@ -146,6 +152,9 @@ static ev_result_t ev_rtc_actor_publish_time_update(ev_rtc_actor_ctx_t *ctx, con
         rc = dispose_rc;
     }
 
+    if (rc == EV_OK) {
+        ++ctx->published_updates;
+    }
     return rc;
 }
 
@@ -210,7 +219,6 @@ static ev_result_t ev_rtc_actor_read_time_payload(ev_rtc_actor_ctx_t *ctx, ev_ti
     }
 
     if (!ev_rtc_actor_payload_is_valid(payload)) {
-        /* Data read from I2C is valid, but RTC registers contain invalid time (e.g. after power loss). */
         return EV_OK;
     }
 
@@ -218,11 +226,48 @@ static ev_result_t ev_rtc_actor_read_time_payload(ev_rtc_actor_ctx_t *ctx, ev_ti
     return EV_OK;
 }
 
+static ev_result_t ev_rtc_actor_try_refresh_time(ev_rtc_actor_ctx_t *ctx, bool fallback_poll)
+{
+    ev_time_payload_t payload;
+    ev_result_t rc;
+    bool changed;
+
+    if (ctx == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (fallback_poll) {
+        ++ctx->fallback_polls;
+    }
+
+    rc = ev_rtc_actor_read_time_payload(ctx, &payload);
+    if (rc != EV_OK) {
+        ++ctx->read_failures;
+        return EV_OK;
+    }
+    if (!ev_rtc_actor_payload_is_valid(&payload)) {
+        ++ctx->read_failures;
+        return EV_OK;
+    }
+
+    changed = !ctx->time_valid || !ev_rtc_actor_payload_equals(&ctx->last_time, &payload);
+    ctx->last_time = payload;
+    ctx->time_valid = true;
+    if (!changed) {
+        return EV_OK;
+    }
+
+    rc = ev_rtc_actor_publish_time_update(ctx, &payload);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    return EV_OK;
+}
+
 static ev_result_t ev_rtc_actor_handle_gpio_irq(ev_rtc_actor_ctx_t *ctx, const ev_msg_t *msg)
 {
     const ev_irq_sample_t *sample;
-    ev_time_payload_t payload;
-    ev_result_t rc;
 
     if ((ctx == NULL) || (msg == NULL)) {
         return EV_ERR_INVALID_ARG;
@@ -237,11 +282,9 @@ static ev_result_t ev_rtc_actor_handle_gpio_irq(ev_rtc_actor_ctx_t *ctx, const e
         return EV_OK;
     }
 
-    rc = ev_rtc_actor_read_time_payload(ctx, &payload);
-    if (rc != EV_OK) {
-        return EV_OK;
-    }
-    return ev_rtc_actor_publish_time_update(ctx, &payload);
+    ++ctx->irq_samples_seen;
+    ctx->ticks_since_last_irq = 0U;
+    return ev_rtc_actor_try_refresh_time(ctx, false);
 }
 
 ev_result_t ev_rtc_actor_init(ev_rtc_actor_ctx_t *ctx,
@@ -279,17 +322,25 @@ ev_result_t ev_rtc_actor_handle(void *actor_context, const ev_msg_t *msg)
     }
 
     switch (msg->event_id) {
+    case EV_BOOT_COMPLETED:
+        return ev_rtc_actor_try_refresh_time(ctx, false);
+
     case EV_MCP23008_READY: {
         ev_result_t rc = ev_rtc_actor_enable_square_wave(ctx);
 
-        if (rc == EV_ERR_STATE) {
-            return EV_OK;
-        }
-        return rc;
+        ctx->sqw_enabled = (rc == EV_OK);
+        return EV_OK;
     }
 
     case EV_GPIO_IRQ:
         return ev_rtc_actor_handle_gpio_irq(ctx, msg);
+
+    case EV_TICK_1S:
+        ++ctx->ticks_since_last_irq;
+        if (!ctx->sqw_enabled || (ctx->ticks_since_last_irq >= EV_RTC_FALLBACK_POLL_THRESHOLD_TICKS)) {
+            return ev_rtc_actor_try_refresh_time(ctx, true);
+        }
+        return EV_OK;
 
     default:
         return EV_ERR_CONTRACT;

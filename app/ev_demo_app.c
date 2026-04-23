@@ -286,6 +286,23 @@ static ev_result_t ev_demo_app_publish_oled_text(ev_demo_app_t *app, uint8_t pag
     return ev_demo_app_publish_owned(app, &text_msg);
 }
 
+static ev_result_t ev_demo_app_publish_oled_commit(ev_demo_app_t *app)
+{
+    ev_msg_t msg = {0};
+    ev_result_t rc;
+
+    if (app == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    rc = ev_msg_init_publish(&msg, EV_OLED_COMMIT_FRAME, ACT_APP);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    return ev_demo_app_publish_owned(app, &msg);
+}
+
 static void ev_demo_app_format_time_text(const ev_demo_app_actor_state_t *state, char *out_text, size_t out_text_size)
 {
     if ((state == NULL) || (out_text == NULL) || (out_text_size == 0U)) {
@@ -407,6 +424,11 @@ static ev_result_t ev_demo_app_render_oled_frame(ev_demo_app_actor_state_t *stat
                                        (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TEMP_PAGE_OFFSET),
                                        state->current_column_offset,
                                        temp_text);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    rc = ev_demo_app_publish_oled_commit(app);
     if (rc != EV_OK) {
         return rc;
     }

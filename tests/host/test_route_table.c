@@ -11,10 +11,10 @@ int main(void)
     size_t i;
     size_t j;
 
-    assert(ev_route_count() == 26U);
+    assert(ev_route_count() == 29U);
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
-    assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 5U);
-    assert(ev_route_count_for_event(EV_TICK_1S) == 4U);
+    assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 6U);
+    assert(ev_route_count_for_event(EV_TICK_1S) == 5U);
     assert(ev_route_count_for_event(EV_TICK_100MS) == 3U);
     assert(ev_route_count_for_event(EV_GPIO_IRQ) == 2U);
     assert(ev_route_count_for_event(EV_TIME_UPDATED) == 1U);
@@ -27,19 +27,20 @@ int main(void)
     assert(ev_route_count_for_event(EV_DIAG_SNAPSHOT_REQ) == 1U);
     assert(ev_route_count_for_event(EV_DIAG_SNAPSHOT_RSP) == 1U);
     assert(ev_route_count_for_event(EV_OLED_DISPLAY_TEXT_CMD) == 1U);
+    assert(ev_route_count_for_event(EV_OLED_COMMIT_FRAME) == 1U);
 
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_DIAG));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_APP));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_MCP23008));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_DS18B20));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_OLED));
-    assert(!ev_route_exists(EV_BOOT_COMPLETED, ACT_RTC));
+    assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_RTC));
 
     assert(ev_route_exists(EV_TICK_1S, ACT_DIAG));
     assert(ev_route_exists(EV_TICK_1S, ACT_APP));
     assert(ev_route_exists(EV_TICK_1S, ACT_DS18B20));
     assert(ev_route_exists(EV_TICK_1S, ACT_OLED));
-    assert(!ev_route_exists(EV_TICK_1S, ACT_RTC));
+    assert(ev_route_exists(EV_TICK_1S, ACT_RTC));
 
     assert(ev_route_exists(EV_TICK_100MS, ACT_DIAG));
     assert(ev_route_exists(EV_TICK_100MS, ACT_PANEL));
@@ -55,6 +56,7 @@ int main(void)
     assert(ev_route_exists(EV_BUTTON_EVENT, ACT_APP));
     assert(ev_route_exists(EV_DIAG_SNAPSHOT_RSP, ACT_APP));
     assert(ev_route_exists(EV_OLED_DISPLAY_TEXT_CMD, ACT_OLED));
+    assert(ev_route_exists(EV_OLED_COMMIT_FRAME, ACT_OLED));
     assert(!ev_route_exists(EV_BOOT_STARTED, ACT_STREAM));
 
     for (i = 0U; i < ev_route_count(); ++i) {

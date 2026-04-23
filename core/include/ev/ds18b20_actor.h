@@ -32,6 +32,15 @@ typedef struct {
     ev_delivery_fn_t deliver;
     void *deliver_context;
     bool conversion_pending;
+    bool sensor_present;
+    bool last_read_ok;
+    bool temp_valid;
+    int16_t last_centi_celsius;
+    uint32_t conversions_started;
+    uint32_t scratchpad_reads_ok;
+    uint32_t crc_failures;
+    uint32_t no_device_failures;
+    uint32_t io_failures;
 } ev_ds18b20_actor_ctx_t;
 
 /**

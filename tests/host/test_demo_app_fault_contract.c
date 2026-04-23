@@ -314,7 +314,7 @@ static void test_rtc_timeout(void)
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
     assert(ev_demo_app_poll(&app) == EV_OK);
-    assert(app.app_actor.time_valid == false);
+    assert(app.app_actor.time_valid == true);
 
     fake_i2c_port_set_status(&fake_i2c, EV_RTC_DEFAULT_ADDR_7BIT, EV_I2C_ERR_TIMEOUT);
     assert(fake_irq_port_push(&fake_irq, &irq_sample) == EV_OK);
@@ -322,7 +322,8 @@ static void test_rtc_timeout(void)
 
     stats = ev_demo_app_stats(&app);
     assert(stats != NULL);
-    assert(app.app_actor.time_valid == false);
+    assert(app.app_actor.time_valid == true);
+    assert(app.rtc_ctx.read_failures >= 1U);
     assert(stats->pump_errors == 0U);
 }
 

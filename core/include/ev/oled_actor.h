@@ -125,6 +125,7 @@ ev_result_t ev_oled_actor_init(ev_oled_actor_ctx_t *ctx,
  * - EV_BOOT_COMPLETED
  * - EV_TICK_1S
  * - EV_OLED_DISPLAY_TEXT_CMD
+ * - EV_OLED_COMMIT_FRAME
  *
  * Transport failures never block the runtime. The actor moves into
  * EV_OLED_STATE_ERROR, latches the affected dirty range, and retries the panel

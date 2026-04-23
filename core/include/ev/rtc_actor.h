@@ -1,6 +1,7 @@
 #ifndef EV_RTC_ACTOR_H
 #define EV_RTC_ACTOR_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "ev/compiler.h"
@@ -47,6 +48,14 @@ typedef struct {
     ev_irq_line_id_t sqw_line_id;
     ev_delivery_fn_t deliver;
     void *deliver_context;
+    bool sqw_enabled;
+    bool time_valid;
+    ev_time_payload_t last_time;
+    uint32_t irq_samples_seen;
+    uint32_t published_updates;
+    uint32_t fallback_polls;
+    uint32_t read_failures;
+    uint32_t ticks_since_last_irq;
 } ev_rtc_actor_ctx_t;
 
 /**
@@ -80,8 +89,10 @@ ev_result_t ev_rtc_actor_init(ev_rtc_actor_ctx_t *ctx,
  * @brief Default actor handler for one RTC runtime instance.
  *
  * Supported events:
+ * - EV_BOOT_COMPLETED
  * - EV_MCP23008_READY
  * - EV_GPIO_IRQ
+ * - EV_TICK_1S
  *
  * @param actor_context Pointer to ev_rtc_actor_ctx_t.
  * @param msg Runtime envelope delivered to the actor.
