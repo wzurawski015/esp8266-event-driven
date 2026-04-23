@@ -38,9 +38,9 @@ typedef struct {
     uint32_t tick_period_ms;
     ev_clock_port_t *clock_port;
     ev_log_port_t *log_port;
-    ev_irq_port_t *irq_port; /* Opcjonalny kontrakt wejścia IRQ dla przyszłych aktorów asynchronicznych */
-    ev_i2c_port_t *i2c_port; /* Wstrzyknięty kontrakt magistrali I2C dla aktorów sprzętowych */
-    ev_onewire_port_t *onewire_port; /* Wstrzyknięty kontrakt 1-Wire dla aktorów sprzętowych */
+    ev_irq_port_t *irq_port; /* Wstrzyknięty kontrakt wejścia IRQ dla aktorów sprzętowych. */
+    ev_i2c_port_t *i2c_port; /* Wstrzyknięty kontrakt magistrali I2C dla aktorów sprzętowych. */
+    ev_onewire_port_t *onewire_port; /* Wstrzyknięty kontrakt 1-Wire dla aktorów sprzętowych. */
 } ev_demo_app_config_t;
 
 /**

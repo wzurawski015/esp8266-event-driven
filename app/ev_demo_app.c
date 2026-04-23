@@ -223,7 +223,6 @@ static ev_result_t ev_demo_app_publish_tick_100ms(ev_demo_app_t *app)
 
 static ev_result_t ev_demo_app_publish_panel_led_command(ev_demo_app_t *app, uint8_t value_mask, uint8_t valid_mask)
 {
-#ifndef EV_HOST_BUILD
     ev_msg_t msg = {0};
     ev_panel_led_set_cmd_t cmd = {0};
     ev_result_t rc;
@@ -245,15 +244,8 @@ static ev_result_t ev_demo_app_publish_panel_led_command(ev_demo_app_t *app, uin
     }
 
     return ev_demo_app_publish_owned(app, &msg);
-#else
-    (void)app;
-    (void)value_mask;
-    (void)valid_mask;
-    return EV_OK;
-#endif
 }
 
-#ifndef EV_HOST_BUILD
 static ev_result_t ev_demo_app_publish_irq_sample(ev_demo_app_t *app, const ev_irq_sample_t *sample)
 {
     if ((app == NULL) || (sample == NULL)) {
@@ -424,7 +416,6 @@ static ev_result_t ev_demo_app_render_oled_frame(ev_demo_app_actor_state_t *stat
     state->oled_frame_visible = true;
     return EV_OK;
 }
-#endif
 
 static void ev_demo_app_screensaver_step_axis(uint8_t *value, int8_t *direction, uint8_t max_value)
 {
@@ -470,11 +461,7 @@ static ev_result_t ev_demo_app_handle_tick_for_oled(ev_demo_app_actor_state_t *s
                                           EV_DEMO_APP_OLED_MAX_PAGE_OFFSET);
     }
 
-#ifndef EV_HOST_BUILD
     return ev_demo_app_render_oled_frame(state);
-#else
-    return EV_OK;
-#endif
 }
 
 static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t *msg)
@@ -733,7 +720,12 @@ static void ev_demo_app_record_poll_diag(ev_demo_app_t *app,
 static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
 {
     return (cfg != NULL) && (cfg->app_tag != NULL) && (cfg->board_name != NULL) && (cfg->clock_port != NULL) &&
-           (cfg->clock_port->mono_now_us != NULL) && (cfg->log_port != NULL) && (cfg->log_port->write != NULL);
+           (cfg->clock_port->mono_now_us != NULL) && (cfg->log_port != NULL) && (cfg->log_port->write != NULL) &&
+           (cfg->irq_port != NULL) && (cfg->irq_port->pop != NULL) && (cfg->irq_port->enable != NULL) &&
+           (cfg->i2c_port != NULL) && (cfg->i2c_port->write_stream != NULL) && (cfg->i2c_port->write_regs != NULL) &&
+           (cfg->i2c_port->read_regs != NULL) && (cfg->onewire_port != NULL) &&
+           (cfg->onewire_port->reset != NULL) && (cfg->onewire_port->write_byte != NULL) &&
+           (cfg->onewire_port->read_byte != NULL);
 }
 
 static ev_result_t ev_demo_app_drain_until_idle(ev_demo_app_t *app, ev_demo_app_poll_diag_t *diag)
@@ -784,10 +776,8 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 {
     ev_result_t rc;
     uint32_t now_ms;
-#ifndef EV_HOST_BUILD
     ev_i2c_port_t *active_i2c;
     ev_onewire_port_t *active_onewire;
-#endif
 
     if ((app == NULL) || !ev_demo_app_config_is_valid(cfg)) {
         return EV_ERR_INVALID_ARG;
@@ -805,13 +795,8 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     app->app_actor.direction_y = (int8_t)1;
     app->diag_actor.app = app;
 
-#ifndef EV_HOST_BUILD
     active_i2c = cfg->i2c_port;
     active_onewire = cfg->onewire_port;
-    if ((active_i2c == NULL) || (active_onewire == NULL)) {
-        return EV_ERR_INVALID_ARG;
-    }
-#endif
 
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) return rc;
@@ -831,7 +816,6 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_mailbox_init(&app->runtime_mailbox, EV_MAILBOX_FIFO_8, app->runtime_storage, EV_ARRAY_LEN(app->runtime_storage));
     if (rc != EV_OK) return rc;
 
-#ifndef EV_HOST_BUILD
     rc = ev_mailbox_init(&app->rtc_mailbox, EV_MAILBOX_FIFO_8, app->rtc_storage, EV_ARRAY_LEN(app->rtc_storage));
     if (rc != EV_OK) return rc;
 
@@ -849,7 +833,6 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_mailbox_init(&app->oled_mailbox, EV_MAILBOX_FIFO_8, app->oled_storage, EV_ARRAY_LEN(app->oled_storage));
     if (rc != EV_OK) return rc;
-#endif
 
     /* Inicjalizacja Wątków Aktorów (Runtimes) */
     rc = ev_actor_runtime_init(&app->app_runtime, ACT_APP, &app->app_mailbox, ev_demo_app_actor_handler, &app->app_actor);
@@ -867,7 +850,6 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_runtime_init(&app->runtime_actor, ACT_RUNTIME, &app->runtime_mailbox, ev_runtime_actor_handler, NULL);
     if (rc != EV_OK) return rc;
 
-#ifndef EV_HOST_BUILD
     rc = ev_mcp23008_actor_init(&app->mcp23008_ctx,
                                   active_i2c,
                                   EV_I2C_PORT_NUM_0,
@@ -915,7 +897,6 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_actor_runtime_init(&app->oled_runtime, ACT_OLED, &app->oled_mailbox, ev_oled_actor_handle, &app->oled_ctx);
     if (rc != EV_OK) return rc;
-#endif
 
     /* Rejestracja w Systemie Aktorów */
     rc = ev_actor_registry_init(&app->registry);
@@ -933,7 +914,6 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_registry_bind(&app->registry, &app->runtime_actor);
     if (rc != EV_OK) return rc;
 
-#ifndef EV_HOST_BUILD
     rc = ev_actor_registry_bind(&app->registry, &app->mcp23008_runtime);
     if (rc != EV_OK) return rc;
 
@@ -945,7 +925,6 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_actor_registry_bind(&app->registry, &app->oled_runtime);
     if (rc != EV_OK) return rc;
-#endif
 
     /* Inicjalizacja pomp zdarzeń */
     rc = ev_domain_pump_init(&app->fast_domain, &app->registry, EV_DOMAIN_FAST_LOOP);
@@ -1024,7 +1003,6 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
         goto finalize;
     }
 
-#ifndef EV_HOST_BUILD
     if ((app->irq_port != NULL) && (app->irq_port->pop != NULL)) {
         ev_irq_sample_t sample = {0};
 
@@ -1050,7 +1028,6 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
             }
         }
     }
-#endif
 
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) {

@@ -24,12 +24,18 @@ CORE_SRCS := \
     core/src/ev_rtc_actor.c \
     core/src/ev_ds18b20_actor.c \
     core/src/ev_mcp23008_actor.c \
-    core/src/ev_panel_actor.c
+    core/src/ev_panel_actor.c \
+    core/src/ev_oled_actor.c
 
 APP_SRCS := \
     app/ev_demo_app.c
 
-COMMON_SRCS := $(CORE_SRCS) $(APP_SRCS)
+TEST_SUPPORT_SRCS := \
+    tests/host/fakes/fake_i2c_port.c \
+    tests/host/fakes/fake_irq_port.c \
+    tests/host/fakes/fake_onewire_port.c
+
+COMMON_SRCS := $(CORE_SRCS) $(APP_SRCS) $(TEST_SUPPORT_SRCS)
 
 HOST_TESTS := \
     test_catalog \

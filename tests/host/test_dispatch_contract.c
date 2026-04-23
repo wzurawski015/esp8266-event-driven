@@ -65,7 +65,7 @@ int main(void)
     ev_publish_report_reset(&report);
     assert(ev_msg_init_publish(&msg, EV_BOOT_COMPLETED, ACT_BOOT) == EV_OK);
     assert(ev_publish_ex(&msg, trace_delivery, &trace, EV_PUBLISH_FAIL_FAST, &report) == EV_ERR_FULL);
-    assert(report.matched_routes == 2U);
+    assert(report.matched_routes == 5U);
     assert(report.attempted_deliveries == 2U);
     assert(report.delivered_count == 1U);
     assert(report.failed_count == 1U);
@@ -80,20 +80,20 @@ int main(void)
     trace.fail_result = EV_ERR_FULL;
     ev_publish_report_reset(&report);
     assert(ev_publish_ex(&msg, trace_delivery, &trace, EV_PUBLISH_BEST_EFFORT, &report) == EV_ERR_PARTIAL);
-    assert(report.matched_routes == 2U);
-    assert(report.attempted_deliveries == 2U);
-    assert(report.delivered_count == 1U);
+    assert(report.matched_routes == 5U);
+    assert(report.attempted_deliveries == 5U);
+    assert(report.delivered_count == 4U);
     assert(report.failed_count == 1U);
     assert(report.first_failed_actor == ACT_APP);
     assert(report.first_error == EV_ERR_FULL);
-    assert(trace.call_count == 2U);
+    assert(trace.call_count == 5U);
 
     trace = (trace_t){0};
     trace.fail_target = ACT_DIAG;
     trace.fail_result = EV_ERR_NOT_FOUND;
     ev_publish_report_reset(&report);
     assert(ev_publish_ex(&msg, trace_delivery, &trace, EV_PUBLISH_FAIL_FAST, &report) == EV_ERR_NOT_FOUND);
-    assert(report.matched_routes == 2U);
+    assert(report.matched_routes == 5U);
     assert(report.attempted_deliveries == 1U);
     assert(report.delivered_count == 0U);
     assert(report.failed_count == 1U);
