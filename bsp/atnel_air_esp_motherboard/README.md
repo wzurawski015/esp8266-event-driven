@@ -12,7 +12,7 @@ framework adapters.
 ## Board facts captured in this BSP
 
 - UART0 is provided through the onboard FT231X USB-UART path.
-- Primary I2C uses `GPIO5` (SCL) and `GPIO4` (SDA).
+- Primary I2C uses `GPIO4` (SCL) and `GPIO5` (SDA).
 - Primary 1-Wire uses `GPIO12` through JP1.
 - `GPIO13` may be connected to the IR receiver path through JP4.
 - `GPIO14` may be used either as MCP23008 interrupt (JP2) or RTC interrupt (JP19).

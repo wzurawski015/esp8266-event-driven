@@ -25,8 +25,8 @@ It only freezes:
 | --- | --- | --- |
 | UART0 TX | GPIO1 | via FT231X |
 | UART0 RX | GPIO3 | via FT231X |
-| I2C SCL | GPIO5 | shared bus |
-| I2C SDA | GPIO4 | shared bus |
+| I2C SCL | GPIO4 | shared bus |
+| I2C SDA | GPIO5 | shared bus |
 | 1-Wire DQ | GPIO12 | via JP1 |
 | Optional IR input | GPIO13 | via JP4 |
 | Optional interrupt line | GPIO14 | MCP23008 INT via JP2 or RTC INT via JP19 |
@@ -62,7 +62,7 @@ Because of that, board-specific policy belongs in this BSP rather than in
 1. UART boot + diagnostics
 2. clock / log / reset / uart public adapters
 3. board-scoped boot and diagnostics target
-4. I2C scan and bus bring-up
+4. I2C bus bring-up
 5. OLED + RTC
 6. MCP23008
 7. 1-Wire / DS18B20
