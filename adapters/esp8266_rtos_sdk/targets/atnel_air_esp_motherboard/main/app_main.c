@@ -7,20 +7,28 @@
 #include "esp_log.h"
 
 #include "ev/compiler.h"
+#include "ev/mcp23008_actor.h"
+#include "ev/rtc_actor.h"
 #include "ev/esp8266_boot_diag.h"
 #include "ev/esp8266_port_adapters.h"
 #include "ev/esp8266_runtime_app.h"
 
 #define EV_BOARD_TAG "ev_atnel"
 #define EV_BOARD_NAME "atnel_air_esp_motherboard"
-#define EV_BOARD_I2C_SCL_GPIO 4
-#define EV_BOARD_I2C_SDA_GPIO 5
-#define EV_BOARD_ONEWIRE_GPIO 12
+#define EV_BOARD_I2C_SCL_GPIO 4U
+#define EV_BOARD_I2C_SDA_GPIO 5U
+#define EV_BOARD_RTC_ADDR_7BIT 0x68U
+#define EV_BOARD_MCP23008_ADDR_7BIT 0x20U
+#define EV_BOARD_ONEWIRE_GPIO 12U
 #define EV_BOARD_IRQ_IR0_GPIO 13U
 #define EV_BOARD_IRQ_INT0_GPIO 14U
 
 EV_STATIC_ASSERT(EV_BOARD_ONEWIRE_GPIO != EV_BOARD_IRQ_INT0_GPIO,
                  "1-Wire and RTC/INT0 ingress must stay on distinct GPIOs");
+EV_STATIC_ASSERT(EV_RTC_DEFAULT_ADDR_7BIT == EV_BOARD_RTC_ADDR_7BIT,
+                 "RTC actor default address must stay fixed to the ATNEL board wiring");
+EV_STATIC_ASSERT(EV_MCP23008_DEFAULT_ADDR_7BIT == EV_BOARD_MCP23008_ADDR_7BIT,
+                 "MCP23008 actor default address must stay fixed to the ATNEL board wiring");
 
 static ev_i2c_port_t s_board_i2c_port;
 static ev_irq_port_t s_board_irq_port;

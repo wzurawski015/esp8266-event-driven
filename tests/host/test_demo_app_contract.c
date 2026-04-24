@@ -98,6 +98,22 @@ static uint8_t test_ds18b20_crc8(const uint8_t *data, size_t data_len)
     return crc;
 }
 
+
+static ev_result_t noop_retain(void *ctx, const void *data, size_t size)
+{
+    (void)ctx;
+    (void)data;
+    (void)size;
+    return EV_OK;
+}
+
+static void noop_release(void *ctx, const void *data, size_t size)
+{
+    (void)ctx;
+    (void)data;
+    (void)size;
+}
+
 static void drive_app_until_quiescent(ev_demo_app_t *app, fake_irq_port_t *fake_irq, unsigned max_iterations)
 {
     unsigned i;
@@ -117,13 +133,14 @@ static void drive_app_until_quiescent(ev_demo_app_t *app, fake_irq_port_t *fake_
     assert(!"demo app did not quiesce within iteration budget");
 }
 
+
 static void test_oled_commit_semantics(void)
 {
     fake_i2c_port_t fake_i2c;
     ev_i2c_port_t i2c_port = {0};
     ev_oled_actor_ctx_t oled;
     ev_msg_t msg = {0};
-    ev_oled_display_text_cmd_t cmd = {0};
+    ev_oled_scene_t scene = {0};
     uint32_t baseline_flushes;
     uint32_t baseline_writes;
 
@@ -144,21 +161,51 @@ static void test_oled_commit_semantics(void)
     baseline_flushes = oled.stats.flush_attempts;
     baseline_writes = fake_i2c.write_stream_calls;
 
-    cmd.page = 0U;
-    cmd.column = 0U;
-    (void)snprintf(cmd.text, sizeof(cmd.text), "%s", "TEST");
-    assert(ev_msg_init_publish(&msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP) == EV_OK);
-    assert(ev_msg_set_inline_payload(&msg, &cmd, sizeof(cmd)) == EV_OK);
-    assert(ev_oled_actor_handle(&oled, &msg) == EV_OK);
-    assert(ev_msg_dispose(&msg) == EV_OK);
-    assert(oled.pending_flush == true);
-    assert(oled.stats.flush_attempts == baseline_flushes);
-    assert(fake_i2c.write_stream_calls == baseline_writes);
+    scene.flags = EV_OLED_SCENE_FLAG_VISIBLE;
+    scene.page_offset = 0U;
+    scene.column_offset = 0U;
+    (void)snprintf(scene.lines[0], sizeof(scene.lines[0]), "%s", "ATNEL AIR");
+    (void)snprintf(scene.lines[1], sizeof(scene.lines[1]), "%s", "12:34:56");
+    (void)snprintf(scene.lines[2], sizeof(scene.lines[2]), "%s", "25.00 C");
 
     assert(ev_msg_init_publish(&msg, EV_OLED_COMMIT_FRAME, ACT_APP) == EV_OK);
+    assert(ev_msg_set_external_payload(&msg,
+                                       &scene,
+                                       sizeof(scene),
+                                       noop_retain,
+                                       noop_release,
+                                       NULL) == EV_OK);
     assert(ev_oled_actor_handle(&oled, &msg) == EV_OK);
     assert(ev_msg_dispose(&msg) == EV_OK);
     assert(oled.pending_flush == false);
+    assert(oled.stats.display_commands_seen == 0U);
+    assert(oled.stats.flush_attempts > baseline_flushes);
+    assert(fake_i2c.write_stream_calls > baseline_writes);
+
+    baseline_flushes = oled.stats.flush_attempts;
+    baseline_writes = fake_i2c.write_stream_calls;
+    assert(ev_msg_init_publish(&msg, EV_OLED_COMMIT_FRAME, ACT_APP) == EV_OK);
+    assert(ev_msg_set_external_payload(&msg,
+                                       &scene,
+                                       sizeof(scene),
+                                       noop_retain,
+                                       noop_release,
+                                       NULL) == EV_OK);
+    assert(ev_oled_actor_handle(&oled, &msg) == EV_OK);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+    assert(oled.stats.flush_attempts == baseline_flushes);
+    assert(fake_i2c.write_stream_calls == baseline_writes);
+
+    (void)snprintf(scene.lines[1], sizeof(scene.lines[1]), "%s", "12:34:57");
+    assert(ev_msg_init_publish(&msg, EV_OLED_COMMIT_FRAME, ACT_APP) == EV_OK);
+    assert(ev_msg_set_external_payload(&msg,
+                                       &scene,
+                                       sizeof(scene),
+                                       noop_retain,
+                                       noop_release,
+                                       NULL) == EV_OK);
+    assert(ev_oled_actor_handle(&oled, &msg) == EV_OK);
+    assert(ev_msg_dispose(&msg) == EV_OK);
     assert(oled.stats.flush_attempts > baseline_flushes);
     assert(fake_i2c.write_stream_calls > baseline_writes);
 }
@@ -291,6 +338,7 @@ int main(void)
     assert(app.ds18b20_ctx.temp_valid);
     assert(app.ds18b20_ctx.last_centi_celsius == 2500);
     assert(app.ds18b20_ctx.scratchpad_reads_ok >= 1U);
+    assert(app.oled_ctx.stats.display_commands_seen == 0U);
 
     rtc_time[0] = test_bcd(58U);
     fake_i2c_port_seed_regs(&fake_i2c, EV_RTC_DEFAULT_ADDR_7BIT, 0x00U, rtc_time, sizeof(rtc_time));

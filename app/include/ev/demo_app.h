@@ -28,6 +28,7 @@ extern "C" {
 #define EV_DEMO_APP_MAILBOX_CAPACITY 8U
 #define EV_DEMO_APP_LEASE_SLOTS 4U
 #define EV_DEMO_APP_SNAPSHOT_BYTES 16U
+#define EV_DEMO_APP_LEASE_SLOT_BYTES 96U
 
 /**
  * @brief Immutable wiring required by the portable demo runtime.
@@ -87,6 +88,7 @@ typedef struct {
     uint8_t last_column_offset;
     int8_t direction_x;
     int8_t direction_y;
+    ev_oled_scene_t oled_scene;
 } ev_demo_app_actor_state_t;
 
 /**
@@ -148,7 +150,7 @@ struct ev_demo_app {
 
     ev_lease_pool_t lease_pool;
     ev_lease_slot_t lease_slots[EV_DEMO_APP_LEASE_SLOTS];
-    unsigned char lease_storage[EV_DEMO_APP_LEASE_SLOTS * EV_DEMO_APP_SNAPSHOT_BYTES];
+    unsigned char lease_storage[EV_DEMO_APP_LEASE_SLOTS * EV_DEMO_APP_LEASE_SLOT_BYTES];
 
     ev_demo_app_actor_state_t app_actor;
     ev_demo_diag_actor_state_t diag_actor;

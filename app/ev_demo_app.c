@@ -41,6 +41,8 @@ typedef struct {
 } ev_demo_snapshot_t;
 
 EV_STATIC_ASSERT(sizeof(ev_demo_snapshot_t) == EV_DEMO_APP_SNAPSHOT_BYTES, "demo snapshot ABI mismatch");
+EV_STATIC_ASSERT(sizeof(ev_oled_scene_t) <= EV_DEMO_APP_LEASE_SLOT_BYTES,
+                 "OLED scene payload must fit inside one demo lease slot");
 
 static void ev_demo_app_logf(ev_demo_app_t *app, ev_log_level_t level, const char *fmt, ...)
 {
@@ -258,52 +260,40 @@ static ev_result_t ev_demo_app_publish_irq_sample(ev_demo_app_t *app, const ev_i
     return ev_demo_app_publish_system_event(app, EV_GPIO_IRQ, sample, sizeof(*sample));
 }
 
-static ev_result_t ev_demo_app_publish_oled_text(ev_demo_app_t *app, uint8_t page, uint8_t column, const char *text)
+
+static ev_result_t ev_demo_app_publish_oled_scene_commit(ev_demo_app_t *app, const ev_oled_scene_t *scene)
 {
-    ev_msg_t text_msg = {0};
-    ev_oled_display_text_cmd_t cmd = {0};
-    ev_result_t rc;
-
-    if ((app == NULL) || (text == NULL)) {
-        return EV_ERR_INVALID_ARG;
-    }
-    if ((page >= EV_OLED_PAGE_COUNT) || (column >= EV_OLED_WIDTH)) {
-        return EV_ERR_OUT_OF_RANGE;
-    }
-
-    cmd.page = page;
-    cmd.column = column;
-    (void)snprintf(cmd.text, sizeof(cmd.text), "%s", text);
-
-    rc = ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd));
-    if (rc != EV_OK) {
-        (void)ev_msg_dispose(&text_msg);
-        return rc;
-    }
-
-    return ev_demo_app_publish_owned(app, &text_msg);
-}
-
-static ev_result_t ev_demo_app_publish_oled_commit(ev_demo_app_t *app)
-{
+    ev_lease_handle_t handle = {0};
     ev_msg_t msg = {0};
+    void *data = NULL;
     ev_result_t rc;
 
-    if (app == NULL) {
+    if ((app == NULL) || (scene == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
+
+    rc = ev_lease_pool_acquire(&app->lease_pool, sizeof(*scene), &handle, &data);
+    if (rc != EV_OK) {
+        ++app->stats.publish_errors;
+        ev_demo_app_logf(app, EV_LOG_ERROR, "oled scene acquire failed rc=%d", (int)rc);
+        return rc;
+    }
+
+    memcpy(data, scene, sizeof(*scene));
 
     rc = ev_msg_init_publish(&msg, EV_OLED_COMMIT_FRAME, ACT_APP);
-    if (rc != EV_OK) {
-        return rc;
+    if (rc == EV_OK) {
+        rc = ev_lease_pool_attach_msg(&msg, &handle);
+    }
+    if (rc == EV_OK) {
+        rc = ev_demo_app_publish_owned(app, &msg);
+    } else {
+        ++app->stats.publish_errors;
+        (void)ev_msg_dispose(&msg);
     }
 
-    return ev_demo_app_publish_owned(app, &msg);
+    (void)ev_lease_pool_release(&handle);
+    return rc;
 }
 
 static void ev_demo_app_format_time_text(const ev_demo_app_actor_state_t *state, char *out_text, size_t out_text_size)
@@ -352,45 +342,10 @@ static void ev_demo_app_format_temp_text(const ev_demo_app_actor_state_t *state,
                    (unsigned long)(abs_centi_celsius % 100U));
 }
 
-static ev_result_t ev_demo_app_clear_previous_oled_frame(ev_demo_app_actor_state_t *state)
-{
-    ev_demo_app_t *app;
-    ev_result_t rc;
-
-    if ((state == NULL) || (state->app == NULL)) {
-        return EV_ERR_INVALID_ARG;
-    }
-    if (!state->oled_frame_visible) {
-        return EV_OK;
-    }
-
-    app = state->app;
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->last_page_offset + EV_DEMO_APP_OLED_TITLE_PAGE_OFFSET),
-                                       state->last_column_offset,
-                                       "");
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->last_page_offset + EV_DEMO_APP_OLED_TIME_PAGE_OFFSET),
-                                       state->last_column_offset,
-                                       "");
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    return ev_demo_app_publish_oled_text(app,
-                                         (uint8_t)(state->last_page_offset + EV_DEMO_APP_OLED_TEMP_PAGE_OFFSET),
-                                         state->last_column_offset,
-                                         "");
-}
 
 static ev_result_t ev_demo_app_render_oled_frame(ev_demo_app_actor_state_t *state)
 {
     ev_demo_app_t *app;
-    ev_result_t rc;
     char time_text[EV_OLED_TEXT_MAX_CHARS] = {0};
     char temp_text[EV_OLED_TEXT_MAX_CHARS] = {0};
 
@@ -402,44 +357,18 @@ static ev_result_t ev_demo_app_render_oled_frame(ev_demo_app_actor_state_t *stat
     ev_demo_app_format_time_text(state, time_text, sizeof(time_text));
     ev_demo_app_format_temp_text(state, temp_text, sizeof(temp_text));
 
-    rc = ev_demo_app_clear_previous_oled_frame(state);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TITLE_PAGE_OFFSET),
-                                       state->current_column_offset,
-                                       EV_DEMO_APP_OLED_TITLE_TEXT);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TIME_PAGE_OFFSET),
-                                       state->current_column_offset,
-                                       time_text);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TEMP_PAGE_OFFSET),
-                                       state->current_column_offset,
-                                       temp_text);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_commit(app);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    memset(&state->oled_scene, 0, sizeof(state->oled_scene));
+    state->oled_scene.page_offset = state->current_page_offset;
+    state->oled_scene.column_offset = state->current_column_offset;
+    state->oled_scene.flags = EV_OLED_SCENE_FLAG_VISIBLE;
+    (void)snprintf(state->oled_scene.lines[0], sizeof(state->oled_scene.lines[0]), "%s", EV_DEMO_APP_OLED_TITLE_TEXT);
+    (void)snprintf(state->oled_scene.lines[1], sizeof(state->oled_scene.lines[1]), "%s", time_text);
+    (void)snprintf(state->oled_scene.lines[2], sizeof(state->oled_scene.lines[2]), "%s", temp_text);
 
     state->last_page_offset = state->current_page_offset;
     state->last_column_offset = state->current_column_offset;
     state->oled_frame_visible = true;
-    return EV_OK;
+    return ev_demo_app_publish_oled_scene_commit(app, &state->oled_scene);
 }
 
 static void ev_demo_app_screensaver_step_axis(uint8_t *value, int8_t *direction, uint8_t max_value)
@@ -1083,7 +1012,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_system_pump_bind(&app->system_pump, &app->slow_domain);
     if (rc != EV_OK) return rc;
 
-    rc = ev_lease_pool_init(&app->lease_pool, app->lease_slots, app->lease_storage, EV_DEMO_APP_LEASE_SLOTS, EV_DEMO_APP_SNAPSHOT_BYTES);
+    rc = ev_lease_pool_init(&app->lease_pool, app->lease_slots, app->lease_storage, EV_DEMO_APP_LEASE_SLOTS, EV_DEMO_APP_LEASE_SLOT_BYTES);
     if (rc != EV_OK) return rc;
 
     ev_demo_app_logf(app, EV_LOG_INFO, "demo runtime ready board=%s tick_period_ms=%u", app->board_name, (unsigned)app->tick_period_ms);

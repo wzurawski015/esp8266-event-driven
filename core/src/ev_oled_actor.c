@@ -229,32 +229,36 @@ static ev_result_t ev_oled_actor_send_data(ev_oled_actor_ctx_t *ctx, const uint8
     return EV_OK;
 }
 
-static void ev_oled_actor_mark_dirty(ev_oled_actor_ctx_t *ctx, uint8_t page, uint8_t start_column, uint8_t end_column)
+
+static void ev_oled_actor_reset_dirty(ev_oled_actor_ctx_t *ctx)
 {
+    uint8_t page;
+
     if (ctx == NULL) {
         return;
     }
 
-    if (!ctx->pending_flush) {
-        ctx->pending_flush = true;
-        ctx->dirty_page = page;
-        ctx->dirty_column_start = start_column;
-        ctx->dirty_column_end = end_column;
+    ctx->pending_flush = false;
+    ctx->dirty_page_mask = 0U;
+    for (page = 0U; page < EV_OLED_PAGE_COUNT; ++page) {
+        ctx->dirty_column_start[page] = EV_OLED_WIDTH;
+        ctx->dirty_column_end[page] = 0U;
+    }
+}
+
+static void ev_oled_actor_mark_dirty(ev_oled_actor_ctx_t *ctx, uint8_t page, uint8_t start_column, uint8_t end_column)
+{
+    if ((ctx == NULL) || (page >= EV_OLED_PAGE_COUNT) || (start_column >= end_column) || (end_column > EV_OLED_WIDTH)) {
         return;
     }
 
-    if (ctx->dirty_page != page) {
-        ctx->dirty_page = page;
-        ctx->dirty_column_start = 0U;
-        ctx->dirty_column_end = EV_OLED_WIDTH;
-        return;
+    ctx->pending_flush = true;
+    ctx->dirty_page_mask = (uint8_t)(ctx->dirty_page_mask | (uint8_t)(1U << page));
+    if (start_column < ctx->dirty_column_start[page]) {
+        ctx->dirty_column_start[page] = start_column;
     }
-
-    if (start_column < ctx->dirty_column_start) {
-        ctx->dirty_column_start = start_column;
-    }
-    if (end_column > ctx->dirty_column_end) {
-        ctx->dirty_column_end = end_column;
+    if (end_column > ctx->dirty_column_end[page]) {
+        ctx->dirty_column_end[page] = end_column;
     }
 }
 
@@ -272,9 +276,11 @@ static void ev_oled_actor_schedule_retry(ev_oled_actor_ctx_t *ctx)
 static ev_result_t ev_oled_actor_apply_address_window(ev_oled_actor_ctx_t *ctx,
                                                       uint8_t page,
                                                       uint8_t start_column,
-                                                      uint8_t end_column)
+                                                      uint8_t end_column,
+                                                      const uint8_t *page_data)
 {
-    if ((ctx == NULL) || (page >= EV_OLED_PAGE_COUNT) || (start_column >= end_column) || (end_column > EV_OLED_WIDTH)) {
+    if ((ctx == NULL) || (page >= EV_OLED_PAGE_COUNT) || (start_column >= end_column) || (end_column > EV_OLED_WIDTH) ||
+        (page_data == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 
@@ -298,7 +304,7 @@ static ev_result_t ev_oled_actor_apply_address_window(ev_oled_actor_ctx_t *ctx,
                 if (chunk > EV_OLED_DATA_CHUNK_BYTES) {
                     chunk = EV_OLED_DATA_CHUNK_BYTES;
                 }
-                rc = ev_oled_actor_send_data(ctx, &ctx->framebuffer[page][current], chunk);
+                rc = ev_oled_actor_send_data(ctx, &page_data[current], chunk);
                 if (rc != EV_OK) {
                     return rc;
                 }
@@ -324,12 +330,130 @@ static ev_result_t ev_oled_actor_apply_address_window(ev_oled_actor_ctx_t *ctx,
         }
     }
 
-    return ev_oled_actor_send_data(ctx, &ctx->framebuffer[page][start_column], (size_t)(end_column - start_column));
+    return ev_oled_actor_send_data(ctx, &page_data[start_column], (size_t)(end_column - start_column));
+}
+
+static ev_result_t ev_oled_actor_sync_full_framebuffer(ev_oled_actor_ctx_t *ctx)
+{
+    uint8_t page;
+    uint32_t baseline_successes;
+    uint32_t baseline_attempts;
+
+    if (ctx == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    baseline_attempts = ctx->stats.flush_attempts;
+    baseline_successes = ctx->stats.flush_successes;
+    ++ctx->stats.flush_attempts;
+
+    for (page = 0U; page < EV_OLED_PAGE_COUNT; ++page) {
+        ev_result_t rc = ev_oled_actor_apply_address_window(ctx, page, 0U, EV_OLED_WIDTH, ctx->framebuffer[page]);
+        if (rc != EV_OK) {
+            ctx->stats.flush_attempts = baseline_attempts + 1U;
+            ctx->stats.flush_successes = baseline_successes;
+            ++ctx->stats.flush_failures;
+            ev_oled_actor_schedule_retry(ctx);
+            return EV_OK;
+        }
+    }
+
+    ctx->stats.flush_attempts = baseline_attempts + 1U;
+    ctx->stats.flush_successes = baseline_successes + 1U;
+    return EV_OK;
+}
+
+static ev_result_t ev_oled_actor_render_text_into(uint8_t framebuffer[EV_OLED_PAGE_COUNT][EV_OLED_WIDTH],
+                                                  const ev_oled_display_text_cmd_t *cmd)
+{
+    size_t text_len;
+    size_t idx;
+    uint8_t column;
+    uint8_t page;
+
+    if ((framebuffer == NULL) || (cmd == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if ((cmd->page >= EV_OLED_PAGE_COUNT) || (cmd->column >= EV_OLED_WIDTH)) {
+        return EV_ERR_OUT_OF_RANGE;
+    }
+
+    page = cmd->page;
+    column = cmd->column;
+    memset(&framebuffer[page][column], 0, EV_OLED_WIDTH - column);
+
+    text_len = ev_oled_actor_bounded_strlen(cmd->text, EV_OLED_TEXT_MAX_CHARS);
+    for (idx = 0U; idx < text_len; ++idx) {
+        const uint8_t *glyph = ev_oled_actor_glyph_for_char(cmd->text[idx]);
+        size_t glyph_col;
+        uint8_t dst = (uint8_t)(column + (uint8_t)(idx * EV_OLED_CELL_ADVANCE));
+
+        if (dst >= EV_OLED_WIDTH) {
+            break;
+        }
+
+        for (glyph_col = 0U; glyph_col < EV_OLED_GLYPH_WIDTH; ++glyph_col) {
+            uint8_t target = (uint8_t)(dst + (uint8_t)glyph_col);
+            if (target >= EV_OLED_WIDTH) {
+                break;
+            }
+            framebuffer[page][target] = glyph[glyph_col];
+        }
+    }
+
+    return EV_OK;
+}
+
+static ev_result_t ev_oled_actor_prepare_scene_commit(ev_oled_actor_ctx_t *ctx, const ev_oled_scene_t *scene)
+{
+    uint8_t line;
+    uint8_t page;
+    uint8_t column;
+
+    if ((ctx == NULL) || (scene == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (scene->column_offset >= EV_OLED_WIDTH) {
+        return EV_ERR_OUT_OF_RANGE;
+    }
+
+    memset(ctx->staging_framebuffer, 0, sizeof(ctx->staging_framebuffer));
+
+    if ((scene->flags & EV_OLED_SCENE_FLAG_VISIBLE) != 0U) {
+        for (line = 0U; line < EV_OLED_SCENE_LINE_COUNT; ++line) {
+            ev_oled_display_text_cmd_t cmd = {0};
+            ev_result_t rc;
+
+            cmd.page = (uint8_t)(scene->page_offset + line);
+            cmd.column = scene->column_offset;
+            if (cmd.page >= EV_OLED_PAGE_COUNT) {
+                continue;
+            }
+            memcpy(cmd.text, scene->lines[line], sizeof(cmd.text));
+            cmd.text[EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
+
+            rc = ev_oled_actor_render_text_into(ctx->staging_framebuffer, &cmd);
+            if (rc != EV_OK) {
+                return rc;
+            }
+        }
+    }
+
+    ev_oled_actor_reset_dirty(ctx);
+    for (page = 0U; page < EV_OLED_PAGE_COUNT; ++page) {
+        for (column = 0U; column < EV_OLED_WIDTH; ++column) {
+            if (ctx->staging_framebuffer[page][column] != ctx->framebuffer[page][column]) {
+                ev_oled_actor_mark_dirty(ctx, page, column, (uint8_t)(column + 1U));
+            }
+        }
+    }
+
+    return EV_OK;
 }
 
 static ev_result_t ev_oled_actor_flush_pending(ev_oled_actor_ctx_t *ctx)
 {
-    ev_result_t rc;
+    uint8_t page;
 
     if (ctx == NULL) {
         return EV_ERR_INVALID_ARG;
@@ -339,44 +463,36 @@ static ev_result_t ev_oled_actor_flush_pending(ev_oled_actor_ctx_t *ctx)
     }
 
     ++ctx->stats.flush_attempts;
-    rc = ev_oled_actor_apply_address_window(ctx,
-                                            ctx->dirty_page,
-                                            ctx->dirty_column_start,
-                                            ctx->dirty_column_end);
-    if (rc != EV_OK) {
-        ++ctx->stats.flush_failures;
-        ev_oled_actor_schedule_retry(ctx);
-        return EV_OK;
-    }
-
-    ctx->pending_flush = false;
-    ctx->dirty_column_start = 0U;
-    ctx->dirty_column_end = 0U;
-    ++ctx->stats.flush_successes;
-    return EV_OK;
-}
-
-static ev_result_t ev_oled_actor_sync_full_framebuffer(ev_oled_actor_ctx_t *ctx)
-{
-    uint8_t page;
-
-    if (ctx == NULL) {
-        return EV_ERR_INVALID_ARG;
-    }
-
     for (page = 0U; page < EV_OLED_PAGE_COUNT; ++page) {
-        ctx->dirty_page = page;
-        ctx->dirty_column_start = 0U;
-        ctx->dirty_column_end = EV_OLED_WIDTH;
-        ctx->pending_flush = true;
-        {
-            ev_result_t rc = ev_oled_actor_flush_pending(ctx);
-            if (rc != EV_OK) {
-                return rc;
-            }
+        ev_result_t rc;
+        uint8_t start_column;
+        uint8_t end_column;
+
+        if ((ctx->dirty_page_mask & (uint8_t)(1U << page)) == 0U) {
+            continue;
+        }
+
+        start_column = ctx->dirty_column_start[page];
+        end_column = ctx->dirty_column_end[page];
+        if ((start_column >= end_column) || (end_column > EV_OLED_WIDTH)) {
+            continue;
+        }
+
+        rc = ev_oled_actor_apply_address_window(ctx,
+                                                page,
+                                                start_column,
+                                                end_column,
+                                                ctx->staging_framebuffer[page]);
+        if (rc != EV_OK) {
+            ++ctx->stats.flush_failures;
+            ev_oled_actor_schedule_retry(ctx);
+            return EV_OK;
         }
     }
 
+    memcpy(ctx->framebuffer, ctx->staging_framebuffer, sizeof(ctx->framebuffer));
+    ev_oled_actor_reset_dirty(ctx);
+    ++ctx->stats.flush_successes;
     return EV_OK;
 }
 
@@ -416,47 +532,9 @@ static ev_result_t ev_oled_actor_try_initialize(ev_oled_actor_ctx_t *ctx)
 
     ctx->state = EV_OLED_STATE_READY;
     ++ctx->stats.init_successes;
-    return EV_OK;
-}
-
-static ev_result_t ev_oled_actor_render_text(ev_oled_actor_ctx_t *ctx, const ev_oled_display_text_cmd_t *cmd)
-{
-    size_t text_len;
-    size_t idx;
-    uint8_t column;
-    uint8_t page;
-
-    if ((ctx == NULL) || (cmd == NULL)) {
-        return EV_ERR_INVALID_ARG;
+    if (ctx->pending_flush) {
+        return ev_oled_actor_flush_pending(ctx);
     }
-    if ((cmd->page >= EV_OLED_PAGE_COUNT) || (cmd->column >= EV_OLED_WIDTH)) {
-        return EV_ERR_OUT_OF_RANGE;
-    }
-
-    page = cmd->page;
-    column = cmd->column;
-    memset(&ctx->framebuffer[page][column], 0, EV_OLED_WIDTH - column);
-
-    text_len = ev_oled_actor_bounded_strlen(cmd->text, EV_OLED_TEXT_MAX_CHARS);
-    for (idx = 0U; idx < text_len; ++idx) {
-        const uint8_t *glyph = ev_oled_actor_glyph_for_char(cmd->text[idx]);
-        size_t glyph_col;
-        uint8_t dst = (uint8_t)(column + (uint8_t)(idx * EV_OLED_CELL_ADVANCE));
-
-        if (dst >= EV_OLED_WIDTH) {
-            break;
-        }
-
-        for (glyph_col = 0U; glyph_col < EV_OLED_GLYPH_WIDTH; ++glyph_col) {
-            uint8_t target = (uint8_t)(dst + (uint8_t)glyph_col);
-            if (target >= EV_OLED_WIDTH) {
-                break;
-            }
-            ctx->framebuffer[page][target] = glyph[glyph_col];
-        }
-    }
-
-    ev_oled_actor_mark_dirty(ctx, page, column, EV_OLED_WIDTH);
     return EV_OK;
 }
 
@@ -476,18 +554,48 @@ static ev_result_t ev_oled_actor_handle_display_text(ev_oled_actor_ctx_t *ctx, c
         return EV_ERR_CONTRACT;
     }
 
+    if (!ctx->pending_flush) {
+        memcpy(ctx->staging_framebuffer, ctx->framebuffer, sizeof(ctx->framebuffer));
+    }
+
     memcpy(&cmd, payload, payload_size);
     cmd.text[EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
 
     ++ctx->stats.display_commands_seen;
-    return ev_oled_actor_render_text(ctx, &cmd);
+    if (ev_oled_actor_render_text_into(ctx->staging_framebuffer, &cmd) != EV_OK) {
+        return EV_ERR_CONTRACT;
+    }
+    ev_oled_actor_mark_dirty(ctx, cmd.page, cmd.column, EV_OLED_WIDTH);
+    return EV_OK;
 }
 
-static ev_result_t ev_oled_actor_handle_commit_frame(ev_oled_actor_ctx_t *ctx)
+static ev_result_t ev_oled_actor_handle_commit_frame(ev_oled_actor_ctx_t *ctx, const ev_msg_t *msg)
 {
-    if (ctx == NULL) {
+    const void *payload;
+    size_t payload_size;
+
+    if ((ctx == NULL) || (msg == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
+
+    payload = ev_msg_payload_data(msg);
+    payload_size = ev_msg_payload_size(msg);
+    if ((payload != NULL) && (payload_size > 0U)) {
+        ev_oled_scene_t scene = {0};
+
+        if (payload_size > sizeof(scene)) {
+            return EV_ERR_CONTRACT;
+        }
+        memcpy(&scene, payload, payload_size);
+        scene.lines[0][EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
+        scene.lines[1][EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
+        scene.lines[2][EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
+
+        if (ev_oled_actor_prepare_scene_commit(ctx, &scene) != EV_OK) {
+            return EV_ERR_CONTRACT;
+        }
+    }
+
     if (!ctx->pending_flush) {
         return EV_OK;
     }
@@ -512,6 +620,9 @@ static ev_result_t ev_oled_actor_handle_tick(ev_oled_actor_ctx_t *ctx)
     }
 
     if (ctx->state == EV_OLED_STATE_READY) {
+        if (ctx->pending_flush) {
+            return ev_oled_actor_flush_pending(ctx);
+        }
         return EV_OK;
     }
 
@@ -544,6 +655,8 @@ ev_result_t ev_oled_actor_init(ev_oled_actor_ctx_t *ctx,
     ctx->retry_delay_ticks = EV_OLED_RETRY_DELAY_TICKS;
     ctx->last_i2c_status = EV_I2C_OK;
     ctx->stats.last_i2c_status = EV_I2C_OK;
+    memcpy(ctx->staging_framebuffer, ctx->framebuffer, sizeof(ctx->framebuffer));
+    ev_oled_actor_reset_dirty(ctx);
     return EV_OK;
 }
 
@@ -568,7 +681,7 @@ ev_result_t ev_oled_actor_handle(void *actor_context, const ev_msg_t *msg)
         return ev_oled_actor_handle_display_text(ctx, msg);
 
     case EV_OLED_COMMIT_FRAME:
-        return ev_oled_actor_handle_commit_frame(ctx);
+        return ev_oled_actor_handle_commit_frame(ctx, msg);
 
     default:
         return EV_ERR_CONTRACT;
