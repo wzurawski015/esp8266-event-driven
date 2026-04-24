@@ -1,0 +1,18 @@
+#ifndef EV_ATNEL_AIR_BOARD_PROFILE_H
+#define EV_ATNEL_AIR_BOARD_PROFILE_H
+#include "ev/compiler.h"
+enum {
+#define EV_BSP_PIN(name, gpio, desc) EV_BOARD_##name = (gpio),
+#define EV_BSP_PIN_ANALOG(name, desc)
+#include "pins.def"
+#undef EV_BSP_PIN
+#undef EV_BSP_PIN_ANALOG
+};
+#define EV_BOARD_I2C_SCL_GPIO      EV_BOARD_PIN_I2C0_SCL
+#define EV_BOARD_I2C_SDA_GPIO      EV_BOARD_PIN_I2C0_SDA
+#define EV_BOARD_ONEWIRE_GPIO      EV_BOARD_PIN_ONEWIRE0_DQ
+#define EV_BOARD_IRQ_IR0_GPIO      EV_BOARD_PIN_OPTIONAL_IR0_DATA
+#define EV_BOARD_IRQ_INT0_GPIO     EV_BOARD_PIN_OPTIONAL_INT0
+#define EV_BOARD_RTC_ADDR_7BIT     0x68U
+#define EV_BOARD_MCP23008_ADDR_7BIT 0x20U
+#endif /* EV_ATNEL_AIR_BOARD_PROFILE_H */
