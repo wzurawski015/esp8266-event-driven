@@ -220,7 +220,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
 
     for (;;) {
         rc = ev_demo_app_poll(&s_app);
-        if (rc != EV_OK) {
+        if ((rc != EV_OK) && (rc != EV_ERR_PARTIAL)) {
             ev_runtime_app_logf(&log_port, EV_LOG_FATAL, cfg->board_tag, "demo runtime poll failed rc=%d", (int)rc);
             (void)log_port.flush(log_port.ctx);
             (void)reset_port.restart(reset_port.ctx);

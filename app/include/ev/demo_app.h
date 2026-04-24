@@ -182,13 +182,16 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 ev_result_t ev_demo_app_publish_boot(ev_demo_app_t *app);
 
 /**
- * @brief Run one non-blocking poll iteration.
+ * @brief Run one bounded non-blocking poll iteration.
  *
- * The poll drains all currently pending work, publishes any due periodic tick
- * events, and then drains the resulting work again.
+ * The poll drains currently pending work only up to a bounded per-call budget,
+ * publishes any due periodic tick events while budget remains, and then drains
+ * the resulting work again within that same budget. When work remains after the
+ * budget is exhausted the function returns EV_ERR_PARTIAL.
  *
  * @param app Runtime object.
- * @return EV_OK on success or an error code.
+ * @return EV_OK on success, EV_ERR_PARTIAL when bounded work remains, or an
+ *         error code.
  */
 ev_result_t ev_demo_app_poll(ev_demo_app_t *app);
 

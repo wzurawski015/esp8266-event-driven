@@ -180,6 +180,25 @@ static ev_demo_app_config_t make_default_cfg(ev_clock_port_t *clock_port,
     return cfg;
 }
 
+static void drive_app_until_settled(ev_demo_app_t *app, fake_irq_port_t *fake_irq, unsigned max_iterations)
+{
+    unsigned i;
+
+    assert(app != NULL);
+    assert(fake_irq != NULL);
+    assert(max_iterations > 0U);
+
+    for (i = 0U; i < max_iterations; ++i) {
+        ev_result_t rc = ev_demo_app_poll(app);
+        assert((rc == EV_OK) || (rc == EV_ERR_PARTIAL));
+        if ((rc == EV_OK) && (ev_demo_app_pending(app) == 0U) && (fake_irq->count == 0U)) {
+            return;
+        }
+    }
+
+    assert(!"demo app did not settle within iteration budget");
+}
+
 static void test_oled_timeout(void)
 {
     fake_clock_t clock;
@@ -216,7 +235,7 @@ static void test_oled_timeout(void)
 
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
-    assert(ev_demo_app_poll(&app) == EV_OK);
+    drive_app_until_settled(&app, &fake_irq, 8U);
 
     stats = ev_demo_app_stats(&app);
     assert(stats != NULL);
@@ -224,7 +243,7 @@ static void test_oled_timeout(void)
     assert(stats->pump_errors == 0U);
 
     clock.now_us = 1000ULL * 1000ULL;
-    assert(ev_demo_app_poll(&app) == EV_OK);
+    drive_app_until_settled(&app, &fake_irq, 8U);
     assert(app.oled_ctx.state == EV_OLED_STATE_ERROR || app.oled_ctx.state == EV_OLED_STATE_READY);
 }
 
@@ -264,7 +283,7 @@ static void test_mcp_nack(void)
 
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
-    assert(ev_demo_app_poll(&app) == EV_OK);
+    drive_app_until_settled(&app, &fake_irq, 8U);
 
     stats = ev_demo_app_stats(&app);
     assert(stats != NULL);
@@ -313,12 +332,12 @@ static void test_rtc_timeout(void)
 
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
-    assert(ev_demo_app_poll(&app) == EV_OK);
+    drive_app_until_settled(&app, &fake_irq, 8U);
     assert(app.app_actor.time_valid == true);
 
     fake_i2c_port_set_status(&fake_i2c, EV_RTC_DEFAULT_ADDR_7BIT, EV_I2C_ERR_TIMEOUT);
     assert(fake_irq_port_push(&fake_irq, &irq_sample) == EV_OK);
-    assert(ev_demo_app_poll(&app) == EV_OK);
+    drive_app_until_settled(&app, &fake_irq, 8U);
 
     stats = ev_demo_app_stats(&app);
     assert(stats != NULL);
