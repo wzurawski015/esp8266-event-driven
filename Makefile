@@ -51,7 +51,8 @@ HOST_TESTS := \
     test_domain_pump_contract \
     test_system_pump_contract \
     test_demo_app_contract \
-    test_demo_app_fault_contract
+    test_demo_app_fault_contract \
+    test_app_starvation
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
 
