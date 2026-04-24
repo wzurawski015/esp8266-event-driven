@@ -16,3 +16,5 @@ DSL so that targets can consume one board-scoped source of truth without per-boa
 All production targets must consume board-scoped constants through a sibling `board_profile.h`
 that expands the unified DSL into target-facing `EV_BOARD_*` definitions instead of duplicating GPIO
 or device address macros inside target-local `app_main.c` files.
+
+- `bsp/wemos_esp_wroom_02_18650/` - Wemos ESP-WROOM-02 with integrated 18650 battery holder.
