@@ -172,3 +172,15 @@ Next step:
 ## License
 
 Use the repository `LICENSE` file chosen for the project root.
+
+## run
+clear
+make clean
+./tools/fw host-test
+export FW_SDK_PROJECT_DIR="adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard"
+./tools/fw sdk-clean-target
+./tools/fw sdk-defconfig
+./tools/fw sdk-build
+export PORT="$(./tools/fw sdk-port-resolve)"
+echo "Wykryty port to: $PORT"
+FW_ESPPORT="$PORT" ./tools/fw sdk-flash
