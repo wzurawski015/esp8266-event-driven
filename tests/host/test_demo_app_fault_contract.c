@@ -239,6 +239,8 @@ static void test_oled_timeout(void)
 
     stats = ev_demo_app_stats(&app);
     assert(stats != NULL);
+    assert(app.app_actor.system_ready);
+    assert((app.app_actor.active_hardware_mask & EV_SUPERVISOR_HW_OLED) == 0U);
     assert(app.oled_ctx.state == EV_OLED_STATE_ERROR);
     assert(stats->pump_errors == 0U);
 
@@ -287,6 +289,7 @@ static void test_mcp_nack(void)
 
     stats = ev_demo_app_stats(&app);
     assert(stats != NULL);
+    assert(app.app_actor.system_ready == false || (app.app_actor.active_hardware_mask & EV_SUPERVISOR_HW_MCP23008) == 0U);
     assert(app.mcp23008_ctx.configured == false);
     assert(stats->pump_errors == 0U);
 }

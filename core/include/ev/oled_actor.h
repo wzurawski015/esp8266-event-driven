@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "ev/compiler.h"
+#include "ev/delivery.h"
 #include "ev/msg.h"
 #include "ev/port_i2c.h"
 #include "ev/result.h"
@@ -101,6 +102,8 @@ typedef struct {
  */
 typedef struct {
     ev_i2c_port_t *i2c_port;
+    ev_delivery_fn_t deliver;
+    void *deliver_context;
     ev_i2c_port_num_t port_num;
     uint8_t device_address_7bit;
     ev_oled_controller_t controller;
@@ -137,7 +140,9 @@ ev_result_t ev_oled_actor_init(ev_oled_actor_ctx_t *ctx,
                                ev_i2c_port_t *i2c_port,
                                ev_i2c_port_num_t port_num,
                                uint8_t device_address_7bit,
-                               ev_oled_controller_t controller);
+                               ev_oled_controller_t controller,
+                               ev_delivery_fn_t deliver,
+                               void *deliver_context);
 
 /**
  * @brief Default actor handler for one OLED runtime instance.
@@ -147,6 +152,8 @@ ev_result_t ev_oled_actor_init(ev_oled_actor_ctx_t *ctx,
  * - EV_TICK_1S
  * - EV_OLED_DISPLAY_TEXT_CMD
  * - EV_OLED_COMMIT_FRAME
+ *
+ * The actor publishes EV_OLED_READY after the first successful initialization.
  *
  * EV_OLED_COMMIT_FRAME may carry one lease-backed ::ev_oled_scene_t payload.
  * The actor diffs the committed scene against the currently displayed

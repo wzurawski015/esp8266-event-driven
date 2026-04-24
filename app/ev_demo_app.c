@@ -110,6 +110,8 @@ static ev_result_t ev_demo_app_publish_owned(ev_demo_app_t *app, ev_msg_t *msg)
     return rc;
 }
 
+static bool ev_demo_app_hardware_active(const ev_demo_app_actor_state_t *state, uint32_t hw_mask);
+
 static ev_result_t ev_demo_app_publish_snapshot(ev_demo_diag_actor_state_t *state)
 {
     ev_demo_app_t *app;
@@ -251,6 +253,11 @@ static ev_result_t ev_demo_app_publish_panel_led_command(ev_demo_app_t *app, uin
     return ev_demo_app_publish_owned(app, &msg);
 }
 
+static bool ev_demo_app_hardware_active(const ev_demo_app_actor_state_t *state, uint32_t hw_mask)
+{
+    return (state != NULL) && state->system_ready && ((state->active_hardware_mask & hw_mask) != 0U);
+}
+
 static ev_result_t ev_demo_app_publish_irq_sample(ev_demo_app_t *app, const ev_irq_sample_t *sample)
 {
     if ((app == NULL) || (sample == NULL)) {
@@ -354,6 +361,9 @@ static ev_result_t ev_demo_app_render_oled_frame(ev_demo_app_actor_state_t *stat
     }
 
     app = state->app;
+    if (!ev_demo_app_hardware_active(state, EV_SUPERVISOR_HW_OLED)) {
+        return EV_OK;
+    }
     ev_demo_app_format_time_text(state, time_text, sizeof(time_text));
     ev_demo_app_format_temp_text(state, temp_text, sizeof(temp_text));
 
@@ -432,30 +442,53 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
 
     switch (msg->event_id) {
     case EV_BOOT_COMPLETED:
+        ++app->stats.boot_completions;
+        state->current_page_offset = 0U;
+        state->current_column_offset = 0U;
+        state->last_page_offset = 0U;
+        state->last_column_offset = 0U;
+        state->direction_x = (int8_t)1;
+        state->direction_y = (int8_t)1;
+        state->oled_frame_visible = false;
+        state->screensaver_paused = false;
+        state->panel_led_mask = 0U;
+        state->system_ready = false;
+        state->active_hardware_mask = 0U;
+        return EV_OK;
+
+    case EV_SYSTEM_READY:
         {
+            const ev_system_ready_payload_t *ready_payload = (const ev_system_ready_payload_t *)ev_msg_payload_data(msg);
             ev_result_t rc;
 
-            ++app->stats.boot_completions;
-            state->current_page_offset = 0U;
-            state->current_column_offset = 0U;
-            state->last_page_offset = 0U;
-            state->last_column_offset = 0U;
-            state->direction_x = (int8_t)1;
-            state->direction_y = (int8_t)1;
-            state->oled_frame_visible = false;
-            state->screensaver_paused = false;
-            state->panel_led_mask = 0U;
-            ev_demo_app_logf(app, EV_LOG_INFO, "app actor: boot complete -> requesting diag snapshot");
+            if ((ready_payload == NULL) || (ev_msg_payload_size(msg) != sizeof(*ready_payload))) {
+                return EV_ERR_CONTRACT;
+            }
 
-            rc = ev_demo_app_publish_panel_led_command(app, 0U, EV_MCP23008_LED_MASK);
+            state->system_ready = true;
+            state->active_hardware_mask = ready_payload->active_hardware_mask;
+            state->temp_valid = (state->temp_valid && ((state->active_hardware_mask & EV_SUPERVISOR_HW_DS18B20) != 0U));
+            ev_demo_app_logf(app, EV_LOG_INFO, "app actor: system ready hw_mask=0x%08lx", (unsigned long)state->active_hardware_mask);
+
+            if ((state->active_hardware_mask & EV_SUPERVISOR_HW_MCP23008) != 0U) {
+                rc = ev_demo_app_publish_panel_led_command(app, 0U, EV_MCP23008_LED_MASK);
+                if (rc != EV_OK) {
+                    return rc;
+                }
+            }
+
+            rc = ev_demo_app_publish_diag_request(state);
             if (rc != EV_OK) {
                 return rc;
             }
 
-            return ev_demo_app_publish_diag_request(state);
+            return ev_demo_app_render_oled_frame(state);
         }
 
     case EV_TICK_1S:
+        if (!state->system_ready) {
+            return EV_OK;
+        }
         return ev_demo_app_handle_tick_for_oled(state);
 
     case EV_TEMP_UPDATED:
@@ -904,6 +937,12 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_mailbox_init(&app->oled_mailbox, EV_MAILBOX_FIFO_8, app->oled_storage, EV_ARRAY_LEN(app->oled_storage));
     if (rc != EV_OK) return rc;
 
+    rc = ev_mailbox_init(&app->supervisor_mailbox,
+                         EV_MAILBOX_FIFO_8,
+                         app->supervisor_storage,
+                         EV_ARRAY_LEN(app->supervisor_storage));
+    if (rc != EV_OK) return rc;
+
     /* Inicjalizacja Wątków Aktorów (Runtimes) */
     rc = ev_actor_runtime_init(&app->app_runtime, ACT_APP, &app->app_mailbox, ev_demo_app_actor_handler, &app->app_actor);
     if (rc != EV_OK) return rc;
@@ -915,6 +954,16 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->panel_runtime, ACT_PANEL, &app->panel_mailbox, ev_panel_actor_handle, &app->panel_ctx);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_supervisor_actor_init(&app->supervisor_ctx, ev_actor_registry_delivery, &app->registry);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->supervisor_runtime,
+                               ACT_SUPERVISOR,
+                               &app->supervisor_mailbox,
+                               ev_supervisor_actor_handle,
+                               &app->supervisor_ctx);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->runtime_actor, ACT_RUNTIME, &app->runtime_mailbox, ev_runtime_actor_handler, NULL);
@@ -962,7 +1011,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
                             active_i2c,
                             EV_I2C_PORT_NUM_0,
                             EV_OLED_DEFAULT_ADDR_7BIT,
-                            EV_OLED_CONTROLLER_SSD1306);
+                            EV_OLED_CONTROLLER_SSD1306,
+                            ev_actor_registry_delivery,
+                            &app->registry);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->oled_runtime, ACT_OLED, &app->oled_mailbox, ev_oled_actor_handle, &app->oled_ctx);
@@ -979,6 +1030,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_registry_bind(&app->registry, &app->panel_runtime);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_registry_bind(&app->registry, &app->supervisor_runtime);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_registry_bind(&app->registry, &app->runtime_actor);

@@ -19,3 +19,7 @@ EV_EVENT(EV_MCP23008_INPUT_CHANGED, EV_PAYLOAD_INLINE, "Normalized MCP23008 butt
 EV_EVENT(EV_BUTTON_EVENT, EV_PAYLOAD_INLINE, "Logical user button event")
 EV_EVENT(EV_PANEL_LED_SET_CMD, EV_PAYLOAD_INLINE, "Logical panel LED set command")
 EV_EVENT(EV_MCP23008_READY, EV_PAYLOAD_INLINE, "MCP23008 startup sequencing completed")
+EV_EVENT(EV_RTC_READY, EV_PAYLOAD_INLINE, "RTC actor became operational")
+EV_EVENT(EV_OLED_READY, EV_PAYLOAD_INLINE, "OLED actor became operational")
+EV_EVENT(EV_DS18B20_READY, EV_PAYLOAD_INLINE, "DS18B20 actor became operational")
+EV_EVENT(EV_SYSTEM_READY, EV_PAYLOAD_INLINE, "System startup completed with capability snapshot")

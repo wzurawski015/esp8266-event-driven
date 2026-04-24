@@ -129,8 +129,32 @@ static bool ev_rtc_actor_payload_equals(const ev_time_payload_t *lhs, const ev_t
     return (lhs != NULL) && (rhs != NULL) && (memcmp(lhs, rhs, sizeof(*lhs)) == 0);
 }
 
+static ev_result_t ev_rtc_actor_publish_ready(ev_rtc_actor_ctx_t *ctx)
+{
+    ev_msg_t msg = {0};
+    ev_result_t rc;
+    ev_result_t dispose_rc;
+
+    if ((ctx == NULL) || (ctx->deliver == NULL) || (ctx->deliver_context == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    rc = ev_msg_init_publish(&msg, EV_RTC_READY, ACT_RTC);
+    if (rc == EV_OK) {
+        rc = ev_publish(&msg, ctx->deliver, ctx->deliver_context, NULL);
+    }
+
+    dispose_rc = ev_msg_dispose(&msg);
+    if ((rc == EV_OK) && (dispose_rc != EV_OK)) {
+        rc = dispose_rc;
+    }
+
+    return rc;
+}
+
 static ev_result_t ev_rtc_actor_publish_time_update(ev_rtc_actor_ctx_t *ctx, const ev_time_payload_t *payload)
 {
+
     ev_msg_t msg = {0};
     ev_result_t rc;
     ev_result_t dispose_rc;
@@ -251,8 +275,17 @@ static ev_result_t ev_rtc_actor_try_refresh_time(ev_rtc_actor_ctx_t *ctx, bool f
     }
 
     changed = !ctx->time_valid || !ev_rtc_actor_payload_equals(&ctx->last_time, &payload);
-    ctx->last_time = payload;
-    ctx->time_valid = true;
+    {
+        const bool was_valid = ctx->time_valid;
+        ctx->last_time = payload;
+        ctx->time_valid = true;
+        if (!was_valid) {
+            rc = ev_rtc_actor_publish_ready(ctx);
+            if (rc != EV_OK) {
+                return rc;
+            }
+        }
+    }
     if (!changed) {
         return EV_OK;
     }

@@ -99,6 +99,14 @@ static uint8_t test_ds18b20_crc8(const uint8_t *data, size_t data_len)
 }
 
 
+static ev_result_t noop_deliver(ev_actor_id_t target_actor, const ev_msg_t *msg, void *ctx)
+{
+    (void)target_actor;
+    (void)msg;
+    (void)ctx;
+    return EV_OK;
+}
+
 static ev_result_t noop_retain(void *ctx, const void *data, size_t size)
 {
     (void)ctx;
@@ -152,7 +160,9 @@ static void test_oled_commit_semantics(void)
                               &i2c_port,
                               EV_I2C_PORT_NUM_0,
                               EV_OLED_DEFAULT_ADDR_7BIT,
-                              EV_OLED_CONTROLLER_SSD1306) == EV_OK);
+                              EV_OLED_CONTROLLER_SSD1306,
+                              noop_deliver,
+                              &oled) == EV_OK);
 
     assert(ev_msg_init_publish(&msg, EV_BOOT_COMPLETED, ACT_BOOT) == EV_OK);
     assert(ev_oled_actor_handle(&oled, &msg) == EV_OK);
@@ -284,7 +294,7 @@ int main(void)
 
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
-    assert(ev_demo_app_pending(&app) == 7U);
+    assert(ev_demo_app_pending(&app) == 8U);
 
     assert(ev_demo_app_poll(&app) == EV_OK);
     assert(ev_demo_app_pending(&app) == 0U);
@@ -302,6 +312,10 @@ int main(void)
     assert(stats->max_turns_per_poll >= 1U);
     assert(stats->max_messages_per_poll >= 1U);
     assert(stats->max_poll_elapsed_ms > 0U);
+    assert(app.app_actor.system_ready);
+    assert((app.app_actor.active_hardware_mask & EV_SUPERVISOR_HW_MCP23008) != 0U);
+    assert((app.app_actor.active_hardware_mask & EV_SUPERVISOR_HW_RTC) != 0U);
+    assert((app.app_actor.active_hardware_mask & EV_SUPERVISOR_HW_OLED) != 0U);
     assert(app.mcp23008_ctx.configured);
     assert(app.oled_ctx.state == EV_OLED_STATE_READY);
     assert(app.ds18b20_ctx.conversion_pending);

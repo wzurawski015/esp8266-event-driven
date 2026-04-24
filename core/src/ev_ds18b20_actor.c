@@ -138,8 +138,32 @@ static int16_t ev_ds18b20_actor_decode_centi_celsius(const uint8_t scratchpad[EV
     return (int16_t)scaled;
 }
 
+static ev_result_t ev_ds18b20_actor_publish_ready(ev_ds18b20_actor_ctx_t *ctx)
+{
+    ev_msg_t msg = {0};
+    ev_result_t rc;
+    ev_result_t dispose_rc;
+
+    if ((ctx == NULL) || (ctx->deliver == NULL) || (ctx->deliver_context == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    rc = ev_msg_init_publish(&msg, EV_DS18B20_READY, ACT_DS18B20);
+    if (rc == EV_OK) {
+        rc = ev_publish(&msg, ctx->deliver, ctx->deliver_context, NULL);
+    }
+
+    dispose_rc = ev_msg_dispose(&msg);
+    if ((rc == EV_OK) && (dispose_rc != EV_OK)) {
+        rc = dispose_rc;
+    }
+
+    return rc;
+}
+
 static ev_result_t ev_ds18b20_actor_publish_temperature(ev_ds18b20_actor_ctx_t *ctx, int16_t centi_celsius)
 {
+
     ev_temp_payload_t payload;
     ev_msg_t msg = {0};
     ev_result_t rc;
@@ -212,12 +236,20 @@ static ev_result_t ev_ds18b20_actor_handle_tick(ev_ds18b20_actor_ctx_t *ctx)
 
         if (rc == EV_OK) {
             const int16_t centi_celsius = ev_ds18b20_actor_decode_centi_celsius(scratchpad);
+            const bool was_valid = ctx->temp_valid;
 
             ctx->sensor_present = true;
             ctx->last_read_ok = true;
             ctx->temp_valid = true;
             ctx->last_centi_celsius = centi_celsius;
             ++ctx->scratchpad_reads_ok;
+            if (!was_valid) {
+                publish_rc = ev_ds18b20_actor_publish_ready(ctx);
+                if (publish_rc != EV_OK) {
+                    ev_ds18b20_actor_record_start_result(ctx, ev_ds18b20_actor_start_conversion(ctx));
+                    return publish_rc;
+                }
+            }
             publish_rc = ev_ds18b20_actor_publish_temperature(ctx, centi_celsius);
         } else {
             ctx->last_read_ok = false;

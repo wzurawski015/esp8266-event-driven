@@ -6,7 +6,9 @@
 #include <string.h>
 
 #include "ev/compiler.h"
+#include "ev/dispose.h"
 #include "ev/msg.h"
+#include "ev/publish.h"
 
 #define EV_OLED_CONTROL_CMD 0x00U
 #define EV_OLED_CONTROL_DATA 0x40U
@@ -155,8 +157,32 @@ static size_t ev_oled_actor_bounded_strlen(const char *text, size_t max_len)
     return len;
 }
 
+static ev_result_t ev_oled_actor_publish_ready(ev_oled_actor_ctx_t *ctx)
+{
+    ev_msg_t msg = {0};
+    ev_result_t rc;
+    ev_result_t dispose_rc;
+
+    if ((ctx == NULL) || (ctx->deliver == NULL) || (ctx->deliver_context == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    rc = ev_msg_init_publish(&msg, EV_OLED_READY, ACT_OLED);
+    if (rc == EV_OK) {
+        rc = ev_publish(&msg, ctx->deliver, ctx->deliver_context, NULL);
+    }
+
+    dispose_rc = ev_msg_dispose(&msg);
+    if ((rc == EV_OK) && (dispose_rc != EV_OK)) {
+        rc = dispose_rc;
+    }
+
+    return rc;
+}
+
 static ev_i2c_status_t ev_oled_actor_write_stream(ev_oled_actor_ctx_t *ctx, const uint8_t *data, size_t data_len)
 {
+
     if ((ctx == NULL) || (ctx->i2c_port == NULL) || (ctx->i2c_port->write_stream == NULL)) {
         return EV_I2C_ERR_BUS_LOCKED;
     }
@@ -532,6 +558,10 @@ static ev_result_t ev_oled_actor_try_initialize(ev_oled_actor_ctx_t *ctx)
 
     ctx->state = EV_OLED_STATE_READY;
     ++ctx->stats.init_successes;
+    rc = ev_oled_actor_publish_ready(ctx);
+    if (rc != EV_OK) {
+        return rc;
+    }
     if (ctx->pending_flush) {
         return ev_oled_actor_flush_pending(ctx);
     }
@@ -640,14 +670,19 @@ ev_result_t ev_oled_actor_init(ev_oled_actor_ctx_t *ctx,
                                ev_i2c_port_t *i2c_port,
                                ev_i2c_port_num_t port_num,
                                uint8_t device_address_7bit,
-                               ev_oled_controller_t controller)
+                               ev_oled_controller_t controller,
+                               ev_delivery_fn_t deliver,
+                               void *deliver_context)
 {
-    if ((ctx == NULL) || (i2c_port == NULL) || (i2c_port->write_stream == NULL) || (device_address_7bit > 0x7FU)) {
+    if ((ctx == NULL) || (i2c_port == NULL) || (i2c_port->write_stream == NULL) || (device_address_7bit > 0x7FU) ||
+        (deliver == NULL) || (deliver_context == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 
     memset(ctx, 0, sizeof(*ctx));
     ctx->i2c_port = i2c_port;
+    ctx->deliver = deliver;
+    ctx->deliver_context = deliver_context;
     ctx->port_num = port_num;
     ctx->device_address_7bit = device_address_7bit;
     ctx->controller = controller;
