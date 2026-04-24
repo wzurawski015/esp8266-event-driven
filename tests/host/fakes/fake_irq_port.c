@@ -21,6 +21,21 @@ static ev_result_t fake_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
     return EV_OK;
 }
 
+
+static ev_result_t fake_irq_wait(void *ctx, uint32_t timeout_ms, bool *out_woken)
+{
+    fake_irq_port_t *fake = (fake_irq_port_t *)ctx;
+
+    if ((fake == NULL) || (out_woken == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    (void)timeout_ms;
+    ++fake->wait_calls;
+    *out_woken = (fake->count > 0U);
+    return EV_OK;
+}
+
 static ev_result_t fake_irq_enable(void *ctx, ev_irq_line_id_t line_id, bool enabled)
 {
     fake_irq_port_t *fake = (fake_irq_port_t *)ctx;
@@ -48,6 +63,7 @@ void fake_irq_port_bind(ev_irq_port_t *out_port, fake_irq_port_t *fake)
         out_port->ctx = fake;
         out_port->pop = fake_irq_pop;
         out_port->enable = fake_irq_enable;
+        out_port->wait = fake_irq_wait;
     }
 }
 

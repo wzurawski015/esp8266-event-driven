@@ -19,6 +19,7 @@ typedef struct {
     bool enabled[8];
     uint32_t pop_calls;
     uint32_t enable_calls;
+    uint32_t wait_calls;
 } fake_irq_port_t;
 
 void fake_irq_port_init(fake_irq_port_t *fake);
