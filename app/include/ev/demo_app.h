@@ -38,9 +38,9 @@ typedef struct {
     uint32_t tick_period_ms;
     ev_clock_port_t *clock_port;
     ev_log_port_t *log_port;
-    ev_irq_port_t *irq_port; /* Opcjonalny kontrakt wejścia IRQ dla przyszłych aktorów asynchronicznych */
-    ev_i2c_port_t *i2c_port; /* Wstrzyknięty kontrakt magistrali I2C dla aktorów sprzętowych */
-    ev_onewire_port_t *onewire_port; /* Wstrzyknięty kontrakt 1-Wire dla aktorów sprzętowych */
+    ev_irq_port_t *irq_port; /* Wstrzyknięty kontrakt wejścia IRQ dla aktorów sprzętowych. */
+    ev_i2c_port_t *i2c_port; /* Wstrzyknięty kontrakt magistrali I2C dla aktorów sprzętowych. */
+    ev_onewire_port_t *onewire_port; /* Wstrzyknięty kontrakt 1-Wire dla aktorów sprzętowych. */
 } ev_demo_app_config_t;
 
 /**
@@ -54,6 +54,15 @@ typedef struct {
     uint32_t snapshots_received;
     uint32_t publish_errors;
     uint32_t pump_errors;
+    uint32_t irq_samples_drained;
+    size_t max_pending_before_poll;
+    size_t max_pending_after_poll;
+    size_t max_irq_samples_per_poll;
+    size_t max_pump_calls_per_poll;
+    size_t max_turns_per_poll;
+    size_t max_messages_per_poll;
+    uint32_t last_poll_elapsed_ms;
+    uint32_t max_poll_elapsed_ms;
 } ev_demo_app_stats_t;
 
 typedef struct ev_demo_app ev_demo_app_t;
@@ -105,6 +114,9 @@ struct ev_demo_app {
     bool boot_published;
     ev_irq_port_t *irq_port;
 
+    ev_mailbox_t runtime_mailbox;
+    ev_msg_t runtime_storage[8];
+    ev_actor_runtime_t runtime_actor;
     ev_actor_registry_t registry;
     ev_mailbox_t app_mailbox;
     ev_mailbox_t diag_mailbox;
@@ -170,13 +182,16 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 ev_result_t ev_demo_app_publish_boot(ev_demo_app_t *app);
 
 /**
- * @brief Run one non-blocking poll iteration.
+ * @brief Run one bounded non-blocking poll iteration.
  *
- * The poll drains all currently pending work, publishes any due periodic tick
- * events, and then drains the resulting work again.
+ * The poll drains currently pending work only up to a bounded per-call budget,
+ * publishes any due periodic tick events while budget remains, and then drains
+ * the resulting work again within that same budget. When work remains after the
+ * budget is exhausted the function returns EV_ERR_PARTIAL.
  *
  * @param app Runtime object.
- * @return EV_OK on success or an error code.
+ * @return EV_OK on success, EV_ERR_PARTIAL when bounded work remains, or an
+ *         error code.
  */
 ev_result_t ev_demo_app_poll(ev_demo_app_t *app);
 

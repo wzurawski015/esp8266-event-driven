@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include "driver/gpio.h"
 #include "esp_attr.h"
@@ -34,6 +35,7 @@ typedef struct {
     volatile uint8_t count;
     size_t line_count;
     bool configured;
+    SemaphoreHandle_t wait_sem;
 } ev_esp8266_irq_adapter_ctx_t;
 
 static ev_esp8266_irq_adapter_ctx_t g_ev_irq_ctx;
@@ -116,6 +118,7 @@ static bool ev_esp8266_irq_line_configs_are_valid(const ev_gpio_irq_line_config_
 static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const ev_irq_sample_t *sample)
 {
     uint8_t head;
+    BaseType_t higher_priority_woken = pdFALSE;
 
     if ((adapter == NULL) || (sample == NULL)) {
         return;
@@ -132,8 +135,14 @@ static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const
         adapter->ring[head] = *sample;
         adapter->head = (uint8_t)((head + 1U) % EV_ESP8266_IRQ_RING_CAPACITY);
         ++adapter->count;
+        if (adapter->wait_sem != NULL) {
+            (void)xSemaphoreGiveFromISR(adapter->wait_sem, &higher_priority_woken);
+        }
     }
 
+    if (higher_priority_woken == pdTRUE) {
+        portYIELD_FROM_ISR();
+    }
 }
 
 static void IRAM_ATTR ev_esp8266_irq_isr(void *arg)
@@ -197,6 +206,45 @@ static ev_result_t ev_esp8266_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
     return EV_OK;
 }
 
+
+static ev_result_t ev_esp8266_irq_wait(void *ctx, uint32_t timeout_ms, bool *out_woken)
+{
+    ev_esp8266_irq_adapter_ctx_t *adapter = (ev_esp8266_irq_adapter_ctx_t *)ctx;
+    TickType_t timeout_ticks;
+
+    if ((adapter == NULL) || (out_woken == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!adapter->configured) {
+        return EV_ERR_STATE;
+    }
+
+    portENTER_CRITICAL();
+    if (adapter->count > 0U) {
+        portEXIT_CRITICAL();
+        *out_woken = true;
+        return EV_OK;
+    }
+    portEXIT_CRITICAL();
+
+    if (adapter->wait_sem == NULL) {
+        return EV_ERR_STATE;
+    }
+
+    timeout_ticks = pdMS_TO_TICKS(timeout_ms);
+    if ((timeout_ms > 0U) && (timeout_ticks == 0)) {
+        timeout_ticks = 1;
+    }
+
+    if (xSemaphoreTake(adapter->wait_sem, timeout_ticks) == pdTRUE) {
+        *out_woken = true;
+        return EV_OK;
+    }
+
+    *out_woken = false;
+    return EV_OK;
+}
+
 static ev_result_t ev_esp8266_irq_enable(void *ctx, ev_irq_line_id_t line_id, bool enabled)
 {
     ev_esp8266_irq_adapter_ctx_t *adapter = (ev_esp8266_irq_adapter_ctx_t *)ctx;
@@ -244,7 +292,21 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
         return EV_ERR_INVALID_ARG;
     }
 
-    memset(&g_ev_irq_ctx, 0, sizeof(g_ev_irq_ctx));
+    {
+        SemaphoreHandle_t wait_sem = g_ev_irq_ctx.wait_sem;
+        memset(&g_ev_irq_ctx, 0, sizeof(g_ev_irq_ctx));
+        g_ev_irq_ctx.wait_sem = wait_sem;
+    }
+
+    if (g_ev_irq_ctx.wait_sem == NULL) {
+        g_ev_irq_ctx.wait_sem = xSemaphoreCreateBinary();
+        if (g_ev_irq_ctx.wait_sem == NULL) {
+            return EV_ERR_STATE;
+        }
+    }
+
+    while (xSemaphoreTake(g_ev_irq_ctx.wait_sem, 0) == pdTRUE) {
+    }
 
     for (i = 0U; i < line_count; ++i) {
         const ev_gpio_irq_line_config_t *src = &line_cfgs[i];
@@ -290,5 +352,6 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
     out_port->ctx = &g_ev_irq_ctx;
     out_port->pop = ev_esp8266_irq_pop;
     out_port->enable = ev_esp8266_irq_enable;
+    out_port->wait = ev_esp8266_irq_wait;
     return EV_OK;
 }

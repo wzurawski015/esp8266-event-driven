@@ -10,7 +10,8 @@
 
 #define EV_RUNTIME_APP_DEFAULT_BAUD_RATE 115200U
 #define EV_RUNTIME_APP_DEFAULT_TICK_MS 1000U
-#define EV_RUNTIME_APP_IDLE_DELAY_MS 10U
+#define EV_RUNTIME_APP_MIN_WAIT_MS 1U
+#define EV_RUNTIME_APP_MAX_WAIT_MS 100U
 
 static void ev_runtime_app_logf(ev_log_port_t *log_port,
                                 ev_log_level_t level,
@@ -39,6 +40,97 @@ static void ev_runtime_app_logf(ev_log_port_t *log_port,
     }
 
     (void)log_port->write(log_port->ctx, level, tag, buffer, (size_t)len);
+}
+
+
+static ev_result_t ev_runtime_app_now_ms(const ev_clock_port_t *clock_port, uint32_t *out_now_ms)
+{
+    ev_time_mono_us_t now_us = 0U;
+
+    if ((clock_port == NULL) || (clock_port->mono_now_us == NULL) || (out_now_ms == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (clock_port->mono_now_us(clock_port->ctx, &now_us) != EV_OK) {
+        return EV_ERR_STATE;
+    }
+
+    *out_now_ms = (uint32_t)(now_us / 1000ULL);
+    return EV_OK;
+}
+
+static ev_result_t ev_runtime_app_compute_wait_ms(const ev_demo_app_t *app,
+                                                  const ev_clock_port_t *clock_port,
+                                                  uint32_t *out_wait_ms)
+{
+    uint32_t now_ms = 0U;
+    uint32_t next_deadline_ms;
+    int32_t until_deadline_ms;
+
+    if ((app == NULL) || (clock_port == NULL) || (out_wait_ms == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (ev_demo_app_pending(app) > 0U) {
+        *out_wait_ms = 0U;
+        return EV_OK;
+    }
+
+    if (ev_runtime_app_now_ms(clock_port, &now_ms) != EV_OK) {
+        return EV_ERR_STATE;
+    }
+
+    next_deadline_ms = app->next_tick_100ms_ms;
+    if ((int32_t)(app->next_tick_ms - next_deadline_ms) < 0) {
+        next_deadline_ms = app->next_tick_ms;
+    }
+
+    until_deadline_ms = (int32_t)(next_deadline_ms - now_ms);
+    if (until_deadline_ms <= 0) {
+        *out_wait_ms = 0U;
+        return EV_OK;
+    }
+
+    *out_wait_ms = (uint32_t)until_deadline_ms;
+    if (*out_wait_ms > EV_RUNTIME_APP_MAX_WAIT_MS) {
+        *out_wait_ms = EV_RUNTIME_APP_MAX_WAIT_MS;
+    }
+    if (*out_wait_ms < EV_RUNTIME_APP_MIN_WAIT_MS) {
+        *out_wait_ms = EV_RUNTIME_APP_MIN_WAIT_MS;
+    }
+
+    return EV_OK;
+}
+
+static void ev_runtime_app_wait_for_work(const ev_demo_app_t *app,
+                                         const ev_clock_port_t *clock_port,
+                                         ev_irq_port_t *irq_port)
+{
+    uint32_t wait_ms = EV_RUNTIME_APP_MIN_WAIT_MS;
+
+    if ((app == NULL) || (clock_port == NULL)) {
+        return;
+    }
+
+    if (ev_runtime_app_compute_wait_ms(app, clock_port, &wait_ms) != EV_OK) {
+        wait_ms = EV_RUNTIME_APP_MIN_WAIT_MS;
+    }
+
+    if (wait_ms == 0U) {
+        return;
+    }
+
+    if ((irq_port != NULL) && (irq_port->wait != NULL)) {
+        bool woke = false;
+
+        if (irq_port->wait(irq_port->ctx, wait_ms, &woke) == EV_OK) {
+            return;
+        }
+    }
+
+    if (clock_port->delay_ms != NULL) {
+        (void)clock_port->delay_ms(clock_port->ctx, wait_ms);
+    }
 }
 
 static bool ev_runtime_app_config_is_valid(const ev_boot_diag_config_t *cfg)
@@ -128,15 +220,13 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
 
     for (;;) {
         rc = ev_demo_app_poll(&s_app);
-        if (rc != EV_OK) {
+        if ((rc != EV_OK) && (rc != EV_ERR_PARTIAL)) {
             ev_runtime_app_logf(&log_port, EV_LOG_FATAL, cfg->board_tag, "demo runtime poll failed rc=%d", (int)rc);
             (void)log_port.flush(log_port.ctx);
             (void)reset_port.restart(reset_port.ctx);
             return;
         }
 
-        if (clock_port.delay_ms != NULL) {
-            (void)clock_port.delay_ms(clock_port.ctx, EV_RUNTIME_APP_IDLE_DELAY_MS);
-        }
+        ev_runtime_app_wait_for_work(&s_app, &clock_port, irq_port);
     }
 }

@@ -30,7 +30,7 @@ static ev_result_t system_handler(void *context, const ev_msg_t *msg)
 
 static void test_system_pump_round_robin(void)
 {
-    ev_actor_registry_t registry;
+    ev_actor_registry_t registry = {0};
     ev_mailbox_t boot_mailbox;
     ev_mailbox_t diag_mailbox;
     ev_mailbox_t app_mailbox;
@@ -110,13 +110,18 @@ static void test_system_pump_round_robin(void)
         assert(stats->domains_pumped == 2U);
         assert(stats->messages_processed == 13U);
         assert(stats->budget_hits == 0U);
+        assert(stats->pending_high_watermark == 13U);
+        assert(stats->max_domains_examined_per_call >= 2U);
+        assert(stats->max_domains_pumped_per_call >= 2U);
+        assert(stats->max_turns_per_call >= 2U);
+        assert(stats->max_messages_per_call == 13U);
         assert(stats->last_result == EV_ERR_EMPTY);
     }
 }
 
 static void test_system_pump_error_counts_failed_message(void)
 {
-    ev_actor_registry_t registry;
+    ev_actor_registry_t registry = {0};
     ev_mailbox_t diag_mailbox;
     ev_msg_t diag_storage[8];
     ev_actor_runtime_t diag_runtime;
@@ -169,7 +174,7 @@ static void test_system_pump_empty_and_bind_errors(void)
 {
     ev_system_pump_t system_pump;
     ev_domain_pump_t domain_pump;
-    ev_actor_registry_t registry;
+    ev_actor_registry_t registry = {0};
     ev_system_pump_report_t report;
 
     assert(ev_system_pump_init(NULL) == EV_ERR_INVALID_ARG);

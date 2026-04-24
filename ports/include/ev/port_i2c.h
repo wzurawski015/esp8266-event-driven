@@ -42,6 +42,7 @@ typedef enum ev_i2c_status {
  * The operation emits a START condition, the target address in write mode,
  * @p data_len payload bytes, and a STOP condition. Passing a zero-length
  * payload is allowed and performs an address-only probe.
+ * Implementations must use a bounded wait policy and must never block indefinitely.
  *
  * @param ctx Adapter-owned context bound into the public port object.
  * @param port_num Logical I2C controller identifier.
@@ -63,6 +64,7 @@ typedef ev_i2c_status_t (*ev_i2c_write_stream_fn_t)(void *ctx,
  * one register selector byte, @p data_len payload bytes, and a STOP
  * condition. Passing a zero-length payload is allowed and writes only the
  * register selector byte.
+ * Implementations must use a bounded wait policy and must never block indefinitely.
  *
  * @param ctx Adapter-owned context bound into the public port object.
  * @param port_num Logical I2C controller identifier.
@@ -85,6 +87,7 @@ typedef ev_i2c_status_t (*ev_i2c_write_regs_fn_t)(void *ctx,
  * The operation emits a START condition, the target address in write mode,
  * one register selector byte, a repeated START, the target address in read
  * mode, @p data_len input bytes, and a STOP condition.
+ * Implementations must use a bounded wait policy and must never block indefinitely.
  *
  * @param ctx Adapter-owned context bound into the public port object.
  * @param port_num Logical I2C controller identifier.

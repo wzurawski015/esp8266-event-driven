@@ -465,7 +465,6 @@ static ev_result_t ev_oled_actor_handle_display_text(ev_oled_actor_ctx_t *ctx, c
     ev_oled_display_text_cmd_t cmd = {0};
     const void *payload;
     size_t payload_size;
-    ev_result_t rc;
 
     if ((ctx == NULL) || (msg == NULL)) {
         return EV_ERR_INVALID_ARG;
@@ -481,16 +480,22 @@ static ev_result_t ev_oled_actor_handle_display_text(ev_oled_actor_ctx_t *ctx, c
     cmd.text[EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
 
     ++ctx->stats.display_commands_seen;
-    rc = ev_oled_actor_render_text(ctx, &cmd);
-    if (rc != EV_OK) {
-        return rc;
+    return ev_oled_actor_render_text(ctx, &cmd);
+}
+
+static ev_result_t ev_oled_actor_handle_commit_frame(ev_oled_actor_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!ctx->pending_flush) {
+        return EV_OK;
+    }
+    if (ctx->state != EV_OLED_STATE_READY) {
+        return EV_OK;
     }
 
-    if (ctx->state == EV_OLED_STATE_READY) {
-        return ev_oled_actor_flush_pending(ctx);
-    }
-
-    return EV_OK;
+    return ev_oled_actor_flush_pending(ctx);
 }
 
 static ev_result_t ev_oled_actor_handle_tick(ev_oled_actor_ctx_t *ctx)
@@ -507,9 +512,6 @@ static ev_result_t ev_oled_actor_handle_tick(ev_oled_actor_ctx_t *ctx)
     }
 
     if (ctx->state == EV_OLED_STATE_READY) {
-        if (ctx->pending_flush) {
-            return ev_oled_actor_flush_pending(ctx);
-        }
         return EV_OK;
     }
 
@@ -564,6 +566,9 @@ ev_result_t ev_oled_actor_handle(void *actor_context, const ev_msg_t *msg)
 
     case EV_OLED_DISPLAY_TEXT_CMD:
         return ev_oled_actor_handle_display_text(ctx, msg);
+
+    case EV_OLED_COMMIT_FRAME:
+        return ev_oled_actor_handle_commit_frame(ctx);
 
     default:
         return EV_ERR_CONTRACT;

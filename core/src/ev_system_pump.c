@@ -2,6 +2,33 @@
 
 #include <string.h>
 
+static void ev_system_pump_record_pending_high_watermark(ev_system_pump_t *pump, size_t pending)
+{
+    if ((pump != NULL) && (pending > pump->stats.pending_high_watermark)) {
+        pump->stats.pending_high_watermark = pending;
+    }
+}
+
+static void ev_system_pump_record_call_maxima(ev_system_pump_t *pump, const ev_system_pump_report_t *report)
+{
+    if ((pump == NULL) || (report == NULL)) {
+        return;
+    }
+
+    if (report->domains_examined > pump->stats.max_domains_examined_per_call) {
+        pump->stats.max_domains_examined_per_call = report->domains_examined;
+    }
+    if (report->domains_pumped > pump->stats.max_domains_pumped_per_call) {
+        pump->stats.max_domains_pumped_per_call = report->domains_pumped;
+    }
+    if (report->turns_processed > pump->stats.max_turns_per_call) {
+        pump->stats.max_turns_per_call = report->turns_processed;
+    }
+    if (report->messages_processed > pump->stats.max_messages_per_call) {
+        pump->stats.max_messages_per_call = report->messages_processed;
+    }
+}
+
 static bool ev_system_pump_domain_is_valid(ev_execution_domain_t domain)
 {
     return (domain >= 0) && (domain < EV_DOMAIN_COUNT);
@@ -133,11 +160,13 @@ ev_result_t ev_system_pump_run(
 
     pending_before = ev_system_pump_pending(pump);
     report->pending_before = pending_before;
+    ev_system_pump_record_pending_high_watermark(pump, pending_before);
     if (pending_before == 0U) {
         ++pump->stats.empty_calls;
         pump->stats.last_result = EV_ERR_EMPTY;
         report->pending_after = 0U;
         report->stop_result = EV_ERR_EMPTY;
+        ev_system_pump_record_call_maxima(pump, report);
         return EV_ERR_EMPTY;
     }
 
@@ -150,7 +179,7 @@ ev_result_t ev_system_pump_run(
         for (offset = 0U; offset < EV_DOMAIN_COUNT; ++offset) {
             size_t index = (pump->next_domain_index + offset) % EV_DOMAIN_COUNT;
             ev_domain_pump_t *domain_pump = pump->slots[index];
-            ev_domain_pump_report_t domain_report;
+            ev_domain_pump_report_t domain_report = {0};
             size_t domain_budget;
             ev_result_t rc;
 
@@ -170,6 +199,7 @@ ev_result_t ev_system_pump_run(
                 report->last_domain = domain_pump->domain;
                 report->pending_after = ev_system_pump_pending(pump);
                 report->stop_result = EV_ERR_CONTRACT;
+                ev_system_pump_record_call_maxima(pump, report);
                 return EV_ERR_CONTRACT;
             }
 
@@ -193,6 +223,7 @@ ev_result_t ev_system_pump_run(
                 pump->stats.last_turns_processed = report->turns_processed;
                 pump->stats.last_result = rc;
                 report->stop_result = rc;
+                ev_system_pump_record_call_maxima(pump, report);
                 return rc;
             }
 
@@ -222,6 +253,7 @@ ev_result_t ev_system_pump_run(
     if (!made_progress) {
         pump->stats.last_result = EV_ERR_STATE;
         report->stop_result = EV_ERR_STATE;
+        ev_system_pump_record_call_maxima(pump, report);
         return EV_ERR_STATE;
     }
 
@@ -230,10 +262,12 @@ ev_result_t ev_system_pump_run(
         ++pump->stats.budget_hits;
         pump->stats.last_result = EV_OK;
         report->stop_result = EV_OK;
+        ev_system_pump_record_call_maxima(pump, report);
         return EV_OK;
     }
 
     pump->stats.last_result = EV_OK;
     report->stop_result = EV_ERR_EMPTY;
+    ev_system_pump_record_call_maxima(pump, report);
     return EV_OK;
 }

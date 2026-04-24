@@ -14,6 +14,9 @@
 #define EV_DEMO_APP_DEFAULT_TICK_MS 1000U
 #define EV_DEMO_APP_FAST_TICK_MS 100U
 #define EV_DEMO_APP_TURN_BUDGET 4U
+#define EV_APP_POLL_MAX_IRQ_SAMPLES 16U
+#define EV_APP_POLL_MAX_MESSAGES 32U
+#define EV_APP_POLL_MAX_PUMP_TURNS 10U
 #define EV_DEMO_APP_RTC_SQW_LINE_ID 0U
 #define EV_DEMO_APP_BUTTON_TOGGLE_SCREENSAVER 0U
 #define EV_DEMO_APP_LED_SCREENSAVER_PAUSED 0x01U
@@ -223,7 +226,6 @@ static ev_result_t ev_demo_app_publish_tick_100ms(ev_demo_app_t *app)
 
 static ev_result_t ev_demo_app_publish_panel_led_command(ev_demo_app_t *app, uint8_t value_mask, uint8_t valid_mask)
 {
-#ifndef EV_HOST_BUILD
     ev_msg_t msg = {0};
     ev_panel_led_set_cmd_t cmd = {0};
     ev_result_t rc;
@@ -245,15 +247,8 @@ static ev_result_t ev_demo_app_publish_panel_led_command(ev_demo_app_t *app, uin
     }
 
     return ev_demo_app_publish_owned(app, &msg);
-#else
-    (void)app;
-    (void)value_mask;
-    (void)valid_mask;
-    return EV_OK;
-#endif
 }
 
-#ifndef EV_HOST_BUILD
 static ev_result_t ev_demo_app_publish_irq_sample(ev_demo_app_t *app, const ev_irq_sample_t *sample)
 {
     if ((app == NULL) || (sample == NULL)) {
@@ -292,6 +287,23 @@ static ev_result_t ev_demo_app_publish_oled_text(ev_demo_app_t *app, uint8_t pag
     }
 
     return ev_demo_app_publish_owned(app, &text_msg);
+}
+
+static ev_result_t ev_demo_app_publish_oled_commit(ev_demo_app_t *app)
+{
+    ev_msg_t msg = {0};
+    ev_result_t rc;
+
+    if (app == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    rc = ev_msg_init_publish(&msg, EV_OLED_COMMIT_FRAME, ACT_APP);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    return ev_demo_app_publish_owned(app, &msg);
 }
 
 static void ev_demo_app_format_time_text(const ev_demo_app_actor_state_t *state, char *out_text, size_t out_text_size)
@@ -419,12 +431,16 @@ static ev_result_t ev_demo_app_render_oled_frame(ev_demo_app_actor_state_t *stat
         return rc;
     }
 
+    rc = ev_demo_app_publish_oled_commit(app);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
     state->last_page_offset = state->current_page_offset;
     state->last_column_offset = state->current_column_offset;
     state->oled_frame_visible = true;
     return EV_OK;
 }
-#endif
 
 static void ev_demo_app_screensaver_step_axis(uint8_t *value, int8_t *direction, uint8_t max_value)
 {
@@ -470,11 +486,7 @@ static ev_result_t ev_demo_app_handle_tick_for_oled(ev_demo_app_actor_state_t *s
                                           EV_DEMO_APP_OLED_MAX_PAGE_OFFSET);
     }
 
-#ifndef EV_HOST_BUILD
     return ev_demo_app_render_oled_frame(state);
-#else
-    return EV_OK;
-#endif
 }
 
 static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t *msg)
@@ -681,24 +693,109 @@ static ev_result_t ev_demo_diag_actor_handler(void *actor_context, const ev_msg_
     }
 }
 
+typedef struct {
+    size_t irq_samples;
+    size_t pump_calls;
+    size_t turns;
+    size_t messages;
+} ev_demo_app_poll_diag_t;
+
+static void ev_demo_app_poll_diag_reset(ev_demo_app_poll_diag_t *diag)
+{
+    if (diag != NULL) {
+        memset(diag, 0, sizeof(*diag));
+    }
+}
+
+static void ev_demo_app_record_poll_diag(ev_demo_app_t *app,
+                                         const ev_demo_app_poll_diag_t *diag,
+                                         size_t pending_before,
+                                         size_t pending_after,
+                                         uint32_t elapsed_ms)
+{
+    if ((app == NULL) || (diag == NULL)) {
+        return;
+    }
+
+    app->stats.irq_samples_drained += (uint32_t)diag->irq_samples;
+    if (pending_before > app->stats.max_pending_before_poll) {
+        app->stats.max_pending_before_poll = pending_before;
+    }
+    if (pending_after > app->stats.max_pending_after_poll) {
+        app->stats.max_pending_after_poll = pending_after;
+    }
+    if (diag->irq_samples > app->stats.max_irq_samples_per_poll) {
+        app->stats.max_irq_samples_per_poll = diag->irq_samples;
+    }
+    if (diag->pump_calls > app->stats.max_pump_calls_per_poll) {
+        app->stats.max_pump_calls_per_poll = diag->pump_calls;
+    }
+    if (diag->turns > app->stats.max_turns_per_poll) {
+        app->stats.max_turns_per_poll = diag->turns;
+    }
+    if (diag->messages > app->stats.max_messages_per_poll) {
+        app->stats.max_messages_per_poll = diag->messages;
+    }
+    app->stats.last_poll_elapsed_ms = elapsed_ms;
+    if (elapsed_ms > app->stats.max_poll_elapsed_ms) {
+        app->stats.max_poll_elapsed_ms = elapsed_ms;
+    }
+}
+
 static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
 {
     return (cfg != NULL) && (cfg->app_tag != NULL) && (cfg->board_name != NULL) && (cfg->clock_port != NULL) &&
-           (cfg->clock_port->mono_now_us != NULL) && (cfg->log_port != NULL) && (cfg->log_port->write != NULL);
+           (cfg->clock_port->mono_now_us != NULL) && (cfg->log_port != NULL) && (cfg->log_port->write != NULL) &&
+           (cfg->irq_port != NULL) && (cfg->irq_port->pop != NULL) && (cfg->irq_port->enable != NULL) &&
+           (cfg->i2c_port != NULL) && (cfg->i2c_port->write_stream != NULL) && (cfg->i2c_port->write_regs != NULL) &&
+           (cfg->i2c_port->read_regs != NULL) && (cfg->onewire_port != NULL) &&
+           (cfg->onewire_port->reset != NULL) && (cfg->onewire_port->write_byte != NULL) &&
+           (cfg->onewire_port->read_byte != NULL);
 }
 
-static ev_result_t ev_demo_app_drain_until_idle(ev_demo_app_t *app)
+static bool ev_demo_app_budget_exhausted(size_t pump_calls_used,
+                                         size_t messages_used,
+                                         size_t turns_used,
+                                         size_t irq_samples_used)
+{
+    return (pump_calls_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
+           (messages_used >= EV_APP_POLL_MAX_MESSAGES) ||
+           (turns_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
+           (irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES);
+}
+
+static ev_result_t ev_demo_app_drain_budgeted(ev_demo_app_t *app,
+                                              ev_demo_app_poll_diag_t *diag,
+                                              size_t *pump_calls_used,
+                                              size_t *messages_used,
+                                              size_t *turns_used,
+                                              bool *budget_exhausted)
 {
     ev_system_pump_report_t report;
     ev_result_t rc;
 
-    if (app == NULL) {
+    if ((app == NULL) || (pump_calls_used == NULL) || (messages_used == NULL) ||
+        (turns_used == NULL) || (budget_exhausted == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 
-    while (ev_system_pump_pending(&app->system_pump) > 0U) {
+    while ((ev_system_pump_pending(&app->system_pump) > 0U) && !(*budget_exhausted)) {
+        if (ev_demo_app_budget_exhausted(*pump_calls_used, *messages_used, *turns_used, 0U)) {
+            *budget_exhausted = true;
+            break;
+        }
+
         rc = ev_system_pump_run(&app->system_pump, EV_DEMO_APP_TURN_BUDGET, &report);
+        ++(*pump_calls_used);
+        *turns_used += report.turns_processed;
+        *messages_used += report.messages_processed;
+        if (diag != NULL) {
+            ++diag->pump_calls;
+            diag->turns += report.turns_processed;
+            diag->messages += report.messages_processed;
+        }
         if (rc == EV_OK) {
+            *budget_exhausted = ev_demo_app_budget_exhausted(*pump_calls_used, *messages_used, *turns_used, 0U);
             continue;
         }
         if (rc == EV_ERR_EMPTY) {
@@ -719,14 +816,19 @@ static ev_result_t ev_demo_app_drain_until_idle(ev_demo_app_t *app)
     return EV_OK;
 }
 
+static ev_result_t ev_runtime_actor_handler(void *actor_context, const ev_msg_t *msg)
+{
+    (void)actor_context;
+    (void)msg;
+    return EV_OK;
+}
+
 ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg)
 {
     ev_result_t rc;
     uint32_t now_ms;
-#ifndef EV_HOST_BUILD
     ev_i2c_port_t *active_i2c;
     ev_onewire_port_t *active_onewire;
-#endif
 
     if ((app == NULL) || !ev_demo_app_config_is_valid(cfg)) {
         return EV_ERR_INVALID_ARG;
@@ -744,13 +846,8 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     app->app_actor.direction_y = (int8_t)1;
     app->diag_actor.app = app;
 
-#ifndef EV_HOST_BUILD
     active_i2c = cfg->i2c_port;
     active_onewire = cfg->onewire_port;
-    if ((active_i2c == NULL) || (active_onewire == NULL)) {
-        return EV_ERR_INVALID_ARG;
-    }
-#endif
 
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) return rc;
@@ -767,7 +864,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_mailbox_init(&app->panel_mailbox, EV_MAILBOX_FIFO_8, app->panel_storage, EV_ARRAY_LEN(app->panel_storage));
     if (rc != EV_OK) return rc;
 
-#ifndef EV_HOST_BUILD
+    rc = ev_mailbox_init(&app->runtime_mailbox, EV_MAILBOX_FIFO_8, app->runtime_storage, EV_ARRAY_LEN(app->runtime_storage));
+    if (rc != EV_OK) return rc;
+
     rc = ev_mailbox_init(&app->rtc_mailbox, EV_MAILBOX_FIFO_8, app->rtc_storage, EV_ARRAY_LEN(app->rtc_storage));
     if (rc != EV_OK) return rc;
 
@@ -785,7 +884,6 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_mailbox_init(&app->oled_mailbox, EV_MAILBOX_FIFO_8, app->oled_storage, EV_ARRAY_LEN(app->oled_storage));
     if (rc != EV_OK) return rc;
-#endif
 
     /* Inicjalizacja Wątków Aktorów (Runtimes) */
     rc = ev_actor_runtime_init(&app->app_runtime, ACT_APP, &app->app_mailbox, ev_demo_app_actor_handler, &app->app_actor);
@@ -800,7 +898,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_runtime_init(&app->panel_runtime, ACT_PANEL, &app->panel_mailbox, ev_panel_actor_handle, &app->panel_ctx);
     if (rc != EV_OK) return rc;
 
-#ifndef EV_HOST_BUILD
+    rc = ev_actor_runtime_init(&app->runtime_actor, ACT_RUNTIME, &app->runtime_mailbox, ev_runtime_actor_handler, NULL);
+    if (rc != EV_OK) return rc;
+
     rc = ev_mcp23008_actor_init(&app->mcp23008_ctx,
                                   active_i2c,
                                   EV_I2C_PORT_NUM_0,
@@ -848,7 +948,6 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_actor_runtime_init(&app->oled_runtime, ACT_OLED, &app->oled_mailbox, ev_oled_actor_handle, &app->oled_ctx);
     if (rc != EV_OK) return rc;
-#endif
 
     /* Rejestracja w Systemie Aktorów */
     rc = ev_actor_registry_init(&app->registry);
@@ -863,7 +962,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_registry_bind(&app->registry, &app->panel_runtime);
     if (rc != EV_OK) return rc;
 
-#ifndef EV_HOST_BUILD
+    rc = ev_actor_registry_bind(&app->registry, &app->runtime_actor);
+    if (rc != EV_OK) return rc;
+
     rc = ev_actor_registry_bind(&app->registry, &app->mcp23008_runtime);
     if (rc != EV_OK) return rc;
 
@@ -875,7 +976,6 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_actor_registry_bind(&app->registry, &app->oled_runtime);
     if (rc != EV_OK) return rc;
-#endif
 
     /* Inicjalizacja pomp zdarzeń */
     rc = ev_domain_pump_init(&app->fast_domain, &app->registry, EV_DOMAIN_FAST_LOOP);
@@ -926,71 +1026,173 @@ ev_result_t ev_demo_app_publish_boot(ev_demo_app_t *app)
 
 ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
 {
-    ev_result_t rc;
-    uint32_t now_ms;
+    typedef struct {
+        size_t pump_calls_used;
+        size_t messages_used;
+        size_t turns_used;
+        size_t irq_samples_used;
+        bool exhausted;
+    } ev_poll_budget_t;
 
-    if (app == NULL) return EV_ERR_INVALID_ARG;
-    if (!app->boot_published) return EV_ERR_STATE;
+    ev_result_t rc = EV_OK;
+    ev_demo_app_poll_diag_t diag;
+    ev_poll_budget_t budget = {0};
+    uint32_t now_ms = 0U;
+    uint32_t start_ms = 0U;
+    uint32_t end_ms = 0U;
+    uint32_t elapsed_ms = 0U;
+    size_t pending_before = 0U;
+    size_t pending_after = 0U;
+    bool have_timing = false;
 
-    rc = ev_demo_app_drain_until_idle(app);
-    if (rc != EV_OK) return rc;
+    if (app == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!app->boot_published) {
+        return EV_ERR_STATE;
+    }
 
-#ifndef EV_HOST_BUILD
+    ev_demo_app_poll_diag_reset(&diag);
+    pending_before = ev_system_pump_pending(&app->system_pump);
+    if (ev_demo_app_now_ms(app, &start_ms) == EV_OK) {
+        have_timing = true;
+    }
+
+    rc = ev_demo_app_drain_budgeted(app,
+                                    &diag,
+                                    &budget.pump_calls_used,
+                                    &budget.messages_used,
+                                    &budget.turns_used,
+                                    &budget.exhausted);
+    if (rc != EV_OK) {
+        goto finalize;
+    }
+
     if ((app->irq_port != NULL) && (app->irq_port->pop != NULL)) {
         ev_irq_sample_t sample = {0};
 
         for (;;) {
+            if (budget.exhausted || (budget.irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES)) {
+                budget.exhausted = true;
+                break;
+            }
+
             rc = app->irq_port->pop(app->irq_port->ctx, &sample);
             if (rc == EV_ERR_EMPTY) {
+                rc = EV_OK;
                 break;
             }
             if (rc != EV_OK) {
-                return rc;
+                goto finalize;
             }
 
+            ++diag.irq_samples;
+            ++budget.irq_samples_used;
             rc = ev_demo_app_publish_irq_sample(app, &sample);
             if (rc != EV_OK) {
-                return rc;
+                goto finalize;
             }
 
-            rc = ev_demo_app_drain_until_idle(app);
+            rc = ev_demo_app_drain_budgeted(app,
+                                            &diag,
+                                            &budget.pump_calls_used,
+                                            &budget.messages_used,
+                                            &budget.turns_used,
+                                            &budget.exhausted);
             if (rc != EV_OK) {
-                return rc;
+                goto finalize;
             }
         }
     }
-#endif
 
-    rc = ev_demo_app_now_ms(app, &now_ms);
-    if (rc != EV_OK) return rc;
-
-    for (;;) {
-        const bool tick_100ms_due = ((int32_t)(now_ms - app->next_tick_100ms_ms) >= 0);
-        const bool tick_1s_due = ((int32_t)(now_ms - app->next_tick_ms) >= 0);
-
-        if (!tick_100ms_due && !tick_1s_due) {
-            break;
+    if (!budget.exhausted) {
+        rc = ev_demo_app_now_ms(app, &now_ms);
+        if (rc != EV_OK) {
+            goto finalize;
         }
 
-        if (tick_100ms_due && (!tick_1s_due || ((int32_t)(app->next_tick_100ms_ms - app->next_tick_ms) <= 0))) {
-            rc = ev_demo_app_publish_tick_100ms(app);
-            if (rc != EV_OK) return rc;
-            app->next_tick_100ms_ms += EV_DEMO_APP_FAST_TICK_MS;
+        for (;;) {
+            const bool tick_100ms_due = ((int32_t)(now_ms - app->next_tick_100ms_ms) >= 0);
+            const bool tick_1s_due = ((int32_t)(now_ms - app->next_tick_ms) >= 0);
 
-            rc = ev_demo_app_drain_until_idle(app);
-            if (rc != EV_OK) return rc;
-            continue;
+            if (budget.exhausted) {
+                break;
+            }
+            if (!tick_100ms_due && !tick_1s_due) {
+                break;
+            }
+
+            if (tick_100ms_due && (!tick_1s_due || ((int32_t)(app->next_tick_100ms_ms - app->next_tick_ms) <= 0))) {
+                rc = ev_demo_app_publish_tick_100ms(app);
+                if (rc != EV_OK) {
+                    goto finalize;
+                }
+                app->next_tick_100ms_ms += EV_DEMO_APP_FAST_TICK_MS;
+
+                rc = ev_demo_app_drain_budgeted(app,
+                                                &diag,
+                                                &budget.pump_calls_used,
+                                                &budget.messages_used,
+                                                &budget.turns_used,
+                                                &budget.exhausted);
+                if (rc != EV_OK) {
+                    goto finalize;
+                }
+                continue;
+            }
+
+            rc = ev_demo_app_publish_tick(app);
+            if (rc != EV_OK) {
+                goto finalize;
+            }
+            app->next_tick_ms += app->tick_period_ms;
+
+            rc = ev_demo_app_drain_budgeted(app,
+                                            &diag,
+                                            &budget.pump_calls_used,
+                                            &budget.messages_used,
+                                            &budget.turns_used,
+                                            &budget.exhausted);
+            if (rc != EV_OK) {
+                goto finalize;
+            }
         }
-
-        rc = ev_demo_app_publish_tick(app);
-        if (rc != EV_OK) return rc;
-        app->next_tick_ms += app->tick_period_ms;
-
-        rc = ev_demo_app_drain_until_idle(app);
-        if (rc != EV_OK) return rc;
     }
 
-    return ev_demo_app_drain_until_idle(app);
+    if (!budget.exhausted) {
+        rc = ev_demo_app_drain_budgeted(app,
+                                        &diag,
+                                        &budget.pump_calls_used,
+                                        &budget.messages_used,
+                                        &budget.turns_used,
+                                        &budget.exhausted);
+    }
+
+finalize:
+    pending_after = ev_system_pump_pending(&app->system_pump);
+    if (have_timing && (ev_demo_app_now_ms(app, &end_ms) == EV_OK)) {
+        elapsed_ms = end_ms - start_ms;
+    }
+    ev_demo_app_record_poll_diag(app, &diag, pending_before, pending_after, elapsed_ms);
+    if ((rc == EV_OK) && budget.exhausted) {
+        bool irq_work_pending = false;
+        uint32_t current_now_ms = end_ms;
+        bool tick_100ms_due = false;
+        bool tick_1s_due = false;
+
+        if ((app->irq_port != NULL) && (app->irq_port->wait != NULL)) {
+            (void)app->irq_port->wait(app->irq_port->ctx, 0U, &irq_work_pending);
+        }
+        if (!have_timing || (ev_demo_app_now_ms(app, &current_now_ms) != EV_OK)) {
+            current_now_ms = end_ms;
+        }
+        tick_100ms_due = ((int32_t)(current_now_ms - app->next_tick_100ms_ms) >= 0);
+        tick_1s_due = ((int32_t)(current_now_ms - app->next_tick_ms) >= 0);
+        if ((pending_after > 0U) || irq_work_pending || tick_100ms_due || tick_1s_due) {
+            rc = EV_ERR_PARTIAL;
+        }
+    }
+    return rc;
 }
 
 size_t ev_demo_app_pending(const ev_demo_app_t *app)

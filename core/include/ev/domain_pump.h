@@ -21,6 +21,10 @@ typedef struct {
     uint32_t pump_budget_hits;
     size_t last_budget;
     size_t last_processed;
+    size_t pending_high_watermark;
+    size_t max_actors_examined_per_call;
+    size_t max_actors_pumped_per_call;
+    size_t max_messages_per_call;
     ev_actor_id_t last_actor;
     ev_result_t last_result;
 } ev_domain_pump_stats_t;

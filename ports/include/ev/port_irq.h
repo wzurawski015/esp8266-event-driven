@@ -59,12 +59,27 @@ typedef ev_result_t (*ev_irq_pop_fn_t)(void *ctx, ev_irq_sample_t *out_sample);
 typedef ev_result_t (*ev_irq_enable_fn_t)(void *ctx, ev_irq_line_id_t line_id, bool enabled);
 
 /**
+ * @brief Wait until one interrupt sample becomes available or the bounded timeout expires.
+ *
+ * Implementations may return early when an interrupt sample is enqueued before the
+ * timeout expires. Passing a timeout of zero performs a non-blocking readiness check.
+ *
+ * @param ctx Adapter-owned context bound into the public port object.
+ * @param timeout_ms Maximum wait time in milliseconds.
+ * @param out_woken Set to true when at least one interrupt sample is available, false
+ *        when the timeout elapsed without new samples.
+ * @return EV_OK on success or another error code when the adapter cannot honor the wait.
+ */
+typedef ev_result_t (*ev_irq_wait_fn_t)(void *ctx, uint32_t timeout_ms, bool *out_woken);
+
+/**
  * @brief Platform interrupt-ingress contract.
  */
 typedef struct ev_irq_port {
     void *ctx;
     ev_irq_pop_fn_t pop;
     ev_irq_enable_fn_t enable;
+    ev_irq_wait_fn_t wait;
 } ev_irq_port_t;
 
 #ifdef __cplusplus

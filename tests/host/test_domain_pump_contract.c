@@ -26,7 +26,7 @@ static ev_result_t domain_handler(void *actor_context, const ev_msg_t *msg)
 
 static void enqueue_boot(ev_mailbox_t *mailbox, size_t count)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = {0};
     size_t i;
 
     for (i = 0U; i < count; ++i) {
@@ -80,7 +80,7 @@ static void domain_pump_cursor_regression(void)
     ev_actor_runtime_t boot_runtime;
     ev_actor_runtime_t stream_runtime;
     ev_actor_runtime_t app_runtime;
-    ev_actor_registry_t registry;
+    ev_actor_registry_t registry = {0};
     ev_domain_pump_t fast_pump;
     ev_domain_pump_report_t report;
     domain_trace_t boot_trace = {0};
@@ -138,8 +138,8 @@ int main(void)
     ev_actor_runtime_t diag_runtime;
     ev_actor_runtime_t fail_boot_runtime;
     ev_actor_runtime_t fail_stream_runtime;
-    ev_actor_registry_t registry;
-    ev_actor_registry_t fail_registry;
+    ev_actor_registry_t registry = {0};
+    ev_actor_registry_t fail_registry = {0};
     ev_domain_pump_t fast_pump;
     ev_domain_pump_t slow_pump;
     ev_domain_pump_t fail_pump;
@@ -250,6 +250,10 @@ int main(void)
     assert(stats->last_actor == ACT_APP);
     assert(stats->last_budget == 1U);
     assert(stats->last_processed == 1U);
+    assert(stats->pending_high_watermark >= 3U);
+    assert(stats->max_actors_examined_per_call >= 1U);
+    assert(stats->max_actors_pumped_per_call >= 1U);
+    assert(stats->max_messages_per_call >= 1U);
     assert(stats->last_result == EV_OK);
 
     enqueue_diag(&diag_mailbox, 2U);

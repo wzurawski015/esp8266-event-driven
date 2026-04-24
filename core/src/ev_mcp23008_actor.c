@@ -118,39 +118,32 @@ static ev_result_t ev_mcp23008_actor_publish_ready(ev_mcp23008_actor_ctx_t *ctx)
     return rc;
 }
 
-static bool ev_mcp23008_actor_try_configure(ev_mcp23008_actor_ctx_t *ctx)
+static ev_result_t ev_mcp23008_actor_try_configure(ev_mcp23008_actor_ctx_t *ctx)
 {
     uint8_t raw_gpio = 0U;
     ev_result_t rc;
 
     if (ctx == NULL) {
-        return false;
+        return EV_ERR_INVALID_ARG;
     }
 
+    ctx->configured = false;
+    ctx->inputs_valid = false;
+
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_IOCON, EV_MCP23008_IOCON_ODR)) {
-        ctx->configured = false;
-        ctx->inputs_valid = false;
-        return false;
+        return EV_OK;
     }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_IODIR, EV_MCP23008_INPUT_DIR_MASK)) {
-        ctx->configured = false;
-        ctx->inputs_valid = false;
-        return false;
+        return EV_OK;
     }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_GPPU, EV_MCP23008_INPUT_PULLUP_MASK)) {
-        ctx->configured = false;
-        ctx->inputs_valid = false;
-        return false;
+        return EV_OK;
     }
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_OLAT, ev_mcp23008_actor_build_olat(ctx->output_shadow))) {
-        ctx->configured = false;
-        ctx->inputs_valid = false;
-        return false;
+        return EV_OK;
     }
     if (!ev_mcp23008_actor_read_gpio(ctx, &raw_gpio)) {
-        ctx->configured = false;
-        ctx->inputs_valid = false;
-        return false;
+        return EV_OK;
     }
 
     ctx->input_shadow = ev_mcp23008_actor_normalize_buttons(raw_gpio);
@@ -161,10 +154,10 @@ static bool ev_mcp23008_actor_try_configure(ev_mcp23008_actor_ctx_t *ctx)
     if (rc != EV_OK) {
         ctx->configured = false;
         ctx->inputs_valid = false;
-        return false;
+        return rc;
     }
 
-    return true;
+    return EV_OK;
 }
 
 static ev_result_t ev_mcp23008_actor_handle_boot(ev_mcp23008_actor_ctx_t *ctx)
@@ -173,8 +166,7 @@ static ev_result_t ev_mcp23008_actor_handle_boot(ev_mcp23008_actor_ctx_t *ctx)
         return EV_ERR_INVALID_ARG;
     }
 
-    (void)ev_mcp23008_actor_try_configure(ctx);
-    return EV_OK;
+    return ev_mcp23008_actor_try_configure(ctx);
 }
 
 static ev_result_t ev_mcp23008_actor_handle_tick(ev_mcp23008_actor_ctx_t *ctx)
@@ -187,10 +179,19 @@ static ev_result_t ev_mcp23008_actor_handle_tick(ev_mcp23008_actor_ctx_t *ctx)
         return EV_ERR_INVALID_ARG;
     }
 
-    if (!ctx->configured && !ev_mcp23008_actor_try_configure(ctx)) {
-        return EV_OK;
+    if (!ctx->configured) {
+        ev_result_t rc = ev_mcp23008_actor_try_configure(ctx);
+
+        if (rc != EV_OK) {
+            return rc;
+        }
+        if (!ctx->configured) {
+            return EV_OK;
+        }
     }
     if (!ev_mcp23008_actor_read_gpio(ctx, &raw_gpio)) {
+        ctx->configured = false;
+        ctx->inputs_valid = false;
         return EV_OK;
     }
 
@@ -234,6 +235,8 @@ static ev_result_t ev_mcp23008_actor_handle_led_cmd(ev_mcp23008_actor_ctx_t *ctx
 
     if (!ev_mcp23008_actor_write_reg(ctx, EV_MCP23008_REG_OLAT, ev_mcp23008_actor_build_olat(ctx->output_shadow))) {
         ctx->configured = false;
+        ctx->inputs_valid = false;
+        return EV_OK;
     }
 
     return EV_OK;

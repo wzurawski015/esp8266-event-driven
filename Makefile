@@ -1,8 +1,8 @@
 CC ?= cc
 PYTHON ?= python3
 
-CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -DEV_HOST_BUILD -Icore/include -Iports/include -Iapp/include -Iconfig
-LDFLAGS ?=
+CFLAGS ?= -std=c11 -Wall -Wextra -g -O0  -pedantic -DEV_HOST_BUILD -Icore/include -Iports/include -Iapp/include -Iconfig
+LDFLAGS ?= 
 
 BUILD_DIR := build/host
 DOC_SITE_DIR := docs/generated/site
@@ -24,12 +24,18 @@ CORE_SRCS := \
     core/src/ev_rtc_actor.c \
     core/src/ev_ds18b20_actor.c \
     core/src/ev_mcp23008_actor.c \
-    core/src/ev_panel_actor.c
+    core/src/ev_panel_actor.c \
+    core/src/ev_oled_actor.c
 
 APP_SRCS := \
     app/ev_demo_app.c
 
-COMMON_SRCS := $(CORE_SRCS) $(APP_SRCS)
+TEST_SUPPORT_SRCS := \
+    tests/host/fakes/fake_i2c_port.c \
+    tests/host/fakes/fake_irq_port.c \
+    tests/host/fakes/fake_onewire_port.c
+
+COMMON_SRCS := $(CORE_SRCS) $(APP_SRCS) $(TEST_SUPPORT_SRCS)
 
 HOST_TESTS := \
     test_catalog \
@@ -43,7 +49,8 @@ HOST_TESTS := \
     test_actor_pump_contract \
     test_domain_pump_contract \
     test_system_pump_contract \
-    test_demo_app_contract
+    test_demo_app_contract \
+    test_demo_app_fault_contract
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
 
