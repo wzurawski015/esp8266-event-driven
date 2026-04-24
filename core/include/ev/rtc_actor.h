@@ -94,6 +94,8 @@ ev_result_t ev_rtc_actor_init(ev_rtc_actor_ctx_t *ctx,
  * - EV_GPIO_IRQ
  * - EV_TICK_1S
  *
+ * The actor publishes EV_RTC_READY after the first successful time read.
+ *
  * @param actor_context Pointer to ev_rtc_actor_ctx_t.
  * @param msg Runtime envelope delivered to the actor.
  * @return EV_OK on success or an error code when the message contract is invalid.

@@ -6,21 +6,24 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 
+#include "board_profile.h"
+
 #include "ev/compiler.h"
+#include "ev/mcp23008_actor.h"
+#include "ev/rtc_actor.h"
 #include "ev/esp8266_boot_diag.h"
 #include "ev/esp8266_port_adapters.h"
 #include "ev/esp8266_runtime_app.h"
 
 #define EV_BOARD_TAG "ev_atnel"
 #define EV_BOARD_NAME "atnel_air_esp_motherboard"
-#define EV_BOARD_I2C_SCL_GPIO 4
-#define EV_BOARD_I2C_SDA_GPIO 5
-#define EV_BOARD_ONEWIRE_GPIO 12
-#define EV_BOARD_IRQ_IR0_GPIO 13U
-#define EV_BOARD_IRQ_INT0_GPIO 14U
 
 EV_STATIC_ASSERT(EV_BOARD_ONEWIRE_GPIO != EV_BOARD_IRQ_INT0_GPIO,
                  "1-Wire and RTC/INT0 ingress must stay on distinct GPIOs");
+EV_STATIC_ASSERT(EV_RTC_DEFAULT_ADDR_7BIT == EV_BOARD_RTC_ADDR_7BIT,
+                 "RTC actor default address must stay fixed to the ATNEL board wiring");
+EV_STATIC_ASSERT(EV_MCP23008_DEFAULT_ADDR_7BIT == EV_BOARD_MCP23008_ADDR_7BIT,
+                 "MCP23008 actor default address must stay fixed to the ATNEL board wiring");
 
 static ev_i2c_port_t s_board_i2c_port;
 static ev_irq_port_t s_board_irq_port;
@@ -62,10 +65,6 @@ void app_main(void)
         ESP_LOGE(EV_BOARD_TAG, "i2c adapter init failed rc=%d", (int)rc);
     } else {
         runtime_i2c_port = &s_board_i2c_port;
-        rc = ev_i2c_scan(EV_I2C_PORT_NUM_0);
-        if (rc != EV_OK) {
-            ESP_LOGE(EV_BOARD_TAG, "i2c self-test scan failed rc=%d", (int)rc);
-        }
     }
 
     rc = ev_esp8266_onewire_port_init(&s_board_onewire_port, EV_BOARD_ONEWIRE_GPIO);

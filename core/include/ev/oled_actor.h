@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "ev/compiler.h"
+#include "ev/delivery.h"
 #include "ev/msg.h"
 #include "ev/port_i2c.h"
 #include "ev/result.h"
@@ -20,6 +21,8 @@ extern "C" {
 #define EV_OLED_DEFAULT_ADDR_7BIT 0x3CU
 #define EV_OLED_TEXT_MAX_CHARS 22U
 #define EV_OLED_RETRY_DELAY_TICKS 5U
+#define EV_OLED_SCENE_LINE_COUNT 3U
+#define EV_OLED_SCENE_FLAG_VISIBLE 0x01U
 
 /**
  * @brief Supported controller families for the first OLED actor stage.
@@ -55,6 +58,24 @@ typedef struct {
 EV_STATIC_ASSERT(sizeof(ev_oled_display_text_cmd_t) <= EV_MSG_INLINE_CAPACITY,
                  "OLED text command must fit into one inline event payload");
 
+
+/**
+ * @brief Lease-backed scene payload committed to the OLED actor.
+ *
+ * The application composes one complete logical frame in this structure and
+ * publishes a single EV_OLED_COMMIT_FRAME message. The OLED actor then diffs
+ * the committed scene against its currently displayed framebuffer and flushes
+ * only the changed page ranges.
+ */
+typedef struct {
+    uint8_t page_offset;
+    uint8_t column_offset;
+    uint8_t flags;
+    uint8_t reserved;
+    char lines[EV_OLED_SCENE_LINE_COUNT][EV_OLED_TEXT_MAX_CHARS];
+} ev_oled_scene_t;
+
+
 /**
  * @brief Runtime counters owned by one OLED actor instance.
  */
@@ -81,6 +102,8 @@ typedef struct {
  */
 typedef struct {
     ev_i2c_port_t *i2c_port;
+    ev_delivery_fn_t deliver;
+    void *deliver_context;
     ev_i2c_port_num_t port_num;
     uint8_t device_address_7bit;
     ev_oled_controller_t controller;
@@ -91,10 +114,11 @@ typedef struct {
     uint32_t retry_delay_ticks;
     bool boot_observed;
     bool pending_flush;
-    uint8_t dirty_page;
-    uint8_t dirty_column_start;
-    uint8_t dirty_column_end;
+    uint8_t dirty_page_mask;
+    uint8_t dirty_column_start[EV_OLED_PAGE_COUNT];
+    uint8_t dirty_column_end[EV_OLED_PAGE_COUNT];
     uint8_t framebuffer[EV_OLED_PAGE_COUNT][EV_OLED_WIDTH];
+    uint8_t staging_framebuffer[EV_OLED_PAGE_COUNT][EV_OLED_WIDTH];
     ev_oled_actor_stats_t stats;
 } ev_oled_actor_ctx_t;
 
@@ -116,7 +140,9 @@ ev_result_t ev_oled_actor_init(ev_oled_actor_ctx_t *ctx,
                                ev_i2c_port_t *i2c_port,
                                ev_i2c_port_num_t port_num,
                                uint8_t device_address_7bit,
-                               ev_oled_controller_t controller);
+                               ev_oled_controller_t controller,
+                               ev_delivery_fn_t deliver,
+                               void *deliver_context);
 
 /**
  * @brief Default actor handler for one OLED runtime instance.
@@ -126,6 +152,12 @@ ev_result_t ev_oled_actor_init(ev_oled_actor_ctx_t *ctx,
  * - EV_TICK_1S
  * - EV_OLED_DISPLAY_TEXT_CMD
  * - EV_OLED_COMMIT_FRAME
+ *
+ * The actor publishes EV_OLED_READY after the first successful initialization.
+ *
+ * EV_OLED_COMMIT_FRAME may carry one lease-backed ::ev_oled_scene_t payload.
+ * The actor diffs the committed scene against the currently displayed
+ * framebuffer and flushes only the dirty page regions.
  *
  * Transport failures never block the runtime. The actor moves into
  * EV_OLED_STATE_ERROR, latches the affected dirty range, and retries the panel

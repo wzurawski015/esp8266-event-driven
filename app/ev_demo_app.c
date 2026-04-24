@@ -41,6 +41,8 @@ typedef struct {
 } ev_demo_snapshot_t;
 
 EV_STATIC_ASSERT(sizeof(ev_demo_snapshot_t) == EV_DEMO_APP_SNAPSHOT_BYTES, "demo snapshot ABI mismatch");
+EV_STATIC_ASSERT(sizeof(ev_oled_scene_t) <= EV_DEMO_APP_LEASE_SLOT_BYTES,
+                 "OLED scene payload must fit inside one demo lease slot");
 
 static void ev_demo_app_logf(ev_demo_app_t *app, ev_log_level_t level, const char *fmt, ...)
 {
@@ -107,6 +109,8 @@ static ev_result_t ev_demo_app_publish_owned(ev_demo_app_t *app, ev_msg_t *msg)
 
     return rc;
 }
+
+static bool ev_demo_app_hardware_active(const ev_demo_app_actor_state_t *state, uint32_t hw_mask);
 
 static ev_result_t ev_demo_app_publish_snapshot(ev_demo_diag_actor_state_t *state)
 {
@@ -249,6 +253,11 @@ static ev_result_t ev_demo_app_publish_panel_led_command(ev_demo_app_t *app, uin
     return ev_demo_app_publish_owned(app, &msg);
 }
 
+static bool ev_demo_app_hardware_active(const ev_demo_app_actor_state_t *state, uint32_t hw_mask)
+{
+    return (state != NULL) && state->system_ready && ((state->active_hardware_mask & hw_mask) != 0U);
+}
+
 static ev_result_t ev_demo_app_publish_irq_sample(ev_demo_app_t *app, const ev_irq_sample_t *sample)
 {
     if ((app == NULL) || (sample == NULL)) {
@@ -258,52 +267,40 @@ static ev_result_t ev_demo_app_publish_irq_sample(ev_demo_app_t *app, const ev_i
     return ev_demo_app_publish_system_event(app, EV_GPIO_IRQ, sample, sizeof(*sample));
 }
 
-static ev_result_t ev_demo_app_publish_oled_text(ev_demo_app_t *app, uint8_t page, uint8_t column, const char *text)
+
+static ev_result_t ev_demo_app_publish_oled_scene_commit(ev_demo_app_t *app, const ev_oled_scene_t *scene)
 {
-    ev_msg_t text_msg = {0};
-    ev_oled_display_text_cmd_t cmd = {0};
-    ev_result_t rc;
-
-    if ((app == NULL) || (text == NULL)) {
-        return EV_ERR_INVALID_ARG;
-    }
-    if ((page >= EV_OLED_PAGE_COUNT) || (column >= EV_OLED_WIDTH)) {
-        return EV_ERR_OUT_OF_RANGE;
-    }
-
-    cmd.page = page;
-    cmd.column = column;
-    (void)snprintf(cmd.text, sizeof(cmd.text), "%s", text);
-
-    rc = ev_msg_init_publish(&text_msg, EV_OLED_DISPLAY_TEXT_CMD, ACT_APP);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_msg_set_inline_payload(&text_msg, &cmd, sizeof(cmd));
-    if (rc != EV_OK) {
-        (void)ev_msg_dispose(&text_msg);
-        return rc;
-    }
-
-    return ev_demo_app_publish_owned(app, &text_msg);
-}
-
-static ev_result_t ev_demo_app_publish_oled_commit(ev_demo_app_t *app)
-{
+    ev_lease_handle_t handle = {0};
     ev_msg_t msg = {0};
+    void *data = NULL;
     ev_result_t rc;
 
-    if (app == NULL) {
+    if ((app == NULL) || (scene == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
+
+    rc = ev_lease_pool_acquire(&app->lease_pool, sizeof(*scene), &handle, &data);
+    if (rc != EV_OK) {
+        ++app->stats.publish_errors;
+        ev_demo_app_logf(app, EV_LOG_ERROR, "oled scene acquire failed rc=%d", (int)rc);
+        return rc;
+    }
+
+    memcpy(data, scene, sizeof(*scene));
 
     rc = ev_msg_init_publish(&msg, EV_OLED_COMMIT_FRAME, ACT_APP);
-    if (rc != EV_OK) {
-        return rc;
+    if (rc == EV_OK) {
+        rc = ev_lease_pool_attach_msg(&msg, &handle);
+    }
+    if (rc == EV_OK) {
+        rc = ev_demo_app_publish_owned(app, &msg);
+    } else {
+        ++app->stats.publish_errors;
+        (void)ev_msg_dispose(&msg);
     }
 
-    return ev_demo_app_publish_owned(app, &msg);
+    (void)ev_lease_pool_release(&handle);
+    return rc;
 }
 
 static void ev_demo_app_format_time_text(const ev_demo_app_actor_state_t *state, char *out_text, size_t out_text_size)
@@ -352,45 +349,10 @@ static void ev_demo_app_format_temp_text(const ev_demo_app_actor_state_t *state,
                    (unsigned long)(abs_centi_celsius % 100U));
 }
 
-static ev_result_t ev_demo_app_clear_previous_oled_frame(ev_demo_app_actor_state_t *state)
-{
-    ev_demo_app_t *app;
-    ev_result_t rc;
-
-    if ((state == NULL) || (state->app == NULL)) {
-        return EV_ERR_INVALID_ARG;
-    }
-    if (!state->oled_frame_visible) {
-        return EV_OK;
-    }
-
-    app = state->app;
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->last_page_offset + EV_DEMO_APP_OLED_TITLE_PAGE_OFFSET),
-                                       state->last_column_offset,
-                                       "");
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->last_page_offset + EV_DEMO_APP_OLED_TIME_PAGE_OFFSET),
-                                       state->last_column_offset,
-                                       "");
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    return ev_demo_app_publish_oled_text(app,
-                                         (uint8_t)(state->last_page_offset + EV_DEMO_APP_OLED_TEMP_PAGE_OFFSET),
-                                         state->last_column_offset,
-                                         "");
-}
 
 static ev_result_t ev_demo_app_render_oled_frame(ev_demo_app_actor_state_t *state)
 {
     ev_demo_app_t *app;
-    ev_result_t rc;
     char time_text[EV_OLED_TEXT_MAX_CHARS] = {0};
     char temp_text[EV_OLED_TEXT_MAX_CHARS] = {0};
 
@@ -399,47 +361,24 @@ static ev_result_t ev_demo_app_render_oled_frame(ev_demo_app_actor_state_t *stat
     }
 
     app = state->app;
+    if (!ev_demo_app_hardware_active(state, EV_SUPERVISOR_HW_OLED)) {
+        return EV_OK;
+    }
     ev_demo_app_format_time_text(state, time_text, sizeof(time_text));
     ev_demo_app_format_temp_text(state, temp_text, sizeof(temp_text));
 
-    rc = ev_demo_app_clear_previous_oled_frame(state);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TITLE_PAGE_OFFSET),
-                                       state->current_column_offset,
-                                       EV_DEMO_APP_OLED_TITLE_TEXT);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TIME_PAGE_OFFSET),
-                                       state->current_column_offset,
-                                       time_text);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_text(app,
-                                       (uint8_t)(state->current_page_offset + EV_DEMO_APP_OLED_TEMP_PAGE_OFFSET),
-                                       state->current_column_offset,
-                                       temp_text);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    rc = ev_demo_app_publish_oled_commit(app);
-    if (rc != EV_OK) {
-        return rc;
-    }
+    memset(&state->oled_scene, 0, sizeof(state->oled_scene));
+    state->oled_scene.page_offset = state->current_page_offset;
+    state->oled_scene.column_offset = state->current_column_offset;
+    state->oled_scene.flags = EV_OLED_SCENE_FLAG_VISIBLE;
+    (void)snprintf(state->oled_scene.lines[0], sizeof(state->oled_scene.lines[0]), "%s", EV_DEMO_APP_OLED_TITLE_TEXT);
+    (void)snprintf(state->oled_scene.lines[1], sizeof(state->oled_scene.lines[1]), "%s", time_text);
+    (void)snprintf(state->oled_scene.lines[2], sizeof(state->oled_scene.lines[2]), "%s", temp_text);
 
     state->last_page_offset = state->current_page_offset;
     state->last_column_offset = state->current_column_offset;
     state->oled_frame_visible = true;
-    return EV_OK;
+    return ev_demo_app_publish_oled_scene_commit(app, &state->oled_scene);
 }
 
 static void ev_demo_app_screensaver_step_axis(uint8_t *value, int8_t *direction, uint8_t max_value)
@@ -503,30 +442,57 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
 
     switch (msg->event_id) {
     case EV_BOOT_COMPLETED:
+        ++app->stats.boot_completions;
+        state->current_page_offset = 0U;
+        state->current_column_offset = 0U;
+        state->last_page_offset = 0U;
+        state->last_column_offset = 0U;
+        state->direction_x = (int8_t)1;
+        state->direction_y = (int8_t)1;
+        state->oled_frame_visible = false;
+        state->screensaver_paused = false;
+        state->panel_led_mask = 0U;
+        state->system_ready = false;
+        state->active_hardware_mask = 0U;
+        return EV_OK;
+
+    case EV_SYSTEM_READY:
         {
+            const ev_system_ready_payload_t *ready_payload = (const ev_system_ready_payload_t *)ev_msg_payload_data(msg);
             ev_result_t rc;
+            bool first_system_ready;
 
-            ++app->stats.boot_completions;
-            state->current_page_offset = 0U;
-            state->current_column_offset = 0U;
-            state->last_page_offset = 0U;
-            state->last_column_offset = 0U;
-            state->direction_x = (int8_t)1;
-            state->direction_y = (int8_t)1;
-            state->oled_frame_visible = false;
-            state->screensaver_paused = false;
-            state->panel_led_mask = 0U;
-            ev_demo_app_logf(app, EV_LOG_INFO, "app actor: boot complete -> requesting diag snapshot");
-
-            rc = ev_demo_app_publish_panel_led_command(app, 0U, EV_MCP23008_LED_MASK);
-            if (rc != EV_OK) {
-                return rc;
+            if ((ready_payload == NULL) || (ev_msg_payload_size(msg) != sizeof(*ready_payload))) {
+                return EV_ERR_CONTRACT;
             }
 
-            return ev_demo_app_publish_diag_request(state);
+            first_system_ready = !state->system_ready;
+            state->system_ready = true;
+            state->active_hardware_mask = ready_payload->active_hardware_mask;
+            state->temp_valid = (state->temp_valid && ((state->active_hardware_mask & EV_SUPERVISOR_HW_DS18B20) != 0U));
+            ev_demo_app_logf(app, EV_LOG_INFO, "app actor: system ready hw_mask=0x%08lx", (unsigned long)state->active_hardware_mask);
+
+            if (first_system_ready) {
+                if ((state->active_hardware_mask & EV_SUPERVISOR_HW_MCP23008) != 0U) {
+                    rc = ev_demo_app_publish_panel_led_command(app, 0U, EV_MCP23008_LED_MASK);
+                    if (rc != EV_OK) {
+                        return rc;
+                    }
+                }
+
+                rc = ev_demo_app_publish_diag_request(state);
+                if (rc != EV_OK) {
+                    return rc;
+                }
+            }
+
+            return ev_demo_app_render_oled_frame(state);
         }
 
     case EV_TICK_1S:
+        if (!state->system_ready) {
+            return EV_OK;
+        }
         return ev_demo_app_handle_tick_for_oled(state);
 
     case EV_TEMP_UPDATED:
@@ -700,6 +666,14 @@ typedef struct {
     size_t messages;
 } ev_demo_app_poll_diag_t;
 
+typedef struct {
+    size_t pump_calls_used;
+    size_t messages_used;
+    size_t turns_used;
+    size_t irq_samples_used;
+    bool exhausted;
+} ev_poll_budget_t;
+
 static void ev_demo_app_poll_diag_reset(ev_demo_app_poll_diag_t *diag)
 {
     if (diag != NULL) {
@@ -753,49 +727,46 @@ static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
            (cfg->onewire_port->read_byte != NULL);
 }
 
-static bool ev_demo_app_budget_exhausted(size_t pump_calls_used,
-                                         size_t messages_used,
-                                         size_t turns_used,
-                                         size_t irq_samples_used)
+static bool ev_demo_app_budget_exhausted(const ev_poll_budget_t *budget)
 {
-    return (pump_calls_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
-           (messages_used >= EV_APP_POLL_MAX_MESSAGES) ||
-           (turns_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
-           (irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES);
+    if (budget == NULL) {
+        return true;
+    }
+
+    return (budget->pump_calls_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
+           (budget->messages_used >= EV_APP_POLL_MAX_MESSAGES) ||
+           (budget->turns_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
+           (budget->irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES);
 }
 
 static ev_result_t ev_demo_app_drain_budgeted(ev_demo_app_t *app,
                                               ev_demo_app_poll_diag_t *diag,
-                                              size_t *pump_calls_used,
-                                              size_t *messages_used,
-                                              size_t *turns_used,
-                                              bool *budget_exhausted)
+                                              ev_poll_budget_t *budget)
 {
-    ev_system_pump_report_t report;
+    ev_system_pump_report_t report = {0};
     ev_result_t rc;
 
-    if ((app == NULL) || (pump_calls_used == NULL) || (messages_used == NULL) ||
-        (turns_used == NULL) || (budget_exhausted == NULL)) {
+    if ((app == NULL) || (budget == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 
-    while ((ev_system_pump_pending(&app->system_pump) > 0U) && !(*budget_exhausted)) {
-        if (ev_demo_app_budget_exhausted(*pump_calls_used, *messages_used, *turns_used, 0U)) {
-            *budget_exhausted = true;
+    while ((ev_system_pump_pending(&app->system_pump) > 0U) && !budget->exhausted) {
+        if (ev_demo_app_budget_exhausted(budget)) {
+            budget->exhausted = true;
             break;
         }
 
         rc = ev_system_pump_run(&app->system_pump, EV_DEMO_APP_TURN_BUDGET, &report);
-        ++(*pump_calls_used);
-        *turns_used += report.turns_processed;
-        *messages_used += report.messages_processed;
+        ++budget->pump_calls_used;
+        budget->turns_used += report.turns_processed;
+        budget->messages_used += report.messages_processed;
         if (diag != NULL) {
             ++diag->pump_calls;
             diag->turns += report.turns_processed;
             diag->messages += report.messages_processed;
         }
         if (rc == EV_OK) {
-            *budget_exhausted = ev_demo_app_budget_exhausted(*pump_calls_used, *messages_used, *turns_used, 0U);
+            budget->exhausted = ev_demo_app_budget_exhausted(budget);
             continue;
         }
         if (rc == EV_ERR_EMPTY) {
@@ -813,6 +784,91 @@ static ev_result_t ev_demo_app_drain_budgeted(ev_demo_app_t *app,
         return rc;
     }
 
+    return EV_OK;
+}
+
+static ev_result_t ev_demo_app_collect_ingress(ev_demo_app_t *app,
+                                               ev_poll_budget_t *budget,
+                                               ev_demo_app_poll_diag_t *diag)
+{
+    ev_result_t rc;
+    ev_irq_sample_t sample = {0};
+
+    if ((app == NULL) || (budget == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if ((app->irq_port == NULL) || (app->irq_port->pop == NULL) || budget->exhausted) {
+        return EV_OK;
+    }
+    if (ev_system_pump_pending(&app->system_pump) > 0U) {
+        return EV_OK;
+    }
+    if (budget->irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES) {
+        budget->exhausted = true;
+        return EV_OK;
+    }
+
+    rc = app->irq_port->pop(app->irq_port->ctx, &sample);
+    if (rc == EV_ERR_EMPTY) {
+        return EV_OK;
+    }
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    ++budget->irq_samples_used;
+    if (diag != NULL) {
+        ++diag->irq_samples;
+    }
+
+    rc = ev_demo_app_publish_irq_sample(app, &sample);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    budget->exhausted = ev_demo_app_budget_exhausted(budget);
+    return EV_OK;
+}
+
+static ev_result_t ev_demo_app_process_timers(ev_demo_app_t *app,
+                                              ev_poll_budget_t *budget,
+                                              uint32_t now_ms)
+{
+    bool tick_100ms_due;
+    bool tick_1s_due;
+    ev_result_t rc;
+
+    if ((app == NULL) || (budget == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (budget->exhausted) {
+        return EV_OK;
+    }
+    if (ev_system_pump_pending(&app->system_pump) > 0U) {
+        return EV_OK;
+    }
+
+    tick_100ms_due = ((int32_t)(now_ms - app->next_tick_100ms_ms) >= 0);
+    tick_1s_due = ((int32_t)(now_ms - app->next_tick_ms) >= 0);
+    if (!tick_100ms_due && !tick_1s_due) {
+        return EV_OK;
+    }
+
+    if (tick_100ms_due && (!tick_1s_due || ((int32_t)(app->next_tick_100ms_ms - app->next_tick_ms) <= 0))) {
+        rc = ev_demo_app_publish_tick_100ms(app);
+        if (rc != EV_OK) {
+            return rc;
+        }
+        app->next_tick_100ms_ms += EV_DEMO_APP_FAST_TICK_MS;
+    } else {
+        rc = ev_demo_app_publish_tick(app);
+        if (rc != EV_OK) {
+            return rc;
+        }
+        app->next_tick_ms += app->tick_period_ms;
+    }
+
+    budget->exhausted = ev_demo_app_budget_exhausted(budget);
     return EV_OK;
 }
 
@@ -885,6 +941,12 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_mailbox_init(&app->oled_mailbox, EV_MAILBOX_FIFO_8, app->oled_storage, EV_ARRAY_LEN(app->oled_storage));
     if (rc != EV_OK) return rc;
 
+    rc = ev_mailbox_init(&app->supervisor_mailbox,
+                         EV_MAILBOX_FIFO_8,
+                         app->supervisor_storage,
+                         EV_ARRAY_LEN(app->supervisor_storage));
+    if (rc != EV_OK) return rc;
+
     /* Inicjalizacja Wątków Aktorów (Runtimes) */
     rc = ev_actor_runtime_init(&app->app_runtime, ACT_APP, &app->app_mailbox, ev_demo_app_actor_handler, &app->app_actor);
     if (rc != EV_OK) return rc;
@@ -896,6 +958,16 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->panel_runtime, ACT_PANEL, &app->panel_mailbox, ev_panel_actor_handle, &app->panel_ctx);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_supervisor_actor_init(&app->supervisor_ctx, ev_actor_registry_delivery, &app->registry);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->supervisor_runtime,
+                               ACT_SUPERVISOR,
+                               &app->supervisor_mailbox,
+                               ev_supervisor_actor_handle,
+                               &app->supervisor_ctx);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->runtime_actor, ACT_RUNTIME, &app->runtime_mailbox, ev_runtime_actor_handler, NULL);
@@ -943,7 +1015,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
                             active_i2c,
                             EV_I2C_PORT_NUM_0,
                             EV_OLED_DEFAULT_ADDR_7BIT,
-                            EV_OLED_CONTROLLER_SSD1306);
+                            EV_OLED_CONTROLLER_SSD1306,
+                            ev_actor_registry_delivery,
+                            &app->registry);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->oled_runtime, ACT_OLED, &app->oled_mailbox, ev_oled_actor_handle, &app->oled_ctx);
@@ -960,6 +1034,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_registry_bind(&app->registry, &app->panel_runtime);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_registry_bind(&app->registry, &app->supervisor_runtime);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_registry_bind(&app->registry, &app->runtime_actor);
@@ -993,7 +1070,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_system_pump_bind(&app->system_pump, &app->slow_domain);
     if (rc != EV_OK) return rc;
 
-    rc = ev_lease_pool_init(&app->lease_pool, app->lease_slots, app->lease_storage, EV_DEMO_APP_LEASE_SLOTS, EV_DEMO_APP_SNAPSHOT_BYTES);
+    rc = ev_lease_pool_init(&app->lease_pool, app->lease_slots, app->lease_storage, EV_DEMO_APP_LEASE_SLOTS, EV_DEMO_APP_LEASE_SLOT_BYTES);
     if (rc != EV_OK) return rc;
 
     ev_demo_app_logf(app, EV_LOG_INFO, "demo runtime ready board=%s tick_period_ms=%u", app->board_name, (unsigned)app->tick_period_ms);
@@ -1026,14 +1103,6 @@ ev_result_t ev_demo_app_publish_boot(ev_demo_app_t *app)
 
 ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
 {
-    typedef struct {
-        size_t pump_calls_used;
-        size_t messages_used;
-        size_t turns_used;
-        size_t irq_samples_used;
-        bool exhausted;
-    } ev_poll_budget_t;
-
     ev_result_t rc = EV_OK;
     ev_demo_app_poll_diag_t diag;
     ev_poll_budget_t budget = {0};
@@ -1058,50 +1127,21 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
         have_timing = true;
     }
 
-    rc = ev_demo_app_drain_budgeted(app,
-                                    &diag,
-                                    &budget.pump_calls_used,
-                                    &budget.messages_used,
-                                    &budget.turns_used,
-                                    &budget.exhausted);
-    if (rc != EV_OK) {
-        goto finalize;
-    }
+    for (;;) {
+        size_t before_irq_samples = budget.irq_samples_used;
 
-    if ((app->irq_port != NULL) && (app->irq_port->pop != NULL)) {
-        ev_irq_sample_t sample = {0};
+        rc = ev_demo_app_collect_ingress(app, &budget, &diag);
+        if (rc != EV_OK) {
+            goto finalize;
+        }
 
-        for (;;) {
-            if (budget.exhausted || (budget.irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES)) {
-                budget.exhausted = true;
-                break;
-            }
+        rc = ev_demo_app_drain_budgeted(app, &diag, &budget);
+        if (rc != EV_OK) {
+            goto finalize;
+        }
 
-            rc = app->irq_port->pop(app->irq_port->ctx, &sample);
-            if (rc == EV_ERR_EMPTY) {
-                rc = EV_OK;
-                break;
-            }
-            if (rc != EV_OK) {
-                goto finalize;
-            }
-
-            ++diag.irq_samples;
-            ++budget.irq_samples_used;
-            rc = ev_demo_app_publish_irq_sample(app, &sample);
-            if (rc != EV_OK) {
-                goto finalize;
-            }
-
-            rc = ev_demo_app_drain_budgeted(app,
-                                            &diag,
-                                            &budget.pump_calls_used,
-                                            &budget.messages_used,
-                                            &budget.turns_used,
-                                            &budget.exhausted);
-            if (rc != EV_OK) {
-                goto finalize;
-            }
+        if (budget.exhausted || (budget.irq_samples_used == before_irq_samples)) {
+            break;
         }
     }
 
@@ -1112,60 +1152,25 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
         }
 
         for (;;) {
-            const bool tick_100ms_due = ((int32_t)(now_ms - app->next_tick_100ms_ms) >= 0);
-            const bool tick_1s_due = ((int32_t)(now_ms - app->next_tick_ms) >= 0);
+            const uint32_t before_next_tick_ms = app->next_tick_ms;
+            const uint32_t before_next_tick_100ms_ms = app->next_tick_100ms_ms;
 
-            if (budget.exhausted) {
-                break;
-            }
-            if (!tick_100ms_due && !tick_1s_due) {
-                break;
-            }
-
-            if (tick_100ms_due && (!tick_1s_due || ((int32_t)(app->next_tick_100ms_ms - app->next_tick_ms) <= 0))) {
-                rc = ev_demo_app_publish_tick_100ms(app);
-                if (rc != EV_OK) {
-                    goto finalize;
-                }
-                app->next_tick_100ms_ms += EV_DEMO_APP_FAST_TICK_MS;
-
-                rc = ev_demo_app_drain_budgeted(app,
-                                                &diag,
-                                                &budget.pump_calls_used,
-                                                &budget.messages_used,
-                                                &budget.turns_used,
-                                                &budget.exhausted);
-                if (rc != EV_OK) {
-                    goto finalize;
-                }
-                continue;
-            }
-
-            rc = ev_demo_app_publish_tick(app);
+            rc = ev_demo_app_process_timers(app, &budget, now_ms);
             if (rc != EV_OK) {
                 goto finalize;
             }
-            app->next_tick_ms += app->tick_period_ms;
 
-            rc = ev_demo_app_drain_budgeted(app,
-                                            &diag,
-                                            &budget.pump_calls_used,
-                                            &budget.messages_used,
-                                            &budget.turns_used,
-                                            &budget.exhausted);
+            rc = ev_demo_app_drain_budgeted(app, &diag, &budget);
             if (rc != EV_OK) {
                 goto finalize;
+            }
+
+            if (budget.exhausted ||
+                ((app->next_tick_ms == before_next_tick_ms) &&
+                 (app->next_tick_100ms_ms == before_next_tick_100ms_ms))) {
+                break;
             }
         }
-    }
-
-    if (!budget.exhausted) {
-        rc = ev_demo_app_drain_budgeted(app,
-                                        &diag,
-                                        &budget.pump_calls_used,
-                                        &budget.messages_used,
-                                        &budget.turns_used,
-                                        &budget.exhausted);
     }
 
 finalize:

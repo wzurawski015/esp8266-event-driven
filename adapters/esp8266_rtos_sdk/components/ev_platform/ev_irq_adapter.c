@@ -14,14 +14,17 @@
 #include "esp8266/gpio_register.h"
 #include "rom/ets_sys.h"
 
+#include "ev/compiler.h"
 #include "ev/esp8266_port_adapters.h"
 
 #define EV_ESP8266_IRQ_MAX_LINES 4U
-#define EV_ESP8266_IRQ_RING_CAPACITY 32U
+#define EV_ESP8266_IRQ_RING_CAPACITY 64U
+#define EV_ESP8266_IRQ_RING_MASK (EV_ESP8266_IRQ_RING_CAPACITY - 1U)
 
 typedef struct {
     ev_irq_line_id_t line_id;
     uint8_t gpio_num;
+    uint32_t gpio_mask;
     ev_gpio_irq_trigger_t trigger;
     uint8_t last_level;
     bool configured;
@@ -30,15 +33,18 @@ typedef struct {
 typedef struct {
     ev_irq_sample_t ring[EV_ESP8266_IRQ_RING_CAPACITY];
     ev_esp8266_irq_line_t lines[EV_ESP8266_IRQ_MAX_LINES];
-    volatile uint8_t head;
-    volatile uint8_t tail;
-    volatile uint8_t count;
+    volatile uint32_t write_seq;
+    volatile uint32_t read_seq;
+    uint32_t active_gpio_mask;
     size_t line_count;
     bool configured;
     SemaphoreHandle_t wait_sem;
 } ev_esp8266_irq_adapter_ctx_t;
 
 static ev_esp8266_irq_adapter_ctx_t g_ev_irq_ctx;
+
+EV_STATIC_ASSERT((EV_ESP8266_IRQ_RING_CAPACITY & EV_ESP8266_IRQ_RING_MASK) == 0U,
+                 "IRQ ring capacity must stay a power of two");
 
 static bool ev_esp8266_irq_gpio_is_valid(uint8_t gpio_num)
 {
@@ -115,26 +121,22 @@ static bool ev_esp8266_irq_line_configs_are_valid(const ev_gpio_irq_line_config_
     return true;
 }
 
+
 static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const ev_irq_sample_t *sample)
 {
-    uint8_t head;
     BaseType_t higher_priority_woken = pdFALSE;
+    uint32_t write_seq;
+    uint32_t read_seq;
 
     if ((adapter == NULL) || (sample == NULL)) {
         return;
     }
 
-    /*
-     * The producer already runs in GPIO ISR context on the single-core ESP8266.
-     * Task-side consumers guard the shared ring with portENTER_CRITICAL(), so
-     * no additional ISR-local interrupt masking is required here.
-     */
-
-    if (adapter->count < EV_ESP8266_IRQ_RING_CAPACITY) {
-        head = adapter->head;
-        adapter->ring[head] = *sample;
-        adapter->head = (uint8_t)((head + 1U) % EV_ESP8266_IRQ_RING_CAPACITY);
-        ++adapter->count;
+    write_seq = adapter->write_seq;
+    read_seq = adapter->read_seq;
+    if ((write_seq - read_seq) < EV_ESP8266_IRQ_RING_CAPACITY) {
+        adapter->ring[write_seq & EV_ESP8266_IRQ_RING_MASK] = *sample;
+        adapter->write_seq = write_seq + 1U;
         if (adapter->wait_sem != NULL) {
             (void)xSemaphoreGiveFromISR(adapter->wait_sem, &higher_priority_woken);
         }
@@ -145,13 +147,20 @@ static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const
     }
 }
 
+
 static void IRAM_ATTR ev_esp8266_irq_isr(void *arg)
 {
     ev_esp8266_irq_adapter_ctx_t *adapter = (ev_esp8266_irq_adapter_ctx_t *)arg;
-    const uint32_t status = (uint32_t)(GPIO_REG_READ(GPIO_STATUS_ADDRESS) & GPIO_STATUS_INTERRUPT_DATA_MASK);
+    uint32_t status;
     size_t i;
 
-    if ((adapter == NULL) || (status == 0U)) {
+    if (adapter == NULL) {
+        return;
+    }
+
+    status = (uint32_t)(GPIO_REG_READ(GPIO_STATUS_ADDRESS) & GPIO_STATUS_INTERRUPT_DATA_MASK);
+    status &= adapter->active_gpio_mask;
+    if (status == 0U) {
         return;
     }
 
@@ -160,11 +169,7 @@ static void IRAM_ATTR ev_esp8266_irq_isr(void *arg)
     for (i = 0U; i < adapter->line_count; ++i) {
         ev_esp8266_irq_line_t *line = &adapter->lines[i];
 
-        if (!line->configured) {
-            continue;
-        }
-
-        if ((status & (1UL << line->gpio_num)) != 0U) {
+        if ((status & line->gpio_mask) != 0U) {
             ev_irq_sample_t sample = {0};
             const uint8_t level = (uint8_t)((gpio_get_level((gpio_num_t)line->gpio_num) != 0) ? 1U : 0U);
 
@@ -178,10 +183,11 @@ static void IRAM_ATTR ev_esp8266_irq_isr(void *arg)
     }
 }
 
+
 static ev_result_t ev_esp8266_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
 {
     ev_esp8266_irq_adapter_ctx_t *adapter = (ev_esp8266_irq_adapter_ctx_t *)ctx;
-    uint8_t tail;
+    uint32_t read_seq;
 
     if ((adapter == NULL) || (out_sample == NULL)) {
         return EV_ERR_INVALID_ARG;
@@ -192,20 +198,18 @@ static ev_result_t ev_esp8266_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
 
     portENTER_CRITICAL();
 
-    if (adapter->count == 0U) {
+    read_seq = adapter->read_seq;
+    if (read_seq == adapter->write_seq) {
         portEXIT_CRITICAL();
         return EV_ERR_EMPTY;
     }
 
-    tail = adapter->tail;
-    *out_sample = adapter->ring[tail];
-    adapter->tail = (uint8_t)((tail + 1U) % EV_ESP8266_IRQ_RING_CAPACITY);
-    --adapter->count;
+    *out_sample = adapter->ring[read_seq & EV_ESP8266_IRQ_RING_MASK];
+    adapter->read_seq = read_seq + 1U;
 
     portEXIT_CRITICAL();
     return EV_OK;
 }
-
 
 static ev_result_t ev_esp8266_irq_wait(void *ctx, uint32_t timeout_ms, bool *out_woken)
 {
@@ -220,7 +224,7 @@ static ev_result_t ev_esp8266_irq_wait(void *ctx, uint32_t timeout_ms, bool *out
     }
 
     portENTER_CRITICAL();
-    if (adapter->count > 0U) {
+    if (adapter->read_seq != adapter->write_seq) {
         portEXIT_CRITICAL();
         *out_woken = true;
         return EV_OK;
@@ -262,7 +266,7 @@ static ev_result_t ev_esp8266_irq_enable(void *ctx, ev_irq_line_id_t line_id, bo
         esp_err_t sdk_rc;
         gpio_int_type_t intr_type;
 
-        if ((!line->configured) || (line->line_id != line_id)) {
+        if (line->line_id != line_id) {
             continue;
         }
 

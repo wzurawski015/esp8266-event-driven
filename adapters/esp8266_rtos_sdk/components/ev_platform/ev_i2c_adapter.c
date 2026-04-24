@@ -48,7 +48,7 @@ static bool ev_esp8266_i2c_txn_is_valid(const ev_esp8266_i2c_adapter_ctx_t *ctx,
     return (ctx != NULL) && ctx->configured && (ctx->port_num == port_num) && (device_address_7bit <= 0x7FU);
 }
 
-static ev_i2c_status_t ev_esp8266_i2c_status_from_esp_err(esp_err_t sdk_rc)
+static __attribute__((noinline)) ev_i2c_status_t ev_esp8266_i2c_status_from_esp_err_slowpath(esp_err_t sdk_rc)
 {
     switch (sdk_rc) {
     case ESP_OK:
@@ -62,6 +62,15 @@ static ev_i2c_status_t ev_esp8266_i2c_status_from_esp_err(esp_err_t sdk_rc)
     default:
         return EV_I2C_ERR_BUS_LOCKED;
     }
+}
+
+static ev_i2c_status_t ev_esp8266_i2c_status_from_esp_err(esp_err_t sdk_rc)
+{
+    if (sdk_rc == ESP_OK) {
+        return EV_I2C_OK;
+    }
+
+    return ev_esp8266_i2c_status_from_esp_err_slowpath(sdk_rc);
 }
 
 /*

@@ -20,6 +20,7 @@
 #include "ev/oled_actor.h"
 #include "ev/panel_actor.h"
 #include "ev/rtc_actor.h"
+#include "ev/supervisor_actor.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,6 +29,7 @@ extern "C" {
 #define EV_DEMO_APP_MAILBOX_CAPACITY 8U
 #define EV_DEMO_APP_LEASE_SLOTS 4U
 #define EV_DEMO_APP_SNAPSHOT_BYTES 16U
+#define EV_DEMO_APP_LEASE_SLOT_BYTES 96U
 
 /**
  * @brief Immutable wiring required by the portable demo runtime.
@@ -79,6 +81,8 @@ typedef struct {
     bool time_valid;
     bool temp_valid;
     bool oled_frame_visible;
+    bool system_ready;
+    uint32_t active_hardware_mask;
     bool screensaver_paused;
     uint8_t panel_led_mask;
     uint8_t current_page_offset;
@@ -87,6 +91,7 @@ typedef struct {
     uint8_t last_column_offset;
     int8_t direction_x;
     int8_t direction_y;
+    ev_oled_scene_t oled_scene;
 } ev_demo_app_actor_state_t;
 
 /**
@@ -125,6 +130,7 @@ struct ev_demo_app {
     ev_mailbox_t mcp23008_mailbox; /* Skrzynka pocztowa dla MCP23008 */
     ev_mailbox_t ds18b20_mailbox; /* Skrzynka pocztowa dla DS18B20 */
     ev_mailbox_t oled_mailbox; /* Skrzynka pocztowa dla OLED */
+    ev_mailbox_t supervisor_mailbox; /* Skrzynka pocztowa dla Supervisora */
 
     ev_msg_t app_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
     ev_msg_t diag_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
@@ -133,6 +139,7 @@ struct ev_demo_app {
     ev_msg_t mcp23008_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla MCP23008 */
     ev_msg_t ds18b20_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla DS18B20 */
     ev_msg_t oled_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla OLED */
+    ev_msg_t supervisor_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Supervisora */
 
     ev_actor_runtime_t app_runtime;
     ev_actor_runtime_t diag_runtime;
@@ -141,6 +148,7 @@ struct ev_demo_app {
     ev_actor_runtime_t mcp23008_runtime; /* Wątek logiczny Aktora MCP23008 */
     ev_actor_runtime_t ds18b20_runtime; /* Wątek logiczny Aktora DS18B20 */
     ev_actor_runtime_t oled_runtime; /* Wątek logiczny Aktora OLED */
+    ev_actor_runtime_t supervisor_runtime; /* Wątek logiczny Aktora Supervisora */
 
     ev_domain_pump_t fast_domain;
     ev_domain_pump_t slow_domain;
@@ -148,7 +156,7 @@ struct ev_demo_app {
 
     ev_lease_pool_t lease_pool;
     ev_lease_slot_t lease_slots[EV_DEMO_APP_LEASE_SLOTS];
-    unsigned char lease_storage[EV_DEMO_APP_LEASE_SLOTS * EV_DEMO_APP_SNAPSHOT_BYTES];
+    unsigned char lease_storage[EV_DEMO_APP_LEASE_SLOTS * EV_DEMO_APP_LEASE_SLOT_BYTES];
 
     ev_demo_app_actor_state_t app_actor;
     ev_demo_diag_actor_state_t diag_actor;
@@ -157,6 +165,7 @@ struct ev_demo_app {
     ev_mcp23008_actor_ctx_t mcp23008_ctx; /* Fizyczny stan i konfiguracja Aktora MCP23008 */
     ev_ds18b20_actor_ctx_t ds18b20_ctx; /* Fizyczny stan i konfiguracja Aktora DS18B20 */
     ev_oled_actor_ctx_t oled_ctx; /* Fizyczny stan i bufor ekranu OLED */
+    ev_supervisor_actor_ctx_t supervisor_ctx; /* Stan Supervisora platformy */
 
     ev_demo_app_stats_t stats;
 };

@@ -25,7 +25,8 @@ CORE_SRCS := \
     core/src/ev_ds18b20_actor.c \
     core/src/ev_mcp23008_actor.c \
     core/src/ev_panel_actor.c \
-    core/src/ev_oled_actor.c
+    core/src/ev_oled_actor.c \
+    core/src/ev_supervisor_actor.c
 
 APP_SRCS := \
     app/ev_demo_app.c

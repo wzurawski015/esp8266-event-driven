@@ -5,23 +5,23 @@
 
 /* --- SYSTEMOWE --- */
 /* Niebieska dioda LED na module ZY8266 (aktywna w stanie NISKIM) */
-EV_PIN(EV_PIN_LED_MODULE, 2, EV_PIN_MODE_OUTPUT_OD)
+EV_BSP_PIN(EV_PIN_LED_MODULE, 2, EV_PIN_MODE_OUTPUT_OD)
 
 /* --- MAGISTRALA I2C (Zgodnie ze standardem Wemos) --- */
 /* SCL -> D1 (GPIO5) */
 /* SDA -> D2 (GPIO4) */
-EV_PIN(EV_PIN_I2C_SCL,    5, EV_PIN_MODE_I2C)
-EV_PIN(EV_PIN_I2C_SDA,    4, EV_PIN_MODE_I2C)
+EV_BSP_PIN(EV_PIN_I2C_SCL,    5, EV_PIN_MODE_I2C)
+EV_BSP_PIN(EV_PIN_I2C_SDA,    4, EV_PIN_MODE_I2C)
 
 /* --- PINY CYFROWE (Mapowanie D-series dla Aktorów) --- */
-EV_PIN(EV_PIN_D0,        16, EV_PIN_MODE_INPUT)    /* Wake-up pin */
-EV_PIN(EV_PIN_D3,         0, EV_PIN_MODE_INPUT)    /* Przycisk Flash na niektórych shieldach */
-EV_PIN(EV_PIN_D5,        14, EV_PIN_MODE_SPI_SCK) 
-EV_PIN(EV_PIN_D6,        12, EV_PIN_MODE_SPI_MISO)
-EV_PIN(EV_PIN_D7,        13, EV_PIN_MODE_SPI_MOSI)
-EV_PIN(EV_PIN_D8,        15, EV_PIN_MODE_SPI_CS)
+EV_BSP_PIN(EV_PIN_D0,        16, EV_PIN_MODE_INPUT)    /* Wake-up pin */
+EV_BSP_PIN(EV_PIN_D3,         0, EV_PIN_MODE_INPUT)    /* Przycisk Flash na niektórych shieldach */
+EV_BSP_PIN(EV_PIN_D5,        14, EV_PIN_MODE_SPI_SCK) 
+EV_BSP_PIN(EV_PIN_D6,        12, EV_PIN_MODE_SPI_MISO)
+EV_BSP_PIN(EV_PIN_D7,        13, EV_PIN_MODE_SPI_MOSI)
+EV_BSP_PIN(EV_PIN_D8,        15, EV_PIN_MODE_SPI_CS)
 
 /* --- ANALOG --- */
 /* Wejście A0 (ADC0) - Wemos posiada wbudowany dzielnik (100k/220k) */
 /* Pozwala na pomiar napięcia 0-3.3V */
-EV_PIN_ANALOG(EV_PIN_ADC_INPUT, 0)
+EV_BSP_PIN_ANALOG(EV_PIN_ADC_INPUT, 0)
