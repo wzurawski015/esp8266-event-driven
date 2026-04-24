@@ -700,6 +700,14 @@ typedef struct {
     size_t messages;
 } ev_demo_app_poll_diag_t;
 
+typedef struct {
+    size_t pump_calls_used;
+    size_t messages_used;
+    size_t turns_used;
+    size_t irq_samples_used;
+    bool exhausted;
+} ev_poll_budget_t;
+
 static void ev_demo_app_poll_diag_reset(ev_demo_app_poll_diag_t *diag)
 {
     if (diag != NULL) {
@@ -753,49 +761,46 @@ static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
            (cfg->onewire_port->read_byte != NULL);
 }
 
-static bool ev_demo_app_budget_exhausted(size_t pump_calls_used,
-                                         size_t messages_used,
-                                         size_t turns_used,
-                                         size_t irq_samples_used)
+static bool ev_demo_app_budget_exhausted(const ev_poll_budget_t *budget)
 {
-    return (pump_calls_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
-           (messages_used >= EV_APP_POLL_MAX_MESSAGES) ||
-           (turns_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
-           (irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES);
+    if (budget == NULL) {
+        return true;
+    }
+
+    return (budget->pump_calls_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
+           (budget->messages_used >= EV_APP_POLL_MAX_MESSAGES) ||
+           (budget->turns_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
+           (budget->irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES);
 }
 
 static ev_result_t ev_demo_app_drain_budgeted(ev_demo_app_t *app,
                                               ev_demo_app_poll_diag_t *diag,
-                                              size_t *pump_calls_used,
-                                              size_t *messages_used,
-                                              size_t *turns_used,
-                                              bool *budget_exhausted)
+                                              ev_poll_budget_t *budget)
 {
-    ev_system_pump_report_t report;
+    ev_system_pump_report_t report = {0};
     ev_result_t rc;
 
-    if ((app == NULL) || (pump_calls_used == NULL) || (messages_used == NULL) ||
-        (turns_used == NULL) || (budget_exhausted == NULL)) {
+    if ((app == NULL) || (budget == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 
-    while ((ev_system_pump_pending(&app->system_pump) > 0U) && !(*budget_exhausted)) {
-        if (ev_demo_app_budget_exhausted(*pump_calls_used, *messages_used, *turns_used, 0U)) {
-            *budget_exhausted = true;
+    while ((ev_system_pump_pending(&app->system_pump) > 0U) && !budget->exhausted) {
+        if (ev_demo_app_budget_exhausted(budget)) {
+            budget->exhausted = true;
             break;
         }
 
         rc = ev_system_pump_run(&app->system_pump, EV_DEMO_APP_TURN_BUDGET, &report);
-        ++(*pump_calls_used);
-        *turns_used += report.turns_processed;
-        *messages_used += report.messages_processed;
+        ++budget->pump_calls_used;
+        budget->turns_used += report.turns_processed;
+        budget->messages_used += report.messages_processed;
         if (diag != NULL) {
             ++diag->pump_calls;
             diag->turns += report.turns_processed;
             diag->messages += report.messages_processed;
         }
         if (rc == EV_OK) {
-            *budget_exhausted = ev_demo_app_budget_exhausted(*pump_calls_used, *messages_used, *turns_used, 0U);
+            budget->exhausted = ev_demo_app_budget_exhausted(budget);
             continue;
         }
         if (rc == EV_ERR_EMPTY) {
@@ -813,6 +818,91 @@ static ev_result_t ev_demo_app_drain_budgeted(ev_demo_app_t *app,
         return rc;
     }
 
+    return EV_OK;
+}
+
+static ev_result_t ev_demo_app_collect_ingress(ev_demo_app_t *app,
+                                               ev_poll_budget_t *budget,
+                                               ev_demo_app_poll_diag_t *diag)
+{
+    ev_result_t rc;
+    ev_irq_sample_t sample = {0};
+
+    if ((app == NULL) || (budget == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if ((app->irq_port == NULL) || (app->irq_port->pop == NULL) || budget->exhausted) {
+        return EV_OK;
+    }
+    if (ev_system_pump_pending(&app->system_pump) > 0U) {
+        return EV_OK;
+    }
+    if (budget->irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES) {
+        budget->exhausted = true;
+        return EV_OK;
+    }
+
+    rc = app->irq_port->pop(app->irq_port->ctx, &sample);
+    if (rc == EV_ERR_EMPTY) {
+        return EV_OK;
+    }
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    ++budget->irq_samples_used;
+    if (diag != NULL) {
+        ++diag->irq_samples;
+    }
+
+    rc = ev_demo_app_publish_irq_sample(app, &sample);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    budget->exhausted = ev_demo_app_budget_exhausted(budget);
+    return EV_OK;
+}
+
+static ev_result_t ev_demo_app_process_timers(ev_demo_app_t *app,
+                                              ev_poll_budget_t *budget,
+                                              uint32_t now_ms)
+{
+    bool tick_100ms_due;
+    bool tick_1s_due;
+    ev_result_t rc;
+
+    if ((app == NULL) || (budget == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (budget->exhausted) {
+        return EV_OK;
+    }
+    if (ev_system_pump_pending(&app->system_pump) > 0U) {
+        return EV_OK;
+    }
+
+    tick_100ms_due = ((int32_t)(now_ms - app->next_tick_100ms_ms) >= 0);
+    tick_1s_due = ((int32_t)(now_ms - app->next_tick_ms) >= 0);
+    if (!tick_100ms_due && !tick_1s_due) {
+        return EV_OK;
+    }
+
+    if (tick_100ms_due && (!tick_1s_due || ((int32_t)(app->next_tick_100ms_ms - app->next_tick_ms) <= 0))) {
+        rc = ev_demo_app_publish_tick_100ms(app);
+        if (rc != EV_OK) {
+            return rc;
+        }
+        app->next_tick_100ms_ms += EV_DEMO_APP_FAST_TICK_MS;
+    } else {
+        rc = ev_demo_app_publish_tick(app);
+        if (rc != EV_OK) {
+            return rc;
+        }
+        app->next_tick_ms += app->tick_period_ms;
+    }
+
+    budget->exhausted = ev_demo_app_budget_exhausted(budget);
     return EV_OK;
 }
 
@@ -1026,14 +1116,6 @@ ev_result_t ev_demo_app_publish_boot(ev_demo_app_t *app)
 
 ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
 {
-    typedef struct {
-        size_t pump_calls_used;
-        size_t messages_used;
-        size_t turns_used;
-        size_t irq_samples_used;
-        bool exhausted;
-    } ev_poll_budget_t;
-
     ev_result_t rc = EV_OK;
     ev_demo_app_poll_diag_t diag;
     ev_poll_budget_t budget = {0};
@@ -1058,50 +1140,21 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
         have_timing = true;
     }
 
-    rc = ev_demo_app_drain_budgeted(app,
-                                    &diag,
-                                    &budget.pump_calls_used,
-                                    &budget.messages_used,
-                                    &budget.turns_used,
-                                    &budget.exhausted);
-    if (rc != EV_OK) {
-        goto finalize;
-    }
+    for (;;) {
+        size_t before_irq_samples = budget.irq_samples_used;
 
-    if ((app->irq_port != NULL) && (app->irq_port->pop != NULL)) {
-        ev_irq_sample_t sample = {0};
+        rc = ev_demo_app_collect_ingress(app, &budget, &diag);
+        if (rc != EV_OK) {
+            goto finalize;
+        }
 
-        for (;;) {
-            if (budget.exhausted || (budget.irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES)) {
-                budget.exhausted = true;
-                break;
-            }
+        rc = ev_demo_app_drain_budgeted(app, &diag, &budget);
+        if (rc != EV_OK) {
+            goto finalize;
+        }
 
-            rc = app->irq_port->pop(app->irq_port->ctx, &sample);
-            if (rc == EV_ERR_EMPTY) {
-                rc = EV_OK;
-                break;
-            }
-            if (rc != EV_OK) {
-                goto finalize;
-            }
-
-            ++diag.irq_samples;
-            ++budget.irq_samples_used;
-            rc = ev_demo_app_publish_irq_sample(app, &sample);
-            if (rc != EV_OK) {
-                goto finalize;
-            }
-
-            rc = ev_demo_app_drain_budgeted(app,
-                                            &diag,
-                                            &budget.pump_calls_used,
-                                            &budget.messages_used,
-                                            &budget.turns_used,
-                                            &budget.exhausted);
-            if (rc != EV_OK) {
-                goto finalize;
-            }
+        if (budget.exhausted || (budget.irq_samples_used == before_irq_samples)) {
+            break;
         }
     }
 
@@ -1112,60 +1165,25 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
         }
 
         for (;;) {
-            const bool tick_100ms_due = ((int32_t)(now_ms - app->next_tick_100ms_ms) >= 0);
-            const bool tick_1s_due = ((int32_t)(now_ms - app->next_tick_ms) >= 0);
+            const uint32_t before_next_tick_ms = app->next_tick_ms;
+            const uint32_t before_next_tick_100ms_ms = app->next_tick_100ms_ms;
 
-            if (budget.exhausted) {
-                break;
-            }
-            if (!tick_100ms_due && !tick_1s_due) {
-                break;
-            }
-
-            if (tick_100ms_due && (!tick_1s_due || ((int32_t)(app->next_tick_100ms_ms - app->next_tick_ms) <= 0))) {
-                rc = ev_demo_app_publish_tick_100ms(app);
-                if (rc != EV_OK) {
-                    goto finalize;
-                }
-                app->next_tick_100ms_ms += EV_DEMO_APP_FAST_TICK_MS;
-
-                rc = ev_demo_app_drain_budgeted(app,
-                                                &diag,
-                                                &budget.pump_calls_used,
-                                                &budget.messages_used,
-                                                &budget.turns_used,
-                                                &budget.exhausted);
-                if (rc != EV_OK) {
-                    goto finalize;
-                }
-                continue;
-            }
-
-            rc = ev_demo_app_publish_tick(app);
+            rc = ev_demo_app_process_timers(app, &budget, now_ms);
             if (rc != EV_OK) {
                 goto finalize;
             }
-            app->next_tick_ms += app->tick_period_ms;
 
-            rc = ev_demo_app_drain_budgeted(app,
-                                            &diag,
-                                            &budget.pump_calls_used,
-                                            &budget.messages_used,
-                                            &budget.turns_used,
-                                            &budget.exhausted);
+            rc = ev_demo_app_drain_budgeted(app, &diag, &budget);
             if (rc != EV_OK) {
                 goto finalize;
+            }
+
+            if (budget.exhausted ||
+                ((app->next_tick_ms == before_next_tick_ms) &&
+                 (app->next_tick_100ms_ms == before_next_tick_100ms_ms))) {
+                break;
             }
         }
-    }
-
-    if (!budget.exhausted) {
-        rc = ev_demo_app_drain_budgeted(app,
-                                        &diag,
-                                        &budget.pump_calls_used,
-                                        &budget.messages_used,
-                                        &budget.turns_used,
-                                        &budget.exhausted);
     }
 
 finalize:
