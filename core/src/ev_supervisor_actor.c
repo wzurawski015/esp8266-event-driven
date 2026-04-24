@@ -46,6 +46,15 @@ static void ev_supervisor_actor_mark_ready(ev_supervisor_actor_ctx_t *ctx, uint3
     ctx->active_hardware_mask |= hw_mask;
 }
 
+static void ev_supervisor_actor_mark_remaining_offline(ev_supervisor_actor_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+
+    ctx->observed_hardware_mask |= EV_SUPERVISOR_KNOWN_MASK;
+}
+
 static ev_result_t ev_supervisor_actor_try_publish_if_settled(ev_supervisor_actor_ctx_t *ctx)
 {
     uint32_t settled_mask;
@@ -60,7 +69,32 @@ static ev_result_t ev_supervisor_actor_try_publish_if_settled(ev_supervisor_acto
     settled_mask = ctx->observed_hardware_mask & EV_SUPERVISOR_REQUIRED_MASK;
     if ((settled_mask == EV_SUPERVISOR_REQUIRED_MASK) ||
         (ctx->ticks_waited >= EV_SUPERVISOR_BOOT_SETTLE_TICKS)) {
+        if (ctx->ticks_waited >= EV_SUPERVISOR_BOOT_SETTLE_TICKS) {
+            ev_supervisor_actor_mark_remaining_offline(ctx);
+        }
         ctx->system_ready_published = true;
+        return ev_supervisor_actor_publish_system_ready(ctx);
+    }
+
+    return EV_OK;
+}
+
+static ev_result_t ev_supervisor_actor_handle_ready(ev_supervisor_actor_ctx_t *ctx, uint32_t hw_mask)
+{
+    bool became_active;
+
+    if (ctx == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    became_active = ((ctx->active_hardware_mask & hw_mask) == 0U);
+    ev_supervisor_actor_mark_ready(ctx, hw_mask);
+
+    if (!ctx->system_ready_published) {
+        return ev_supervisor_actor_try_publish_if_settled(ctx);
+    }
+
+    if (became_active) {
         return ev_supervisor_actor_publish_system_ready(ctx);
     }
 
@@ -99,20 +133,16 @@ ev_result_t ev_supervisor_actor_handle(void *actor_context, const ev_msg_t *msg)
         return EV_OK;
 
     case EV_MCP23008_READY:
-        ev_supervisor_actor_mark_ready(ctx, EV_SUPERVISOR_HW_MCP23008);
-        return ev_supervisor_actor_try_publish_if_settled(ctx);
+        return ev_supervisor_actor_handle_ready(ctx, EV_SUPERVISOR_HW_MCP23008);
 
     case EV_RTC_READY:
-        ev_supervisor_actor_mark_ready(ctx, EV_SUPERVISOR_HW_RTC);
-        return ev_supervisor_actor_try_publish_if_settled(ctx);
+        return ev_supervisor_actor_handle_ready(ctx, EV_SUPERVISOR_HW_RTC);
 
     case EV_OLED_READY:
-        ev_supervisor_actor_mark_ready(ctx, EV_SUPERVISOR_HW_OLED);
-        return ev_supervisor_actor_try_publish_if_settled(ctx);
+        return ev_supervisor_actor_handle_ready(ctx, EV_SUPERVISOR_HW_OLED);
 
     case EV_DS18B20_READY:
-        ev_supervisor_actor_mark_ready(ctx, EV_SUPERVISOR_HW_DS18B20);
-        return EV_OK;
+        return ev_supervisor_actor_handle_ready(ctx, EV_SUPERVISOR_HW_DS18B20);
 
     case EV_TICK_1S:
         if (ctx->boot_observed && !ctx->system_ready_published) {

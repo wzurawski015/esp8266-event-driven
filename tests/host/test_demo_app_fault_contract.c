@@ -287,9 +287,13 @@ static void test_mcp_nack(void)
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
     drive_app_until_settled(&app, &fake_irq, 8U);
 
+    clock.now_us = 1000ULL * 1000ULL;
+    drive_app_until_settled(&app, &fake_irq, 8U);
+
     stats = ev_demo_app_stats(&app);
     assert(stats != NULL);
-    assert(app.app_actor.system_ready == false || (app.app_actor.active_hardware_mask & EV_SUPERVISOR_HW_MCP23008) == 0U);
+    assert(app.app_actor.system_ready);
+    assert((app.app_actor.active_hardware_mask & EV_SUPERVISOR_HW_MCP23008) == 0U);
     assert(app.mcp23008_ctx.configured == false);
     assert(stats->pump_errors == 0U);
 }

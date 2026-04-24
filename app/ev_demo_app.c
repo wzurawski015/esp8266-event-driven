@@ -460,26 +460,30 @@ static ev_result_t ev_demo_app_actor_handler(void *actor_context, const ev_msg_t
         {
             const ev_system_ready_payload_t *ready_payload = (const ev_system_ready_payload_t *)ev_msg_payload_data(msg);
             ev_result_t rc;
+            bool first_system_ready;
 
             if ((ready_payload == NULL) || (ev_msg_payload_size(msg) != sizeof(*ready_payload))) {
                 return EV_ERR_CONTRACT;
             }
 
+            first_system_ready = !state->system_ready;
             state->system_ready = true;
             state->active_hardware_mask = ready_payload->active_hardware_mask;
             state->temp_valid = (state->temp_valid && ((state->active_hardware_mask & EV_SUPERVISOR_HW_DS18B20) != 0U));
             ev_demo_app_logf(app, EV_LOG_INFO, "app actor: system ready hw_mask=0x%08lx", (unsigned long)state->active_hardware_mask);
 
-            if ((state->active_hardware_mask & EV_SUPERVISOR_HW_MCP23008) != 0U) {
-                rc = ev_demo_app_publish_panel_led_command(app, 0U, EV_MCP23008_LED_MASK);
+            if (first_system_ready) {
+                if ((state->active_hardware_mask & EV_SUPERVISOR_HW_MCP23008) != 0U) {
+                    rc = ev_demo_app_publish_panel_led_command(app, 0U, EV_MCP23008_LED_MASK);
+                    if (rc != EV_OK) {
+                        return rc;
+                    }
+                }
+
+                rc = ev_demo_app_publish_diag_request(state);
                 if (rc != EV_OK) {
                     return rc;
                 }
-            }
-
-            rc = ev_demo_app_publish_diag_request(state);
-            if (rc != EV_OK) {
-                return rc;
             }
 
             return ev_demo_app_render_oled_frame(state);
