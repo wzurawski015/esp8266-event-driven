@@ -39,7 +39,7 @@ int main(void)
     assert(ev_msg_is_disposed(&msg));
     assert(ev_msg_dispose(&msg) == EV_OK);
 
-    memset(&msg, 0xA5, sizeof(msg));
+    ev_msg_reset(&msg);
     assert(ev_msg_init_send(&msg, EV_TICK_1S, ACT_BOOT, ACT_DIAG) == EV_OK);
     assert(ev_msg_validate(&msg) == EV_OK);
     assert(msg.target_actor == ACT_DIAG);

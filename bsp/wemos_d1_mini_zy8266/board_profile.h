@@ -1,0 +1,25 @@
+#ifndef EV_WEMOS_D1_MINI_ZY8266_BOARD_PROFILE_H
+#define EV_WEMOS_D1_MINI_ZY8266_BOARD_PROFILE_H
+
+#include "ev/compiler.h"
+
+#define EV_BOARD_PROFILE_TAG "ev_wemos_d1"
+#define EV_BOARD_PROFILE_NAME "wemos_d1_mini_zy8266"
+#define EV_BOARD_HAS_I2C0 1U
+#define EV_BOARD_HAS_ONEWIRE0 0U
+#define EV_BOARD_HAS_GPIO_IRQ 0U
+#define EV_BOARD_HAS_DEEP_SLEEP_WAKE_GPIO16 1U
+
+enum {
+#define EV_BSP_PIN(name, gpio, desc) EV_BOARD_##name = (gpio),
+#define EV_BSP_PIN_ANALOG(name, desc)
+#include "pins.def"
+#undef EV_BSP_PIN
+#undef EV_BSP_PIN_ANALOG
+};
+
+#define EV_BOARD_I2C_SCL_GPIO EV_BOARD_PIN_I2C0_SCL
+#define EV_BOARD_I2C_SDA_GPIO EV_BOARD_PIN_I2C0_SDA
+#define EV_BOARD_WAKE_GPIO EV_BOARD_PIN_OPTIONAL_WAKE0
+
+#endif /* EV_WEMOS_D1_MINI_ZY8266_BOARD_PROFILE_H */

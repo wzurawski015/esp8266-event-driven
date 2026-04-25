@@ -15,8 +15,8 @@
 #include "ev/esp8266_port_adapters.h"
 #include "ev/esp8266_runtime_app.h"
 
-#define EV_BOARD_TAG "ev_atnel"
-#define EV_BOARD_NAME "atnel_air_esp_motherboard"
+#define EV_BOARD_TAG EV_BOARD_PROFILE_TAG
+#define EV_BOARD_NAME EV_BOARD_PROFILE_NAME
 
 EV_STATIC_ASSERT(EV_BOARD_ONEWIRE_GPIO != EV_BOARD_IRQ_INT0_GPIO,
                  "1-Wire and RTC/INT0 ingress must stay on distinct GPIOs");

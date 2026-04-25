@@ -34,9 +34,9 @@ static void test_system_pump_round_robin(void)
     ev_mailbox_t boot_mailbox;
     ev_mailbox_t diag_mailbox;
     ev_mailbox_t app_mailbox;
-    ev_msg_t boot_storage[8];
-    ev_msg_t diag_storage[8];
-    ev_msg_t app_storage[8];
+    ev_msg_t boot_storage[8] = {{0}};
+    ev_msg_t diag_storage[8] = {{0}};
+    ev_msg_t app_storage[8] = {{0}};
     ev_actor_runtime_t boot_runtime;
     ev_actor_runtime_t diag_runtime;
     ev_actor_runtime_t app_runtime;
@@ -47,7 +47,7 @@ static void test_system_pump_round_robin(void)
     system_trace_t boot_trace = {0};
     system_trace_t diag_trace = {0};
     system_trace_t app_trace = {0};
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     size_t i;
 
     assert(ev_actor_registry_init(&registry) == EV_OK);
@@ -123,12 +123,12 @@ static void test_system_pump_error_counts_failed_message(void)
 {
     ev_actor_registry_t registry = {0};
     ev_mailbox_t diag_mailbox;
-    ev_msg_t diag_storage[8];
+    ev_msg_t diag_storage[8] = {{0}};
     ev_actor_runtime_t diag_runtime;
     ev_domain_pump_t slow_domain;
     ev_system_pump_t system_pump;
     ev_system_pump_report_t report;
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     system_trace_t diag_trace = {0};
 
     assert(ev_actor_registry_init(&registry) == EV_OK);

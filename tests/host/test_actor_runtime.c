@@ -78,7 +78,7 @@ int main(void)
     handler_trace_t oled_trace = {0};
     handler_trace_t supervisor_trace = {0};
     lease_trace_t lease_trace = {0};
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     ev_publish_report_t report;
     size_t delivered = 0U;
     static const unsigned char lease_bytes[] = {0x10U, 0x20U, 0x30U};

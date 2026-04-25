@@ -63,13 +63,22 @@ ev_result_t ev_power_actor_handle(void *actor_context, const ev_msg_t *msg)
         duration_us = (uint64_t)payload->duration_ms * 1000ULL;
         ctx->last_duration_us = duration_us;
 
-        (void)ev_power_actor_log(ctx, "System entering Deep Sleep");
-        (void)ev_power_actor_flush_log(ctx);
-
         if ((ctx->system_port == NULL) || (ctx->system_port->deep_sleep == NULL)) {
             ++ctx->sleep_requests_unsupported;
             return EV_OK;
         }
+
+        if (ctx->system_port->prepare_for_sleep != NULL) {
+            rc = ctx->system_port->prepare_for_sleep(ctx->system_port->ctx, duration_us);
+            if (rc != EV_OK) {
+                ++ctx->sleep_requests_rejected;
+                ++ctx->prepare_for_sleep_failures;
+                return rc;
+            }
+        }
+
+        (void)ev_power_actor_log(ctx, "System entering Deep Sleep");
+        (void)ev_power_actor_flush_log(ctx);
 
         ++ctx->sleep_requests_accepted;
         rc = ctx->system_port->deep_sleep(ctx->system_port->ctx, duration_us);

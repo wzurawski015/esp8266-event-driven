@@ -35,6 +35,7 @@ typedef struct {
     ev_esp8266_irq_line_t lines[EV_ESP8266_IRQ_MAX_LINES];
     volatile uint32_t write_seq;
     volatile uint32_t read_seq;
+    volatile uint32_t dropped_samples;
     uint32_t active_gpio_mask;
     size_t line_count;
     bool configured;
@@ -140,6 +141,8 @@ static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const
         if (adapter->wait_sem != NULL) {
             (void)xSemaphoreGiveFromISR(adapter->wait_sem, &higher_priority_woken);
         }
+    } else {
+        ++adapter->dropped_samples;
     }
 
     if (higher_priority_woken == pdTRUE) {
@@ -315,13 +318,11 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
     for (i = 0U; i < line_count; ++i) {
         const ev_gpio_irq_line_config_t *src = &line_cfgs[i];
         ev_esp8266_irq_line_t *dst = &g_ev_irq_ctx.lines[i];
+        const uint32_t gpio_mask = (uint32_t)(1UL << src->gpio_num);
 
-        sdk_cfg.pin_bit_mask = (1UL << src->gpio_num);
+        sdk_cfg.pin_bit_mask = gpio_mask;
         sdk_cfg.mode = GPIO_MODE_INPUT;
-        /* Shared open-drain interrupt sources must be able to return to
-         * HIGH between falling edges. Keep the internal pull-up enabled
-         * for GPIO-backed IRQ ingress lines on ESP8266. */
-        sdk_cfg.pull_up_en = GPIO_PULLUP_ENABLE;
+        sdk_cfg.pull_up_en = (src->pull_mode == EV_GPIO_IRQ_PULL_UP) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
         sdk_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
         sdk_cfg.intr_type = GPIO_INTR_DISABLE;
 
@@ -332,9 +333,11 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
 
         dst->line_id = src->line_id;
         dst->gpio_num = src->gpio_num;
+        dst->gpio_mask = gpio_mask;
         dst->trigger = src->trigger;
         dst->last_level = (uint8_t)((gpio_get_level((gpio_num_t)src->gpio_num) != 0) ? 1U : 0U);
         dst->configured = true;
+        g_ev_irq_ctx.active_gpio_mask |= dst->gpio_mask;
     }
 
     sdk_rc = gpio_isr_register(ev_esp8266_irq_isr, &g_ev_irq_ctx, 0, NULL);

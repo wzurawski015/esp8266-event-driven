@@ -23,7 +23,7 @@ static ev_result_t ev_actor_runtime_process_one(ev_actor_runtime_t *runtime)
 {
     ev_result_t rc;
     ev_result_t dispose_rc;
-    ev_msg_t msg;
+    ev_msg_t msg = {0};
 
     rc = ev_mailbox_pop(runtime->mailbox, &msg);
     if (rc != EV_OK) {

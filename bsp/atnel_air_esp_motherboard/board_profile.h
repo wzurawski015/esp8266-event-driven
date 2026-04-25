@@ -1,6 +1,13 @@
 #ifndef EV_ATNEL_AIR_BOARD_PROFILE_H
 #define EV_ATNEL_AIR_BOARD_PROFILE_H
 #include "ev/compiler.h"
+
+#define EV_BOARD_PROFILE_TAG "ev_atnel"
+#define EV_BOARD_PROFILE_NAME "atnel_air_esp_motherboard"
+#define EV_BOARD_HAS_I2C0 1U
+#define EV_BOARD_HAS_ONEWIRE0 1U
+#define EV_BOARD_HAS_GPIO_IRQ 1U
+#define EV_BOARD_HAS_DEEP_SLEEP_WAKE_GPIO16 0U
 enum {
 #define EV_BSP_PIN(name, gpio, desc) EV_BOARD_##name = (gpio),
 #define EV_BSP_PIN_ANALOG(name, desc)

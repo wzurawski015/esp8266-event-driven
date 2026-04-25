@@ -413,6 +413,13 @@ ev_result_t ev_esp8266_uart_port_init(ev_uart_port_t *out_port)
 }
 
 
+static ev_result_t ev_system_prepare_for_sleep_impl(void *ctx, uint64_t duration_us)
+{
+    (void)ctx;
+    (void)duration_us;
+    return EV_OK;
+}
+
 static ev_result_t ev_system_deep_sleep_impl(void *ctx, uint64_t duration_us)
 {
     (void)ctx;
@@ -427,6 +434,7 @@ ev_result_t ev_esp8266_system_port_init(ev_system_port_t *out_port)
     }
 
     out_port->ctx = NULL;
+    out_port->prepare_for_sleep = ev_system_prepare_for_sleep_impl;
     out_port->deep_sleep = ev_system_deep_sleep_impl;
     return EV_OK;
 }

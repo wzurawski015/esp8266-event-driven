@@ -27,6 +27,8 @@ typedef struct {
     uint32_t sleep_requests_seen;
     uint32_t sleep_requests_accepted;
     uint32_t sleep_requests_unsupported;
+    uint32_t sleep_requests_rejected;
+    uint32_t prepare_for_sleep_failures;
     uint64_t last_duration_us;
 } ev_power_actor_ctx_t;
 

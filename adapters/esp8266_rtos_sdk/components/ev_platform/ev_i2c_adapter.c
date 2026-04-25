@@ -373,7 +373,7 @@ ev_result_t ev_i2c_scan(ev_i2c_port_num_t port_num)
 
 ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int scl_pin)
 {
-    i2c_config_t sdk_cfg;
+    i2c_config_t sdk_cfg = {0};
     esp_err_t sdk_rc;
 
     if ((out_port == NULL) || !ev_esp8266_i2c_pin_is_valid(sda_pin) || !ev_esp8266_i2c_pin_is_valid(scl_pin) ||

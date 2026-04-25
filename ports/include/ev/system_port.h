@@ -16,8 +16,11 @@ extern "C" {
  * power state. Implementations must preserve bounded semantics until the
  * final handoff to the platform power-management primitive.
  */
+typedef ev_result_t (*ev_system_prepare_for_sleep_fn_t)(void *ctx, uint64_t duration_us);
+
 typedef struct ev_system_port {
     void *ctx; /**< Caller-owned adapter context. */
+    ev_system_prepare_for_sleep_fn_t prepare_for_sleep; /**< Quiesce and park platform resources before sleep. */
     ev_result_t (*deep_sleep)(void *ctx, uint64_t duration_us); /**< Enter deep sleep for the requested duration. */
 } ev_system_port_t;
 

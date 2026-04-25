@@ -580,7 +580,7 @@ static ev_result_t ev_oled_actor_handle_display_text(ev_oled_actor_ctx_t *ctx, c
 
     payload = ev_msg_payload_data(msg);
     payload_size = ev_msg_payload_size(msg);
-    if ((payload == NULL) || (payload_size == 0U) || (payload_size > sizeof(cmd))) {
+    if ((payload == NULL) || (payload_size != sizeof(cmd))) {
         return EV_ERR_CONTRACT;
     }
 
@@ -588,7 +588,7 @@ static ev_result_t ev_oled_actor_handle_display_text(ev_oled_actor_ctx_t *ctx, c
         memcpy(ctx->staging_framebuffer, ctx->framebuffer, sizeof(ctx->framebuffer));
     }
 
-    memcpy(&cmd, payload, payload_size);
+    memcpy(&cmd, payload, sizeof(cmd));
     cmd.text[EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
 
     ++ctx->stats.display_commands_seen;
@@ -613,10 +613,10 @@ static ev_result_t ev_oled_actor_handle_commit_frame(ev_oled_actor_ctx_t *ctx, c
     if ((payload != NULL) && (payload_size > 0U)) {
         ev_oled_scene_t scene = {0};
 
-        if (payload_size > sizeof(scene)) {
+        if (payload_size != sizeof(scene)) {
             return EV_ERR_CONTRACT;
         }
-        memcpy(&scene, payload, payload_size);
+        memcpy(&scene, payload, sizeof(scene));
         scene.lines[0][EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
         scene.lines[1][EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
         scene.lines[2][EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';

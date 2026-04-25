@@ -37,7 +37,7 @@ static ev_result_t retain_fail(void *ctx, const void *payload, size_t payload_si
 
 static ev_msg_t make_tick_msg(void)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = {0};
     const unsigned char payload[] = {0x01U};
 
     assert(ev_msg_init_publish(&msg, EV_TICK_1S, ACT_BOOT) == EV_OK);
@@ -48,7 +48,7 @@ static ev_msg_t make_tick_msg(void)
 
 static ev_msg_t make_lease_msg(lease_trace_t *trace, ev_msg_retain_fn_t retain_fn)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     static const unsigned char lease_bytes[] = {0xAAU, 0xBBU};
 
     assert(ev_msg_init_publish(&msg, EV_DIAG_SNAPSHOT_RSP, ACT_DIAG) == EV_OK);
@@ -71,7 +71,7 @@ int main(void)
     ev_msg_t lossy_storage[8] = {{0}};
     ev_msg_t flag_storage[1] = {{0}};
     ev_mailbox_t mailbox;
-    ev_msg_t out;
+    ev_msg_t out = {0};
     ev_msg_t msg = make_tick_msg();
     lease_trace_t lease_trace = {0};
     size_t i;

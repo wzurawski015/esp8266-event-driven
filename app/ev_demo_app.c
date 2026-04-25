@@ -117,7 +117,7 @@ static ev_result_t ev_demo_app_publish_snapshot(ev_demo_diag_actor_state_t *stat
     ev_demo_app_t *app;
     ev_lease_handle_t handle = {0};
     ev_demo_snapshot_t *snapshot = NULL;
-    ev_msg_t msg;
+    ev_msg_t msg = {0};
     void *data = NULL;
     ev_result_t rc;
 
@@ -163,7 +163,7 @@ static ev_result_t ev_demo_app_publish_snapshot(ev_demo_diag_actor_state_t *stat
 static ev_result_t ev_demo_app_publish_diag_request(ev_demo_app_actor_state_t *state)
 {
     ev_demo_app_t *app;
-    ev_msg_t msg;
+    ev_msg_t msg = {0};
     ev_result_t rc;
 
     if ((state == NULL) || (state->app == NULL)) {
@@ -184,7 +184,7 @@ static ev_result_t ev_demo_app_publish_system_event(ev_demo_app_t *app,
                                                  const void *payload,
                                                  size_t payload_size)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = {0};
     ev_result_t rc;
 
     if ((app == NULL) || ((payload == NULL) && (payload_size != 0U))) {
@@ -1100,7 +1100,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
 ev_result_t ev_demo_app_publish_boot(ev_demo_app_t *app)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = {0};
     ev_result_t rc;
 
     if (app == NULL) return EV_ERR_INVALID_ARG;

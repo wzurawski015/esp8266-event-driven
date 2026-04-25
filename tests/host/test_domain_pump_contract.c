@@ -37,7 +37,7 @@ static void enqueue_boot(ev_mailbox_t *mailbox, size_t count)
 
 static void enqueue_diag(ev_mailbox_t *mailbox, size_t count)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     size_t i;
 
     for (i = 0U; i < count; ++i) {
@@ -48,7 +48,7 @@ static void enqueue_diag(ev_mailbox_t *mailbox, size_t count)
 
 static void enqueue_stream(ev_mailbox_t *mailbox, size_t count)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     size_t i;
 
     for (i = 0U; i < count; ++i) {
@@ -59,7 +59,7 @@ static void enqueue_stream(ev_mailbox_t *mailbox, size_t count)
 
 static void enqueue_app(ev_mailbox_t *mailbox, size_t count)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     size_t i;
 
     for (i = 0U; i < count; ++i) {

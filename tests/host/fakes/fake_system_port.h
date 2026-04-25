@@ -10,8 +10,11 @@ extern "C" {
 #endif
 
 typedef struct {
+    uint32_t prepare_for_sleep_calls;
     uint32_t deep_sleep_calls;
+    uint64_t last_prepare_duration_us;
     uint64_t last_duration_us;
+    ev_result_t next_prepare_result;
     ev_result_t next_result;
 } fake_system_port_t;
 
