@@ -8,6 +8,7 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_sleep.h"
 
 #include "ev/esp8266_port_adapters.h"
 
@@ -408,5 +409,24 @@ ev_result_t ev_esp8266_uart_port_init(ev_uart_port_t *out_port)
     out_port->init = ev_uart_init_impl;
     out_port->write = ev_uart_write_impl;
     out_port->read = ev_uart_read_impl;
+    return EV_OK;
+}
+
+
+static ev_result_t ev_system_deep_sleep_impl(void *ctx, uint64_t duration_us)
+{
+    (void)ctx;
+    esp_deep_sleep(duration_us);
+    return EV_ERR_STATE;
+}
+
+ev_result_t ev_esp8266_system_port_init(ev_system_port_t *out_port)
+{
+    if (out_port == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    out_port->ctx = NULL;
+    out_port->deep_sleep = ev_system_deep_sleep_impl;
     return EV_OK;
 }

@@ -11,7 +11,7 @@ int main(void)
     size_t i;
     size_t j;
 
-    assert(ev_route_count() == 36U);
+    assert(ev_route_count() == 37U);
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 7U);
     assert(ev_route_count_for_event(EV_TICK_1S) == 6U);
@@ -32,6 +32,7 @@ int main(void)
     assert(ev_route_count_for_event(EV_OLED_READY) == 1U);
     assert(ev_route_count_for_event(EV_DS18B20_READY) == 1U);
     assert(ev_route_count_for_event(EV_SYSTEM_READY) == 1U);
+    assert(ev_route_count_for_event(EV_SYS_GOTO_SLEEP_CMD) == 1U);
 
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_DIAG));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_APP));
@@ -60,6 +61,7 @@ int main(void)
     assert(ev_route_exists(EV_OLED_READY, ACT_SUPERVISOR));
     assert(ev_route_exists(EV_DS18B20_READY, ACT_SUPERVISOR));
     assert(ev_route_exists(EV_SYSTEM_READY, ACT_APP));
+    assert(ev_route_exists(EV_SYS_GOTO_SLEEP_CMD, ACT_POWER));
     assert(ev_route_exists(EV_PANEL_LED_SET_CMD, ACT_MCP23008));
     assert(ev_route_exists(EV_TIME_UPDATED, ACT_APP));
     assert(ev_route_exists(EV_TEMP_UPDATED, ACT_APP));

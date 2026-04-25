@@ -2,7 +2,7 @@ CC ?= cc
 PYTHON ?= python3
 
 CFLAGS ?= -std=c11 -Wall -Wextra -g -O0  -pedantic -DEV_HOST_BUILD -Icore/include -Iports/include -Iapp/include -Iconfig
-LDFLAGS ?= 
+LDFLAGS ?=
 
 BUILD_DIR := build/host
 DOC_SITE_DIR := docs/generated/site
@@ -26,7 +26,8 @@ CORE_SRCS := \
     core/src/ev_mcp23008_actor.c \
     core/src/ev_panel_actor.c \
     core/src/ev_oled_actor.c \
-    core/src/ev_supervisor_actor.c
+    core/src/ev_supervisor_actor.c \
+    core/src/ev_power_actor.c
 
 APP_SRCS := \
     app/ev_demo_app.c
@@ -34,7 +35,8 @@ APP_SRCS := \
 TEST_SUPPORT_SRCS := \
     tests/host/fakes/fake_i2c_port.c \
     tests/host/fakes/fake_irq_port.c \
-    tests/host/fakes/fake_onewire_port.c
+    tests/host/fakes/fake_onewire_port.c \
+    tests/host/fakes/fake_system_port.c
 
 COMMON_SRCS := $(CORE_SRCS) $(APP_SRCS) $(TEST_SUPPORT_SRCS)
 

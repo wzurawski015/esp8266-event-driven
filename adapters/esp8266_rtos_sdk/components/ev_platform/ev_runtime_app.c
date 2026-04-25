@@ -149,6 +149,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
     ev_log_port_t log_port;
     ev_reset_port_t reset_port;
     ev_uart_port_t uart_port;
+    ev_system_port_t system_port;
     ev_uart_config_t uart_cfg;
     ev_reset_reason_t reset_reason;
     ev_demo_app_config_t app_cfg = {0};
@@ -168,6 +169,9 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
         return;
     }
     if (ev_esp8266_uart_port_init(&uart_port) != EV_OK) {
+        return;
+    }
+    if (ev_esp8266_system_port_init(&system_port) != EV_OK) {
         return;
     }
 
@@ -206,6 +210,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
     app_cfg.i2c_port = i2c_port;
     app_cfg.irq_port = irq_port;
     app_cfg.onewire_port = onewire_port;
+    app_cfg.system_port = &system_port;
 
     rc = ev_demo_app_init(&s_app, &app_cfg);
     if (rc == EV_OK) {

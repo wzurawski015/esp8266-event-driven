@@ -9,6 +9,7 @@
 #include "ev/port_log.h"
 #include "ev/port_reset.h"
 #include "ev/port_uart.h"
+#include "ev/system_port.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -98,6 +99,15 @@ ev_result_t ev_esp8266_reset_port_init(ev_reset_port_t *out_port);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_uart_port_init(ev_uart_port_t *out_port);
+
+
+/**
+ * @brief Initialize the ESP8266-backed system-control adapter.
+ *
+ * @param out_port Destination contract populated on success.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_esp8266_system_port_init(ev_system_port_t *out_port);
 
 /**
  * @brief Convert one normalized reset reason into a stable diagnostic string.

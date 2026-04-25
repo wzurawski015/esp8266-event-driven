@@ -21,6 +21,8 @@
 #include "ev/panel_actor.h"
 #include "ev/rtc_actor.h"
 #include "ev/supervisor_actor.h"
+#include "ev/power_actor.h"
+#include "ev/system_port.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +45,7 @@ typedef struct {
     ev_irq_port_t *irq_port; /* Wstrzyknięty kontrakt wejścia IRQ dla aktorów sprzętowych. */
     ev_i2c_port_t *i2c_port; /* Wstrzyknięty kontrakt magistrali I2C dla aktorów sprzętowych. */
     ev_onewire_port_t *onewire_port; /* Wstrzyknięty kontrakt 1-Wire dla aktorów sprzętowych. */
+    ev_system_port_t *system_port; /* Wstrzyknięty kontrakt globalnego stanu zasilania. */
 } ev_demo_app_config_t;
 
 /**
@@ -118,6 +121,7 @@ struct ev_demo_app {
     uint32_t next_tick_100ms_ms;
     bool boot_published;
     ev_irq_port_t *irq_port;
+    ev_system_port_t *system_port;
 
     ev_mailbox_t runtime_mailbox;
     ev_msg_t runtime_storage[8];
@@ -131,6 +135,7 @@ struct ev_demo_app {
     ev_mailbox_t ds18b20_mailbox; /* Skrzynka pocztowa dla DS18B20 */
     ev_mailbox_t oled_mailbox; /* Skrzynka pocztowa dla OLED */
     ev_mailbox_t supervisor_mailbox; /* Skrzynka pocztowa dla Supervisora */
+    ev_mailbox_t power_mailbox; /* Skrzynka pocztowa dla Aktora Power */
 
     ev_msg_t app_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
     ev_msg_t diag_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
@@ -140,6 +145,7 @@ struct ev_demo_app {
     ev_msg_t ds18b20_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla DS18B20 */
     ev_msg_t oled_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla OLED */
     ev_msg_t supervisor_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Supervisora */
+    ev_msg_t power_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Aktora Power */
 
     ev_actor_runtime_t app_runtime;
     ev_actor_runtime_t diag_runtime;
@@ -149,6 +155,7 @@ struct ev_demo_app {
     ev_actor_runtime_t ds18b20_runtime; /* Wątek logiczny Aktora DS18B20 */
     ev_actor_runtime_t oled_runtime; /* Wątek logiczny Aktora OLED */
     ev_actor_runtime_t supervisor_runtime; /* Wątek logiczny Aktora Supervisora */
+    ev_actor_runtime_t power_runtime; /* Wątek logiczny Aktora Power */
 
     ev_domain_pump_t fast_domain;
     ev_domain_pump_t slow_domain;
@@ -166,6 +173,7 @@ struct ev_demo_app {
     ev_ds18b20_actor_ctx_t ds18b20_ctx; /* Fizyczny stan i konfiguracja Aktora DS18B20 */
     ev_oled_actor_ctx_t oled_ctx; /* Fizyczny stan i bufor ekranu OLED */
     ev_supervisor_actor_ctx_t supervisor_ctx; /* Stan Supervisora platformy */
+    ev_power_actor_ctx_t power_ctx; /* Stan Aktora Power */
 
     ev_demo_app_stats_t stats;
 };

@@ -724,7 +724,8 @@ static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
            (cfg->i2c_port != NULL) && (cfg->i2c_port->write_stream != NULL) && (cfg->i2c_port->write_regs != NULL) &&
            (cfg->i2c_port->read_regs != NULL) && (cfg->onewire_port != NULL) &&
            (cfg->onewire_port->reset != NULL) && (cfg->onewire_port->write_byte != NULL) &&
-           (cfg->onewire_port->read_byte != NULL);
+           (cfg->onewire_port->read_byte != NULL) &&
+           ((cfg->system_port == NULL) || (cfg->system_port->deep_sleep != NULL));
 }
 
 static bool ev_demo_app_budget_exhausted(const ev_poll_budget_t *budget)
@@ -894,6 +895,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     app->clock_port = cfg->clock_port;
     app->log_port = cfg->log_port;
     app->irq_port = cfg->irq_port;
+    app->system_port = cfg->system_port;
     app->app_tag = cfg->app_tag;
     app->board_name = cfg->board_name;
     app->tick_period_ms = (cfg->tick_period_ms == 0U) ? EV_DEMO_APP_DEFAULT_TICK_MS : cfg->tick_period_ms;
@@ -947,6 +949,12 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
                          EV_ARRAY_LEN(app->supervisor_storage));
     if (rc != EV_OK) return rc;
 
+    rc = ev_mailbox_init(&app->power_mailbox,
+                         EV_MAILBOX_FIFO_8,
+                         app->power_storage,
+                         EV_ARRAY_LEN(app->power_storage));
+    if (rc != EV_OK) return rc;
+
     /* Inicjalizacja Wątków Aktorów (Runtimes) */
     rc = ev_actor_runtime_init(&app->app_runtime, ACT_APP, &app->app_mailbox, ev_demo_app_actor_handler, &app->app_actor);
     if (rc != EV_OK) return rc;
@@ -968,6 +976,16 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
                                &app->supervisor_mailbox,
                                ev_supervisor_actor_handle,
                                &app->supervisor_ctx);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_power_actor_init(&app->power_ctx, app->system_port, app->log_port, app->app_tag);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->power_runtime,
+                               ACT_POWER,
+                               &app->power_mailbox,
+                               ev_power_actor_handle,
+                               &app->power_ctx);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->runtime_actor, ACT_RUNTIME, &app->runtime_mailbox, ev_runtime_actor_handler, NULL);
@@ -1039,6 +1057,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_registry_bind(&app->registry, &app->supervisor_runtime);
     if (rc != EV_OK) return rc;
 
+    rc = ev_actor_registry_bind(&app->registry, &app->power_runtime);
+    if (rc != EV_OK) return rc;
+
     rc = ev_actor_registry_bind(&app->registry, &app->runtime_actor);
     if (rc != EV_OK) return rc;
 
@@ -1087,13 +1108,13 @@ ev_result_t ev_demo_app_publish_boot(ev_demo_app_t *app)
 
     rc = ev_msg_init_publish(&msg, EV_BOOT_STARTED, ACT_BOOT);
     if (rc != EV_OK) return rc;
-    
+
     rc = ev_demo_app_publish_owned(app, &msg);
     if (rc != EV_OK) return rc;
 
     rc = ev_msg_init_publish(&msg, EV_BOOT_COMPLETED, ACT_BOOT);
     if (rc != EV_OK) return rc;
-    
+
     rc = ev_demo_app_publish_owned(app, &msg);
     if (rc != EV_OK) return rc;
 
