@@ -397,6 +397,11 @@ sdk_check() {
       printf "IDF_PATH=%s\n" "$IDF_PATH"
       test -f "$IDF_PATH/make/project.mk"
       test -f "$IDF_PATH/export.sh"
+      test -f /work/tools/patches/0002-esp8266-freertos-static-task-hooks.patch
+      freertos_config="$IDF_PATH/components/freertos/port/esp8266/include/freertos/FreeRTOSConfig.h"
+      test -f "$freertos_config"
+      grep -q "configSUPPORT_STATIC_ALLOCATION" "$freertos_config"
+      grep -q "configSUPPORT_DYNAMIC_ALLOCATION" "$freertos_config"
       git -C "$IDF_PATH" rev-parse --is-inside-work-tree >/dev/null
     '
 }
