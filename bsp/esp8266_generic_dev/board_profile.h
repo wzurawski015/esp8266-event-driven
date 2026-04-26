@@ -2,6 +2,8 @@
 #define EV_ESP8266_GENERIC_DEV_BOARD_PROFILE_H
 
 #include "ev/compiler.h"
+#include "ev/oled_actor.h"
+#include "ev/supervisor_actor.h"
 
 #define EV_BOARD_PROFILE_TAG "ev_generic"
 #define EV_BOARD_PROFILE_NAME "esp8266_generic_dev"
@@ -17,5 +19,14 @@ enum {
 #undef EV_BSP_PIN
 #undef EV_BSP_PIN_ANALOG
 };
+
+#define EV_BOARD_RTC_ADDR_7BIT 0U
+#define EV_BOARD_MCP23008_ADDR_7BIT 0U
+#define EV_BOARD_OLED_ADDR_7BIT 0U
+#define EV_BOARD_OLED_CONTROLLER EV_OLED_CONTROLLER_SSD1306
+#define EV_BOARD_RTC_SQW_LINE_ID 0U
+#define EV_BOARD_RUNTIME_HARDWARE_PRESENT_MASK 0U
+#define EV_BOARD_SUPERVISOR_REQUIRED_MASK 0U
+#define EV_BOARD_SUPERVISOR_OPTIONAL_MASK 0U
 
 #endif /* EV_ESP8266_GENERIC_DEV_BOARD_PROFILE_H */

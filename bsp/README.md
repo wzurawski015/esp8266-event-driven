@@ -18,3 +18,14 @@ that expands the unified DSL into target-facing `EV_BOARD_*` definitions instead
 or device address macros inside target-local `app_main.c` files.
 
 - `bsp/wemos_esp_wroom_02_18650/` - Wemos ESP-WROOM-02 with integrated 18650 battery holder.
+
+
+## Runtime SSoT rule
+
+Production targets must derive `ev_demo_app_board_profile_t` from their
+`board_profile.h`. Device addresses, hardware-present masks, and supervisor
+required/optional masks belong to the BSP, not to `app/` defaults.
+
+A target with no declared runtime hardware may pass a no-hardware profile and
+still run the portable app in degraded mode; a target that declares RTC,
+MCP23008, OLED, or DS18B20 must provide the matching port contracts.

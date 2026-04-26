@@ -18,7 +18,6 @@
 #define EV_APP_POLL_RESERVED_IRQ_SAMPLES 4U
 #define EV_APP_POLL_MAX_MESSAGES 32U
 #define EV_APP_POLL_MAX_PUMP_TURNS 10U
-#define EV_DEMO_APP_RTC_SQW_LINE_ID 0U
 #define EV_DEMO_APP_BUTTON_TOGGLE_SCREENSAVER 0U
 #define EV_DEMO_APP_LED_SCREENSAVER_PAUSED 0x01U
 #define EV_DEMO_APP_OLED_TITLE_TEXT "ATNEL AIR"
@@ -33,6 +32,82 @@
 
 EV_STATIC_ASSERT(EV_DEMO_APP_OLED_BLOCK_WIDTH_PX <= EV_OLED_WIDTH, "OLED block width must fit the panel");
 EV_STATIC_ASSERT(EV_DEMO_APP_OLED_TITLE_PAGES <= EV_OLED_PAGE_COUNT, "OLED block height must fit the panel");
+
+static const ev_demo_app_board_profile_t k_ev_demo_app_default_board_profile = {
+    .capabilities_mask = 0U,
+    .hardware_present_mask = 0U,
+    .supervisor_required_mask = 0U,
+    .supervisor_optional_mask = 0U,
+    .i2c_port_num = EV_I2C_PORT_NUM_0,
+    .rtc_sqw_line_id = 0U,
+    .mcp23008_addr_7bit = 0U,
+    .rtc_addr_7bit = 0U,
+    .oled_addr_7bit = 0U,
+    .oled_controller = EV_OLED_CONTROLLER_SSD1306,
+};
+
+const ev_demo_app_board_profile_t *ev_demo_app_default_board_profile(void)
+{
+    return &k_ev_demo_app_default_board_profile;
+}
+
+static bool ev_demo_app_hw_mask_valid(uint32_t hw_mask)
+{
+    return (hw_mask & (uint32_t)(~EV_SUPERVISOR_KNOWN_MASK)) == 0U;
+}
+
+static bool ev_demo_app_profile_is_valid(const ev_demo_app_board_profile_t *profile)
+{
+    uint32_t supervised_mask;
+
+    if (profile == NULL) {
+        return false;
+    }
+
+    supervised_mask = profile->supervisor_required_mask | profile->supervisor_optional_mask;
+    if (!ev_demo_app_hw_mask_valid(profile->hardware_present_mask) ||
+        !ev_demo_app_hw_mask_valid(profile->supervisor_required_mask) ||
+        !ev_demo_app_hw_mask_valid(profile->supervisor_optional_mask)) {
+        return false;
+    }
+    if ((profile->supervisor_required_mask & profile->supervisor_optional_mask) != 0U) {
+        return false;
+    }
+    if ((supervised_mask & (uint32_t)(~profile->hardware_present_mask)) != 0U) {
+        return false;
+    }
+    if ((profile->hardware_present_mask & (EV_SUPERVISOR_HW_MCP23008 |
+                                           EV_SUPERVISOR_HW_RTC |
+                                           EV_SUPERVISOR_HW_OLED)) != 0U) {
+        if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_I2C0) == 0U) {
+            return false;
+        }
+    }
+    if ((profile->hardware_present_mask & EV_SUPERVISOR_HW_DS18B20) != 0U) {
+        if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_ONEWIRE0) == 0U) {
+            return false;
+        }
+    }
+    if ((profile->hardware_present_mask & EV_SUPERVISOR_HW_RTC) != 0U) {
+        if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_GPIO_IRQ) == 0U) {
+            return false;
+        }
+    }
+    if (((profile->hardware_present_mask & EV_SUPERVISOR_HW_MCP23008) != 0U) &&
+        ((profile->mcp23008_addr_7bit == 0U) || (profile->mcp23008_addr_7bit > 0x7FU))) {
+        return false;
+    }
+    if (((profile->hardware_present_mask & EV_SUPERVISOR_HW_RTC) != 0U) &&
+        ((profile->rtc_addr_7bit == 0U) || (profile->rtc_addr_7bit > 0x7FU))) {
+        return false;
+    }
+    if (((profile->hardware_present_mask & EV_SUPERVISOR_HW_OLED) != 0U) &&
+        ((profile->oled_addr_7bit == 0U) || (profile->oled_addr_7bit > 0x7FU))) {
+        return false;
+    }
+
+    return true;
+}
 
 typedef struct {
     uint32_t sequence;
@@ -89,6 +164,8 @@ static ev_result_t ev_demo_app_now_ms(ev_demo_app_t *app, uint32_t *out_now_ms)
     return EV_OK;
 }
 
+static ev_result_t ev_demo_app_delivery(ev_actor_id_t target_actor, const ev_msg_t *msg, void *context);
+
 static ev_result_t ev_demo_app_publish_owned(ev_demo_app_t *app, ev_msg_t *msg)
 {
     ev_result_t rc;
@@ -98,7 +175,7 @@ static ev_result_t ev_demo_app_publish_owned(ev_demo_app_t *app, ev_msg_t *msg)
         return EV_ERR_INVALID_ARG;
     }
 
-    rc = ev_publish(msg, ev_actor_registry_delivery, &app->registry, NULL);
+    rc = ev_publish(msg, ev_demo_app_delivery, app, NULL);
     if (rc != EV_OK) {
         ++app->stats.publish_errors;
     }
@@ -635,7 +712,7 @@ static ev_result_t ev_demo_diag_actor_handler(void *actor_context, const ev_msg_
                 return EV_ERR_CONTRACT;
             }
 
-            if (sample->line_id == EV_DEMO_APP_RTC_SQW_LINE_ID) {
+            if (sample->line_id == app->board_profile.rtc_sqw_line_id) {
                 edge_name = (sample->edge == EV_IRQ_EDGE_FALLING) ? "falling" :
                             ((sample->edge == EV_IRQ_EDGE_RISING) ? "rising" : "unknown");
                 ++state->rtc_irq_samples_seen;
@@ -737,16 +814,100 @@ static void ev_demo_app_record_irq_stats(ev_demo_app_t *app)
     }
 }
 
+static bool ev_demo_app_profile_has_hardware(const ev_demo_app_t *app, uint32_t hw_mask)
+{
+    return (app != NULL) && ((app->board_profile.hardware_present_mask & hw_mask) != 0U);
+}
+
+static bool ev_demo_app_actor_enabled(const ev_demo_app_t *app, ev_actor_id_t actor_id)
+{
+    if (app == NULL) {
+        return false;
+    }
+
+    switch (actor_id) {
+    case ACT_MCP23008:
+        return ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_MCP23008);
+    case ACT_RTC:
+        return ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_RTC);
+    case ACT_DS18B20:
+        return ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_DS18B20);
+    case ACT_OLED:
+        return ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_OLED);
+    default:
+        return true;
+    }
+}
+
+static ev_result_t ev_demo_app_delivery(ev_actor_id_t target_actor, const ev_msg_t *msg, void *context)
+{
+    ev_demo_app_t *app = (ev_demo_app_t *)context;
+
+    if ((app == NULL) || (msg == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!ev_demo_app_actor_enabled(app, target_actor)) {
+        ++app->stats.disabled_route_deliveries;
+        return EV_OK;
+    }
+
+    return ev_actor_registry_delivery(target_actor, msg, &app->registry);
+}
+
+static bool ev_demo_app_i2c_port_valid(const ev_i2c_port_t *port)
+{
+    return (port != NULL) && (port->write_stream != NULL) &&
+           (port->write_regs != NULL) && (port->read_regs != NULL);
+}
+
+static bool ev_demo_app_onewire_port_valid(const ev_onewire_port_t *port)
+{
+    return (port != NULL) && (port->reset != NULL) &&
+           (port->write_byte != NULL) && (port->read_byte != NULL);
+}
+
+static bool ev_demo_app_irq_port_valid(const ev_irq_port_t *port)
+{
+    return (port != NULL) && (port->pop != NULL) && (port->enable != NULL);
+}
+
 static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
 {
-    return (cfg != NULL) && (cfg->app_tag != NULL) && (cfg->board_name != NULL) && (cfg->clock_port != NULL) &&
-           (cfg->clock_port->mono_now_us != NULL) && (cfg->log_port != NULL) && (cfg->log_port->write != NULL) &&
-           (cfg->irq_port != NULL) && (cfg->irq_port->pop != NULL) && (cfg->irq_port->enable != NULL) &&
-           (cfg->i2c_port != NULL) && (cfg->i2c_port->write_stream != NULL) && (cfg->i2c_port->write_regs != NULL) &&
-           (cfg->i2c_port->read_regs != NULL) && (cfg->onewire_port != NULL) &&
-           (cfg->onewire_port->reset != NULL) && (cfg->onewire_port->write_byte != NULL) &&
-           (cfg->onewire_port->read_byte != NULL) &&
-           ((cfg->system_port == NULL) || (cfg->system_port->deep_sleep != NULL));
+    const ev_demo_app_board_profile_t *profile;
+    uint32_t hw_mask;
+
+    if ((cfg == NULL) || (cfg->app_tag == NULL) || (cfg->board_name == NULL) ||
+        (cfg->clock_port == NULL) || (cfg->clock_port->mono_now_us == NULL) ||
+        (cfg->log_port == NULL) || (cfg->log_port->write == NULL) ||
+        ((cfg->system_port != NULL) && (cfg->system_port->deep_sleep == NULL))) {
+        return false;
+    }
+
+    profile = (cfg->board_profile != NULL) ? cfg->board_profile : ev_demo_app_default_board_profile();
+    if (!ev_demo_app_profile_is_valid(profile)) {
+        return false;
+    }
+
+    hw_mask = profile->hardware_present_mask;
+    if ((hw_mask & (EV_SUPERVISOR_HW_MCP23008 | EV_SUPERVISOR_HW_RTC | EV_SUPERVISOR_HW_OLED)) != 0U) {
+        if (!ev_demo_app_i2c_port_valid(cfg->i2c_port)) {
+            return false;
+        }
+    }
+    if ((hw_mask & EV_SUPERVISOR_HW_DS18B20) != 0U) {
+        if (!ev_demo_app_onewire_port_valid(cfg->onewire_port)) {
+            return false;
+        }
+    }
+    if ((hw_mask & EV_SUPERVISOR_HW_RTC) != 0U) {
+        if (!ev_demo_app_irq_port_valid(cfg->irq_port)) {
+            return false;
+        }
+    } else if ((cfg->irq_port != NULL) && ((cfg->irq_port->pop == NULL) || (cfg->irq_port->enable == NULL))) {
+        return false;
+    }
+
+    return true;
 }
 
 static ev_result_t ev_demo_app_sleep_quiescence_guard(void *ctx,
@@ -991,13 +1152,19 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     app->app_tag = cfg->app_tag;
     app->board_name = cfg->board_name;
     app->tick_period_ms = (cfg->tick_period_ms == 0U) ? EV_DEMO_APP_DEFAULT_TICK_MS : cfg->tick_period_ms;
+    app->board_profile = *((cfg->board_profile != NULL) ? cfg->board_profile : ev_demo_app_default_board_profile());
     app->app_actor.app = app;
     app->app_actor.direction_x = (int8_t)1;
     app->app_actor.direction_y = (int8_t)1;
     app->diag_actor.app = app;
 
-    active_i2c = cfg->i2c_port;
-    active_onewire = cfg->onewire_port;
+    active_i2c = ((app->board_profile.hardware_present_mask &
+                   (EV_SUPERVISOR_HW_MCP23008 | EV_SUPERVISOR_HW_RTC | EV_SUPERVISOR_HW_OLED)) != 0U)
+                     ? cfg->i2c_port
+                     : NULL;
+    active_onewire = ((app->board_profile.hardware_present_mask & EV_SUPERVISOR_HW_DS18B20) != 0U)
+                       ? cfg->onewire_port
+                       : NULL;
 
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) return rc;
@@ -1054,13 +1221,18 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_runtime_init(&app->diag_runtime, ACT_DIAG, &app->diag_mailbox, ev_demo_diag_actor_handler, &app->diag_actor);
     if (rc != EV_OK) return rc;
 
-    rc = ev_panel_actor_init(&app->panel_ctx, ev_actor_registry_delivery, &app->registry);
+    rc = ev_panel_actor_init(&app->panel_ctx, ev_demo_app_delivery, app);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->panel_runtime, ACT_PANEL, &app->panel_mailbox, ev_panel_actor_handle, &app->panel_ctx);
     if (rc != EV_OK) return rc;
 
-    rc = ev_supervisor_actor_init(&app->supervisor_ctx, ev_actor_registry_delivery, &app->registry);
+    rc = ev_supervisor_actor_init(&app->supervisor_ctx, ev_demo_app_delivery, app);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_supervisor_actor_configure_hardware(&app->supervisor_ctx,
+                                                app->board_profile.supervisor_required_mask,
+                                                app->board_profile.supervisor_optional_mask);
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->supervisor_runtime,
@@ -1083,55 +1255,63 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_runtime_init(&app->runtime_actor, ACT_RUNTIME, &app->runtime_mailbox, ev_runtime_actor_handler, NULL);
     if (rc != EV_OK) return rc;
 
-    rc = ev_mcp23008_actor_init(&app->mcp23008_ctx,
-                                  active_i2c,
-                                  EV_I2C_PORT_NUM_0,
-                                  EV_MCP23008_DEFAULT_ADDR_7BIT,
-                                  ev_actor_registry_delivery,
-                                  &app->registry);
-    if (rc != EV_OK) return rc;
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_MCP23008)) {
+        rc = ev_mcp23008_actor_init(&app->mcp23008_ctx,
+                                    active_i2c,
+                                    app->board_profile.i2c_port_num,
+                                    app->board_profile.mcp23008_addr_7bit,
+                                    ev_demo_app_delivery,
+                                    app);
+        if (rc != EV_OK) return rc;
 
-    rc = ev_actor_runtime_init(&app->mcp23008_runtime,
-                               ACT_MCP23008,
-                               &app->mcp23008_mailbox,
-                               ev_mcp23008_actor_handle,
-                               &app->mcp23008_ctx);
-    if (rc != EV_OK) return rc;
+        rc = ev_actor_runtime_init(&app->mcp23008_runtime,
+                                   ACT_MCP23008,
+                                   &app->mcp23008_mailbox,
+                                   ev_mcp23008_actor_handle,
+                                   &app->mcp23008_ctx);
+        if (rc != EV_OK) return rc;
+    }
 
-    rc = ev_rtc_actor_init(&app->rtc_ctx,
-                           active_i2c,
-                           app->irq_port,
-                           EV_I2C_PORT_NUM_0,
-                           EV_RTC_DEFAULT_ADDR_7BIT,
-                           EV_DEMO_APP_RTC_SQW_LINE_ID,
-                           ev_actor_registry_delivery,
-                           &app->registry);
-    if (rc != EV_OK) return rc;
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_RTC)) {
+        rc = ev_rtc_actor_init(&app->rtc_ctx,
+                               active_i2c,
+                               app->irq_port,
+                               app->board_profile.i2c_port_num,
+                               app->board_profile.rtc_addr_7bit,
+                               app->board_profile.rtc_sqw_line_id,
+                               ev_demo_app_delivery,
+                               app);
+        if (rc != EV_OK) return rc;
 
-    rc = ev_actor_runtime_init(&app->rtc_runtime, ACT_RTC, &app->rtc_mailbox, ev_rtc_actor_handle, &app->rtc_ctx);
-    if (rc != EV_OK) return rc;
+        rc = ev_actor_runtime_init(&app->rtc_runtime, ACT_RTC, &app->rtc_mailbox, ev_rtc_actor_handle, &app->rtc_ctx);
+        if (rc != EV_OK) return rc;
+    }
 
-    rc = ev_ds18b20_actor_init(&app->ds18b20_ctx, active_onewire, ev_actor_registry_delivery, &app->registry);
-    if (rc != EV_OK) return rc;
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_DS18B20)) {
+        rc = ev_ds18b20_actor_init(&app->ds18b20_ctx, active_onewire, ev_demo_app_delivery, app);
+        if (rc != EV_OK) return rc;
 
-    rc = ev_actor_runtime_init(&app->ds18b20_runtime,
-                               ACT_DS18B20,
-                               &app->ds18b20_mailbox,
-                               ev_ds18b20_actor_handle,
-                               &app->ds18b20_ctx);
-    if (rc != EV_OK) return rc;
+        rc = ev_actor_runtime_init(&app->ds18b20_runtime,
+                                   ACT_DS18B20,
+                                   &app->ds18b20_mailbox,
+                                   ev_ds18b20_actor_handle,
+                                   &app->ds18b20_ctx);
+        if (rc != EV_OK) return rc;
+    }
 
-    rc = ev_oled_actor_init(&app->oled_ctx,
-                            active_i2c,
-                            EV_I2C_PORT_NUM_0,
-                            EV_OLED_DEFAULT_ADDR_7BIT,
-                            EV_OLED_CONTROLLER_SSD1306,
-                            ev_actor_registry_delivery,
-                            &app->registry);
-    if (rc != EV_OK) return rc;
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_OLED)) {
+        rc = ev_oled_actor_init(&app->oled_ctx,
+                                active_i2c,
+                                app->board_profile.i2c_port_num,
+                                app->board_profile.oled_addr_7bit,
+                                app->board_profile.oled_controller,
+                                ev_demo_app_delivery,
+                                app);
+        if (rc != EV_OK) return rc;
 
-    rc = ev_actor_runtime_init(&app->oled_runtime, ACT_OLED, &app->oled_mailbox, ev_oled_actor_handle, &app->oled_ctx);
-    if (rc != EV_OK) return rc;
+        rc = ev_actor_runtime_init(&app->oled_runtime, ACT_OLED, &app->oled_mailbox, ev_oled_actor_handle, &app->oled_ctx);
+        if (rc != EV_OK) return rc;
+    }
 
     /* Rejestracja w Systemie Aktorów */
     rc = ev_actor_registry_init(&app->registry);
@@ -1155,17 +1335,25 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     rc = ev_actor_registry_bind(&app->registry, &app->runtime_actor);
     if (rc != EV_OK) return rc;
 
-    rc = ev_actor_registry_bind(&app->registry, &app->mcp23008_runtime);
-    if (rc != EV_OK) return rc;
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_MCP23008)) {
+        rc = ev_actor_registry_bind(&app->registry, &app->mcp23008_runtime);
+        if (rc != EV_OK) return rc;
+    }
 
-    rc = ev_actor_registry_bind(&app->registry, &app->rtc_runtime);
-    if (rc != EV_OK) return rc;
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_RTC)) {
+        rc = ev_actor_registry_bind(&app->registry, &app->rtc_runtime);
+        if (rc != EV_OK) return rc;
+    }
 
-    rc = ev_actor_registry_bind(&app->registry, &app->ds18b20_runtime);
-    if (rc != EV_OK) return rc;
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_DS18B20)) {
+        rc = ev_actor_registry_bind(&app->registry, &app->ds18b20_runtime);
+        if (rc != EV_OK) return rc;
+    }
 
-    rc = ev_actor_registry_bind(&app->registry, &app->oled_runtime);
-    if (rc != EV_OK) return rc;
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_OLED)) {
+        rc = ev_actor_registry_bind(&app->registry, &app->oled_runtime);
+        if (rc != EV_OK) return rc;
+    }
 
     /* Inicjalizacja pomp zdarzeń */
     rc = ev_domain_pump_init(&app->fast_domain, &app->registry, EV_DOMAIN_FAST_LOOP);

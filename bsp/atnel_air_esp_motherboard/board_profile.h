@@ -1,6 +1,8 @@
 #ifndef EV_ATNEL_AIR_BOARD_PROFILE_H
 #define EV_ATNEL_AIR_BOARD_PROFILE_H
 #include "ev/compiler.h"
+#include "ev/oled_actor.h"
+#include "ev/supervisor_actor.h"
 
 #define EV_BOARD_PROFILE_TAG "ev_atnel"
 #define EV_BOARD_PROFILE_NAME "atnel_air_esp_motherboard"
@@ -23,6 +25,14 @@ enum {
 #define EV_BOARD_RTC_ADDR_7BIT      0x68U
 #define EV_BOARD_MCP23008_ADDR_7BIT 0x20U
 #define EV_BOARD_OLED_ADDR_7BIT     0x3CU
+#define EV_BOARD_OLED_CONTROLLER    EV_OLED_CONTROLLER_SSD1306
+#define EV_BOARD_RTC_SQW_LINE_ID    0U
+#define EV_BOARD_RUNTIME_HARDWARE_PRESENT_MASK \
+    (EV_SUPERVISOR_HW_MCP23008 | EV_SUPERVISOR_HW_RTC | EV_SUPERVISOR_HW_OLED | EV_SUPERVISOR_HW_DS18B20)
+#define EV_BOARD_SUPERVISOR_REQUIRED_MASK \
+    (EV_SUPERVISOR_HW_MCP23008 | EV_SUPERVISOR_HW_RTC)
+#define EV_BOARD_SUPERVISOR_OPTIONAL_MASK \
+    (EV_SUPERVISOR_HW_OLED | EV_SUPERVISOR_HW_DS18B20)
 
 /*
  * Hardware-in-the-loop I2C zero-heap test policy.  Fault GPIOs are disabled by

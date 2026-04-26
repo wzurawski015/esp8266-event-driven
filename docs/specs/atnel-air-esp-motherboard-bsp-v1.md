@@ -13,9 +13,12 @@ This stage does **not** yet claim full board integration.
 A Stage 2A4 companion target now provides the first board-scoped boot/diag bring-up
 using this BSP, but only through clock/log/reset/uart.
 
-It only freezes:
+It now freezes:
 
 - the primary GPIO ownership map,
+- the runtime hardware graph consumed by `ev_demo_app_board_profile_t`,
+- the I2C addresses for RTC, MCP23008, and OLED,
+- the supervisor required/optional device masks,
 - the safe jumper baseline for early framework bring-up,
 - the enablement order for later adapter work.
 
@@ -32,6 +35,31 @@ It only freezes:
 | Optional interrupt line | GPIO14 | MCP23008 INT via JP2 or RTC INT via JP19 |
 | Bootstrap / optional Magic SCK | GPIO15 | bootstrap-sensitive |
 | Optional Magic DIN | GPIO16 | helper path |
+
+
+## Runtime board profile policy
+
+`bsp/atnel_air_esp_motherboard/board_profile.h` is the single source of truth
+for the runtime actor graph on this board. The target composition root converts
+that header into `ev_demo_app_board_profile_t`; the portable app must not fall
+back to actor default I2C addresses for RTC, MCP23008, or OLED.
+
+| Runtime item | BSP macro | Value / policy |
+| --- | --- | --- |
+| RTC address | `EV_BOARD_RTC_ADDR_7BIT` | `0x68` |
+| MCP23008 address | `EV_BOARD_MCP23008_ADDR_7BIT` | `0x20` |
+| OLED address | `EV_BOARD_OLED_ADDR_7BIT` | `0x3C` |
+| OLED controller | `EV_BOARD_OLED_CONTROLLER` | board-owned controller enum |
+| RTC SQW line | `EV_BOARD_RTC_SQW_LINE_ID` | logical IRQ line id |
+| Present hardware | `EV_BOARD_RUNTIME_HARDWARE_PRESENT_MASK` | actors that may be bound |
+| Required readiness | `EV_BOARD_SUPERVISOR_REQUIRED_MASK` | devices needed for `EV_SYSTEM_READY` |
+| Optional readiness | `EV_BOARD_SUPERVISOR_OPTIONAL_MASK` | degraded-mode devices |
+
+A board that does not declare a device in `EV_BOARD_RUNTIME_HARDWARE_PRESENT_MASK`
+must not have that hardware actor bound into the runtime graph. Static routes may
+exist in `config/routes.def`, but runtime delivery masks disabled actors and
+counts those deliveries instead of treating absent board hardware as a registry
+failure.
 
 ## Safe jumper baseline
 

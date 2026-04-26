@@ -56,6 +56,7 @@ HOST_TESTS := \
     test_power_actor_contract \
     test_demo_app_sleep_quiescence \
     test_irq_observability \
+    test_bsp_runtime_profile \
     test_demo_app_contract \
     test_demo_app_fault_contract \
     test_app_starvation \

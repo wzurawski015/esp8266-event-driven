@@ -5,6 +5,7 @@
 #include "ev/demo_app.h"
 #include "ev/dispose.h"
 #include "ev/publish.h"
+#include "fakes/fake_board_profile.h"
 #include "fakes/fake_i2c_port.h"
 #include "fakes/fake_irq_port.h"
 #include "fakes/fake_onewire_port.h"
@@ -145,6 +146,7 @@ static void sleep_fixture_init(sleep_fixture_t *fx)
     cfg.i2c_port = &fx->i2c_port;
     cfg.onewire_port = &fx->onewire_port;
     cfg.system_port = &fx->system_port;
+    cfg.board_profile = &k_fake_full_board_profile;
 
     assert(ev_demo_app_init(&fx->app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&fx->app) == EV_OK);

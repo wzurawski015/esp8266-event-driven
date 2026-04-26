@@ -52,7 +52,7 @@ static void ev_supervisor_actor_mark_remaining_offline(ev_supervisor_actor_ctx_t
         return;
     }
 
-    ctx->observed_hardware_mask |= EV_SUPERVISOR_KNOWN_MASK;
+    ctx->observed_hardware_mask |= ctx->known_hardware_mask;
 }
 
 static ev_result_t ev_supervisor_actor_try_publish_if_settled(ev_supervisor_actor_ctx_t *ctx)
@@ -66,8 +66,8 @@ static ev_result_t ev_supervisor_actor_try_publish_if_settled(ev_supervisor_acto
         return EV_OK;
     }
 
-    settled_mask = ctx->observed_hardware_mask & EV_SUPERVISOR_REQUIRED_MASK;
-    if ((settled_mask == EV_SUPERVISOR_REQUIRED_MASK) ||
+    settled_mask = ctx->observed_hardware_mask & ctx->required_hardware_mask;
+    if ((settled_mask == ctx->required_hardware_mask) ||
         (ctx->ticks_waited >= EV_SUPERVISOR_BOOT_SETTLE_TICKS)) {
         if (ctx->ticks_waited >= EV_SUPERVISOR_BOOT_SETTLE_TICKS) {
             ev_supervisor_actor_mark_remaining_offline(ctx);
@@ -112,6 +112,31 @@ ev_result_t ev_supervisor_actor_init(ev_supervisor_actor_ctx_t *ctx,
     memset(ctx, 0, sizeof(*ctx));
     ctx->deliver = deliver;
     ctx->deliver_context = deliver_context;
+    ctx->required_hardware_mask = EV_SUPERVISOR_REQUIRED_MASK;
+    ctx->optional_hardware_mask = EV_SUPERVISOR_OPTIONAL_MASK;
+    ctx->known_hardware_mask = EV_SUPERVISOR_KNOWN_MASK;
+    return EV_OK;
+}
+
+ev_result_t ev_supervisor_actor_configure_hardware(ev_supervisor_actor_ctx_t *ctx,
+                                                   uint32_t required_hardware_mask,
+                                                   uint32_t optional_hardware_mask)
+{
+    const uint32_t known_mask = required_hardware_mask | optional_hardware_mask;
+
+    if (ctx == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if ((known_mask & (uint32_t)(~EV_SUPERVISOR_KNOWN_MASK)) != 0U) {
+        return EV_ERR_OUT_OF_RANGE;
+    }
+    if ((required_hardware_mask & optional_hardware_mask) != 0U) {
+        return EV_ERR_CONTRACT;
+    }
+
+    ctx->required_hardware_mask = required_hardware_mask;
+    ctx->optional_hardware_mask = optional_hardware_mask;
+    ctx->known_hardware_mask = known_mask;
     return EV_OK;
 }
 

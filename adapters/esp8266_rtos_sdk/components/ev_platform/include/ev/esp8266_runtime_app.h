@@ -2,6 +2,7 @@
 #define EV_ESP8266_RUNTIME_APP_H
 
 #include "ev/esp8266_boot_diag.h"
+#include "ev/demo_app.h"
 #include "ev/port_i2c.h"
 #include "ev/port_irq.h"
 #include "ev/port_onewire.h"
@@ -25,7 +26,8 @@ extern "C" {
 void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
                                 ev_i2c_port_t *i2c_port,
                                 ev_irq_port_t *irq_port,
-                                ev_onewire_port_t *onewire_port);
+                                ev_onewire_port_t *onewire_port,
+                                const ev_demo_app_board_profile_t *board_profile);
 
 #ifdef __cplusplus
 }

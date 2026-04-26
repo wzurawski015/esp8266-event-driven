@@ -20,6 +20,9 @@ typedef struct {
     uint32_t write_stream_calls;
     uint32_t write_regs_calls;
     uint32_t read_regs_calls;
+    uint32_t write_stream_calls_by_addr[128];
+    uint32_t write_regs_calls_by_addr[128];
+    uint32_t read_regs_calls_by_addr[128];
     uint8_t last_addr;
     uint8_t last_reg;
 } fake_i2c_port_t;

@@ -33,6 +33,32 @@ extern "C" {
 #define EV_DEMO_APP_SNAPSHOT_BYTES 16U
 #define EV_DEMO_APP_LEASE_SLOT_BYTES 96U
 
+#define EV_DEMO_APP_BOARD_CAP_I2C0 0x00000001UL
+#define EV_DEMO_APP_BOARD_CAP_ONEWIRE0 0x00000002UL
+#define EV_DEMO_APP_BOARD_CAP_GPIO_IRQ 0x00000004UL
+#define EV_DEMO_APP_BOARD_CAP_DEEP_SLEEP_WAKE_GPIO16 0x00000008UL
+
+/**
+ * @brief Board-owned hardware profile consumed by the portable runtime.
+ *
+ * Targets build this object from board_profile.h so I2C addresses, enabled
+ * hardware actors, and supervisor readiness policy stay outside app defaults.
+ */
+typedef struct {
+    uint32_t capabilities_mask;
+    uint32_t hardware_present_mask;
+    uint32_t supervisor_required_mask;
+    uint32_t supervisor_optional_mask;
+    ev_i2c_port_num_t i2c_port_num;
+    ev_irq_line_id_t rtc_sqw_line_id;
+    uint8_t mcp23008_addr_7bit;
+    uint8_t rtc_addr_7bit;
+    uint8_t oled_addr_7bit;
+    ev_oled_controller_t oled_controller;
+} ev_demo_app_board_profile_t;
+
+const ev_demo_app_board_profile_t *ev_demo_app_default_board_profile(void);
+
 /**
  * @brief Immutable wiring required by the portable demo runtime.
  */
@@ -46,6 +72,7 @@ typedef struct {
     ev_i2c_port_t *i2c_port; /* Wstrzyknięty kontrakt magistrali I2C dla aktorów sprzętowych. */
     ev_onewire_port_t *onewire_port; /* Wstrzyknięty kontrakt 1-Wire dla aktorów sprzętowych. */
     ev_system_port_t *system_port; /* Wstrzyknięty kontrakt globalnego stanu zasilania. */
+    const ev_demo_app_board_profile_t *board_profile; /* BSP-derived hardware graph and device policy. */
 } ev_demo_app_config_t;
 
 /**
@@ -71,6 +98,7 @@ typedef struct {
     size_t max_messages_per_poll;
     uint32_t last_poll_elapsed_ms;
     uint32_t max_poll_elapsed_ms;
+    uint32_t disabled_route_deliveries;
 } ev_demo_app_stats_t;
 
 typedef struct ev_demo_app ev_demo_app_t;
@@ -125,6 +153,7 @@ struct ev_demo_app {
     bool boot_published;
     ev_irq_port_t *irq_port;
     ev_system_port_t *system_port;
+    ev_demo_app_board_profile_t board_profile;
 
     ev_mailbox_t runtime_mailbox;
     ev_msg_t runtime_storage[8];

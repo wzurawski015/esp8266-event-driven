@@ -9,6 +9,8 @@
 #include "board_profile.h"
 
 #include "ev/compiler.h"
+#include "ev/demo_app.h"
+#include "ev/oled_actor.h"
 #include "ev/mcp23008_actor.h"
 #include "ev/rtc_actor.h"
 #include "ev/esp8266_boot_diag.h"
@@ -20,11 +22,6 @@
 
 EV_STATIC_ASSERT(EV_BOARD_ONEWIRE_GPIO != EV_BOARD_IRQ_INT0_GPIO,
                  "1-Wire and RTC/INT0 ingress must stay on distinct GPIOs");
-EV_STATIC_ASSERT(EV_RTC_DEFAULT_ADDR_7BIT == EV_BOARD_RTC_ADDR_7BIT,
-                 "RTC actor default address must stay fixed to the ATNEL board wiring");
-EV_STATIC_ASSERT(EV_MCP23008_DEFAULT_ADDR_7BIT == EV_BOARD_MCP23008_ADDR_7BIT,
-                 "MCP23008 actor default address must stay fixed to the ATNEL board wiring");
-
 static ev_i2c_port_t s_board_i2c_port;
 static ev_irq_port_t s_board_irq_port;
 static ev_onewire_port_t s_board_onewire_port;
@@ -42,6 +39,22 @@ static const ev_gpio_irq_line_config_t k_board_irq_lines[] = {
         .trigger = EV_GPIO_IRQ_TRIGGER_ANYEDGE,
         .pull_mode = EV_GPIO_IRQ_PULL_UP,
     },
+};
+
+static const ev_demo_app_board_profile_t k_board_runtime_profile = {
+    .capabilities_mask = (EV_BOARD_HAS_I2C0 ? EV_DEMO_APP_BOARD_CAP_I2C0 : 0U) |
+                         (EV_BOARD_HAS_ONEWIRE0 ? EV_DEMO_APP_BOARD_CAP_ONEWIRE0 : 0U) |
+                         (EV_BOARD_HAS_GPIO_IRQ ? EV_DEMO_APP_BOARD_CAP_GPIO_IRQ : 0U) |
+                         (EV_BOARD_HAS_DEEP_SLEEP_WAKE_GPIO16 ? EV_DEMO_APP_BOARD_CAP_DEEP_SLEEP_WAKE_GPIO16 : 0U),
+    .hardware_present_mask = EV_BOARD_RUNTIME_HARDWARE_PRESENT_MASK,
+    .supervisor_required_mask = EV_BOARD_SUPERVISOR_REQUIRED_MASK,
+    .supervisor_optional_mask = EV_BOARD_SUPERVISOR_OPTIONAL_MASK,
+    .i2c_port_num = EV_I2C_PORT_NUM_0,
+    .rtc_sqw_line_id = EV_BOARD_RTC_SQW_LINE_ID,
+    .mcp23008_addr_7bit = EV_BOARD_MCP23008_ADDR_7BIT,
+    .rtc_addr_7bit = EV_BOARD_RTC_ADDR_7BIT,
+    .oled_addr_7bit = EV_BOARD_OLED_ADDR_7BIT,
+    .oled_controller = EV_BOARD_OLED_CONTROLLER,
 };
 
 void app_main(void)
@@ -83,5 +96,5 @@ void app_main(void)
         runtime_irq_port = &s_board_irq_port;
     }
 
-    ev_esp8266_runtime_app_run(&k_boot_diag, runtime_i2c_port, runtime_irq_port, runtime_onewire_port);
+    ev_esp8266_runtime_app_run(&k_boot_diag, runtime_i2c_port, runtime_irq_port, runtime_onewire_port, &k_board_runtime_profile);
 }
