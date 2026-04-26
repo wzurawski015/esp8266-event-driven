@@ -6,6 +6,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
+#if !defined(configSUPPORT_STATIC_ALLOCATION) || (configSUPPORT_STATIC_ALLOCATION != 1)
+#error "ev_irq_adapter requires configSUPPORT_STATIC_ALLOCATION == 1"
+#endif
+
 #include "driver/gpio.h"
 #include "esp_attr.h"
 #include "esp_err.h"
@@ -51,6 +55,7 @@ typedef struct {
     bool sleep_prepared;
     size_t line_count;
     bool configured;
+    StaticSemaphore_t wait_sem_storage;
     SemaphoreHandle_t wait_sem;
 } ev_esp8266_irq_adapter_ctx_t;
 
@@ -376,17 +381,11 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
         return EV_ERR_INVALID_ARG;
     }
 
-    {
-        SemaphoreHandle_t wait_sem = g_ev_irq_ctx.wait_sem;
-        memset(&g_ev_irq_ctx, 0, sizeof(g_ev_irq_ctx));
-        g_ev_irq_ctx.wait_sem = wait_sem;
-    }
+    memset(&g_ev_irq_ctx, 0, sizeof(g_ev_irq_ctx));
 
+    g_ev_irq_ctx.wait_sem = xSemaphoreCreateBinaryStatic(&g_ev_irq_ctx.wait_sem_storage);
     if (g_ev_irq_ctx.wait_sem == NULL) {
-        g_ev_irq_ctx.wait_sem = xSemaphoreCreateBinary();
-        if (g_ev_irq_ctx.wait_sem == NULL) {
-            return EV_ERR_STATE;
-        }
+        return EV_ERR_STATE;
     }
 
     while (xSemaphoreTake(g_ev_irq_ctx.wait_sem, 0) == pdTRUE) {

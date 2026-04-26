@@ -5,6 +5,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
+#if !defined(configSUPPORT_STATIC_ALLOCATION) || (configSUPPORT_STATIC_ALLOCATION != 1)
+#error "ev_i2c_adapter requires configSUPPORT_STATIC_ALLOCATION == 1"
+#endif
+
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -18,8 +22,9 @@
  *
  * The ESP8266 RTOS SDK command-link API allocates command descriptors from the
  * heap through command-link creation.  This adapter intentionally does not install or
- * use the SDK I2C command-link driver.  It owns one bootstrap-time mutex and a
- * bounded GPIO open-drain software master for all runtime transactions.
+ * use the SDK I2C command-link driver.  It owns one statically allocated
+ * FreeRTOS mutex and a bounded GPIO open-drain software master for all runtime
+ * transactions.
  */
 #define EV_I2C_MAX_COMMANDS_PER_TRANSACTION 16U
 
@@ -63,14 +68,16 @@ typedef struct ev_esp8266_i2c_adapter_ctx {
     uint32_t sleep_prepare_attempts;
     uint32_t sleep_prepare_failures;
     volatile bool transaction_active;
+    StaticSemaphore_t bus_mutex_storage;
+    SemaphoreHandle_t bus_mutex;
 } ev_esp8266_i2c_adapter_ctx_t;
 
-static SemaphoreHandle_t g_ev_i2c_bus_mutex = NULL;
 static ev_esp8266_i2c_adapter_ctx_t g_ev_i2c0_ctx = {
     .port_num = EV_I2C_PORT_NUM_0,
     .sda_pin = -1,
     .scl_pin = -1,
     .configured = false,
+    .bus_mutex = NULL,
 };
 
 static bool ev_esp8266_i2c_pin_is_valid(int pin)
@@ -428,16 +435,16 @@ static ev_i2c_status_t ev_esp8266_i2c_write_payload(const ev_esp8266_i2c_adapter
  * - mutex timeout must be longer than one command budget so slower bulk OLED
  *   flushes do not starve MCP23008/RTC access behind a too-aggressive bus lock
  *   window,
- * - runtime transactions never allocate heap memory; only the bootstrap mutex is
- *   allocated before the application runtime starts.
+ * - runtime transactions never allocate heap memory,
+ * - the bus mutex is statically allocated in BSS through xSemaphoreCreateMutexStatic().
  */
 static ev_i2c_status_t ev_esp8266_i2c_take_bus_with_timeout(TickType_t timeout_ticks)
 {
-    if (g_ev_i2c_bus_mutex == NULL) {
+    if (g_ev_i2c0_ctx.bus_mutex == NULL) {
         return EV_I2C_ERR_BUS_LOCKED;
     }
 
-    if (xSemaphoreTake(g_ev_i2c_bus_mutex, timeout_ticks) != pdTRUE) {
+    if (xSemaphoreTake(g_ev_i2c0_ctx.bus_mutex, timeout_ticks) != pdTRUE) {
         return EV_I2C_ERR_TIMEOUT;
     }
 
@@ -451,8 +458,8 @@ static ev_i2c_status_t ev_esp8266_i2c_take_bus(void)
 
 static void ev_esp8266_i2c_give_bus(void)
 {
-    if (g_ev_i2c_bus_mutex != NULL) {
-        (void)xSemaphoreGive(g_ev_i2c_bus_mutex);
+    if (g_ev_i2c0_ctx.bus_mutex != NULL) {
+        (void)xSemaphoreGive(g_ev_i2c0_ctx.bus_mutex);
     }
 }
 
@@ -816,10 +823,10 @@ ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int s
         return EV_ERR_INVALID_ARG;
     }
 
-    if (g_ev_i2c_bus_mutex == NULL) {
-        g_ev_i2c_bus_mutex = xSemaphoreCreateMutex();
-        if (g_ev_i2c_bus_mutex == NULL) {
-            ESP_LOGE(k_ev_i2c_tag, "bus mutex allocation failed");
+    if (g_ev_i2c0_ctx.bus_mutex == NULL) {
+        g_ev_i2c0_ctx.bus_mutex = xSemaphoreCreateMutexStatic(&g_ev_i2c0_ctx.bus_mutex_storage);
+        if (g_ev_i2c0_ctx.bus_mutex == NULL) {
+            ESP_LOGE(k_ev_i2c_tag, "static bus mutex creation failed");
             return EV_ERR_STATE;
         }
     }

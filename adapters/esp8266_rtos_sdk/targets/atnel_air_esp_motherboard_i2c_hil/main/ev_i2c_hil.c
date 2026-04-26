@@ -29,8 +29,8 @@
 #define EV_HIL_MCP23008_REG_GPIO 0x09U
 #define EV_HIL_MCP23008_REG_OLAT 0x0AU
 
-#if !defined(configSUPPORT_STATIC_ALLOCATION)
-#define configSUPPORT_STATIC_ALLOCATION 0
+#if !defined(configSUPPORT_STATIC_ALLOCATION) || (configSUPPORT_STATIC_ALLOCATION != 1)
+#error "I2C zero-heap HIL requires configSUPPORT_STATIC_ALLOCATION == 1"
 #endif
 
 typedef struct ev_hil_suite_result {
@@ -45,10 +45,8 @@ typedef struct ev_hil_irq_flood_ctx {
     int gpio;
 } ev_hil_irq_flood_ctx_t;
 
-#if (configSUPPORT_STATIC_ALLOCATION == 1)
 static StaticTask_t s_ev_hil_irq_flood_tcb;
 static StackType_t s_ev_hil_irq_flood_stack[EV_HIL_IRQ_FLOOD_STACK_WORDS];
-#endif
 static ev_hil_irq_flood_ctx_t s_ev_hil_irq_flood_ctx;
 
 static const char *ev_hil_status_name(ev_i2c_status_t status)
@@ -624,7 +622,6 @@ static void ev_hil_irq_flood_task(void *arg)
 
 static bool ev_hil_irq_flood_start(int gpio)
 {
-#if (configSUPPORT_STATIC_ALLOCATION == 1)
     TaskHandle_t task;
 
     if (ev_hil_configure_open_drain_gpio(gpio) != EV_OK) {
@@ -643,25 +640,6 @@ static bool ev_hil_irq_flood_start(int gpio)
                              s_ev_hil_irq_flood_stack,
                              &s_ev_hil_irq_flood_tcb);
     return task != NULL;
-#else
-    BaseType_t task_rc;
-
-    if (ev_hil_configure_open_drain_gpio(gpio) != EV_OK) {
-        return false;
-    }
-
-    memset(&s_ev_hil_irq_flood_ctx, 0, sizeof(s_ev_hil_irq_flood_ctx));
-    s_ev_hil_irq_flood_ctx.gpio = gpio;
-    s_ev_hil_irq_flood_ctx.run = true;
-
-    task_rc = xTaskCreate(ev_hil_irq_flood_task,
-                          "ev_hil_irq_flood",
-                          EV_HIL_IRQ_FLOOD_STACK_WORDS,
-                          &s_ev_hil_irq_flood_ctx,
-                          tskIDLE_PRIORITY + 1U,
-                          NULL);
-    return task_rc == pdPASS;
-#endif
 }
 
 static void ev_hil_irq_flood_stop(void)

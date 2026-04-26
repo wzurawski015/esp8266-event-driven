@@ -10,3 +10,6 @@
 #
 #   ./tools/fw sdk-menuconfig
 #
+
+# Mission-critical runtime: require static FreeRTOS object allocation.
+CONFIG_FREERTOS_SUPPORT_STATIC_ALLOCATION=y
