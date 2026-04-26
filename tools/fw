@@ -43,6 +43,7 @@ Usage:
   ./tools/fw sdk-image
 
   ./tools/fw host-test
+  ./tools/fw routegen
   ./tools/fw docgen
   ./tools/fw docs
   ./tools/fw clean
@@ -371,6 +372,18 @@ run_in_sdk_with_device_i() {
   fi
 }
 
+routegen() {
+  python_bin="${FW_PYTHON:-}"
+  if [ -z "$python_bin" ]; then
+    if [ -x /usr/bin/python3 ]; then
+      python_bin=/usr/bin/python3
+    else
+      python_bin=python3
+    fi
+  fi
+  "$python_bin" "$ROOT_DIR/tools/routegen/routegen.py"
+}
+
 sdk_check() {
   build_sdk_image
   run_in_image \
@@ -649,6 +662,9 @@ case "$cmd" in
   host-test)
     build_host_image
     run_in_image "$HOST_IMAGE" make host-test
+    ;;
+  routegen)
+    routegen
     ;;
   docgen)
     build_host_image

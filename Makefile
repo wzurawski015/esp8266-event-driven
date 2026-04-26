@@ -1,7 +1,7 @@
 CC ?= cc
 PYTHON ?= python3
 
-CFLAGS ?= -std=c11 -Wall -Wextra -g -O0  -pedantic -DEV_HOST_BUILD -Icore/include -Iports/include -Iapp/include -Iconfig
+CFLAGS ?= -std=c11 -Wall -Wextra -O0 -g0 -pedantic -DEV_HOST_BUILD -Icore/include -Icore/generated/include -Iports/include -Iapp/include -Iconfig
 LDFLAGS ?=
 
 BUILD_DIR := build/host
@@ -40,11 +40,13 @@ TEST_SUPPORT_SRCS := \
     tests/host/fakes/fake_log_port.c
 
 COMMON_SRCS := $(CORE_SRCS) $(APP_SRCS) $(TEST_SUPPORT_SRCS)
+COMMON_OBJS := $(patsubst %.c,$(BUILD_DIR)/obj/%.o,$(COMMON_SRCS))
 
 HOST_TESTS := \
     test_catalog \
     test_msg_contract \
     test_route_table \
+    test_route_spans \
     test_dispatch_contract \
     test_mailbox_contract \
     test_actor_runtime \
@@ -64,20 +66,27 @@ HOST_TESTS := \
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
 
-.PHONY: all host-test docgen docs clean
+.PHONY: all host-test routegen docgen docs clean
 
 all: host-test
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/%: tests/host/%.c $(COMMON_SRCS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(COMMON_SRCS) $< $(LDFLAGS) -o $@
+$(BUILD_DIR)/obj/%.o: %.c | $(BUILD_DIR)
+	mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%: tests/host/%.c $(COMMON_OBJS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(COMMON_OBJS) $< $(LDFLAGS) -o $@
 
 host-test: $(HOST_TEST_BINS)
 	@set -e; for t in $(HOST_TEST_BINS); do ./$$t; done
 
-docgen:
+routegen:
+	$(PYTHON) tools/routegen/routegen.py
+
+docgen: routegen
 	$(PYTHON) tools/docgen/docgen.py
 
 docs: docgen

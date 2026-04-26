@@ -12,10 +12,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Generate static route table artifacts
+        run: ./tools/fw routegen
+
       - name: Generate living documentation artifacts
         run: ./tools/fw docgen
 
-      - name: Verify generated documentation is checked in
+      - name: Verify generated artifacts are checked in
         run: git diff --exit-code
 
       - name: Build and run host smoke tests
