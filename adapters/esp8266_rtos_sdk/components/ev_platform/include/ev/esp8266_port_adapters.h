@@ -49,6 +49,8 @@ typedef struct ev_esp8266_irq_diag_snapshot {
     uint32_t enabled_gpio_mask; /**< GPIO bit mask currently armed for interrupts. */
     uint32_t sleep_prepare_attempts; /**< Number of IRQ sleep-prepare attempts. */
     uint32_t sleep_prepare_failures; /**< Number of IRQ sleep-prepare rejections. */
+    uint32_t sleep_prepared_gpio_mask; /**< GPIO mask disabled during a prepared sleep transition. */
+    bool sleep_prepared; /**< True after IRQ ingress has been frozen for sleep. */
 } ev_esp8266_irq_diag_snapshot_t;
 
 /**
@@ -65,6 +67,8 @@ typedef struct ev_esp8266_onewire_diag_snapshot {
     uint32_t max_critical_section_us; /**< Maximum measured critical section duration. */
     uint32_t max_reset_critical_section_us; /**< Maximum measured reset-pulse critical section duration. */
     uint32_t max_bit_critical_section_us; /**< Maximum measured bit-slot critical section duration. */
+    uint32_t critical_section_budget_violations; /**< Critical sections exceeding the configured IRQ-latency budget. */
+    uint32_t max_reset_low_hold_us; /**< Maximum reset low pulse duration measured outside the IRQ-disabled region. */
     bool configured; /**< True after the adapter was initialized. */
     bool busy; /**< True while a bit-banged 1-Wire operation is active. */
     bool dq_high; /**< Last sampled released DQ line level. */
@@ -151,6 +155,9 @@ ev_result_t ev_esp8266_irq_get_diag(ev_esp8266_irq_diag_snapshot_t *out_snapshot
  * @return EV_OK when IRQ ingress is parked for Deep Sleep.
  */
 ev_result_t ev_esp8266_irq_prepare_for_sleep(void);
+ev_result_t ev_esp8266_irq_confirm_sleep_ready(void);
+ev_result_t ev_esp8266_irq_abort_sleep_prepare(void);
+ev_result_t ev_esp8266_irq_commit_sleep_prepare(void);
 
 /**
  * @brief Initialize the ESP8266-backed 1-Wire adapter.
@@ -198,6 +205,19 @@ ev_result_t ev_esp8266_reset_port_init(ev_reset_port_t *out_port);
  */
 ev_result_t ev_esp8266_uart_port_init(ev_uart_port_t *out_port);
 
+#define EV_ESP8266_SLEEP_RESOURCE_I2C0 0x00000001UL
+#define EV_ESP8266_SLEEP_RESOURCE_ONEWIRE0 0x00000002UL
+#define EV_ESP8266_SLEEP_RESOURCE_GPIO_IRQ 0x00000004UL
+#define EV_ESP8266_SLEEP_RESOURCE_WAKE_GPIO16 0x00000008UL
+
+/**
+ * @brief Board-derived resources that the ESP8266 system adapter must park before sleep.
+ */
+typedef struct ev_esp8266_system_sleep_profile {
+    uint32_t resource_mask;
+    ev_i2c_port_num_t i2c_port_num;
+} ev_esp8266_system_sleep_profile_t;
+
 /**
  * @brief Initialize the ESP8266-backed system-control adapter.
  *
@@ -205,6 +225,17 @@ ev_result_t ev_esp8266_uart_port_init(ev_uart_port_t *out_port);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_system_port_init(ev_system_port_t *out_port);
+
+/**
+ * @brief Initialize the ESP8266 system-control adapter with a board-aware sleep profile.
+ *
+ * @param out_port Destination contract populated on success.
+ * @param sleep_profile Board-derived resources to check and park before deep sleep.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_esp8266_system_port_init_with_sleep_profile(
+    ev_system_port_t *out_port,
+    const ev_esp8266_system_sleep_profile_t *sleep_profile);
 
 /**
  * @brief Convert one normalized reset reason into a stable diagnostic string.

@@ -42,6 +42,8 @@ typedef struct {
     uint32_t enabled_gpio_mask;
     uint32_t sleep_prepare_attempts;
     uint32_t sleep_prepare_failures;
+    uint32_t sleep_prepared_gpio_mask;
+    bool sleep_prepared;
     size_t line_count;
     bool configured;
     SemaphoreHandle_t wait_sem;
@@ -430,11 +432,13 @@ ev_result_t ev_esp8266_irq_get_diag(ev_esp8266_irq_diag_snapshot_t *out_snapshot
     out_snapshot->enabled_gpio_mask = g_ev_irq_ctx.enabled_gpio_mask;
     out_snapshot->sleep_prepare_attempts = g_ev_irq_ctx.sleep_prepare_attempts;
     out_snapshot->sleep_prepare_failures = g_ev_irq_ctx.sleep_prepare_failures;
+    out_snapshot->sleep_prepared_gpio_mask = g_ev_irq_ctx.sleep_prepared_gpio_mask;
+    out_snapshot->sleep_prepared = g_ev_irq_ctx.sleep_prepared;
     portEXIT_CRITICAL();
 
     return EV_OK;
 }
-static ev_result_t ev_esp8266_irq_restore_armed_lines(ev_esp8266_irq_adapter_ctx_t *adapter)
+static ev_result_t ev_esp8266_irq_restore_mask(ev_esp8266_irq_adapter_ctx_t *adapter, uint32_t gpio_mask)
 {
     size_t i;
     ev_result_t result = EV_OK;
@@ -445,20 +449,91 @@ static ev_result_t ev_esp8266_irq_restore_armed_lines(ev_esp8266_irq_adapter_ctx
 
     for (i = 0U; i < adapter->line_count; ++i) {
         ev_esp8266_irq_line_t *line = &adapter->lines[i];
-        if (line->armed) {
+        if ((line->configured) && ((gpio_mask & line->gpio_mask) != 0U)) {
             const gpio_int_type_t intr_type = ev_esp8266_gpio_intr_type_from_cfg(line->trigger);
             if (gpio_set_intr_type((gpio_num_t)line->gpio_num, intr_type) != ESP_OK) {
                 result = EV_ERR_STATE;
+            } else {
+                line->armed = true;
+                adapter->enabled_gpio_mask |= line->gpio_mask;
             }
         }
     }
 
+    adapter->sleep_prepared_gpio_mask &= (uint32_t)(~gpio_mask);
+    adapter->sleep_prepared = adapter->sleep_prepared_gpio_mask != 0U;
     return result;
+}
+
+static uint32_t ev_esp8266_irq_pending_hw_status(const ev_esp8266_irq_adapter_ctx_t *adapter)
+{
+    uint32_t status;
+
+    if (adapter == NULL) {
+        return 0U;
+    }
+
+    status = (uint32_t)(GPIO_REG_READ(GPIO_STATUS_ADDRESS) & GPIO_STATUS_INTERRUPT_DATA_MASK);
+    return status & adapter->active_gpio_mask;
+}
+
+ev_result_t ev_esp8266_irq_confirm_sleep_ready(void)
+{
+    uint32_t pending_samples;
+    uint32_t pending_status;
+
+    if (!g_ev_irq_ctx.configured) {
+        return EV_ERR_STATE;
+    }
+
+    portENTER_CRITICAL();
+    pending_samples = g_ev_irq_ctx.write_seq - g_ev_irq_ctx.read_seq;
+    portEXIT_CRITICAL();
+    pending_status = ev_esp8266_irq_pending_hw_status(&g_ev_irq_ctx);
+
+    if ((pending_samples != 0U) || (pending_status != 0U)) {
+        ++g_ev_irq_ctx.sleep_prepare_failures;
+        return EV_ERR_STATE;
+    }
+
+    return EV_OK;
+}
+
+ev_result_t ev_esp8266_irq_abort_sleep_prepare(void)
+{
+    if (!g_ev_irq_ctx.configured) {
+        return EV_ERR_STATE;
+    }
+
+    if (!g_ev_irq_ctx.sleep_prepared) {
+        return EV_OK;
+    }
+
+    return ev_esp8266_irq_restore_mask(&g_ev_irq_ctx, g_ev_irq_ctx.sleep_prepared_gpio_mask);
+}
+
+ev_result_t ev_esp8266_irq_commit_sleep_prepare(void)
+{
+    if (!g_ev_irq_ctx.configured) {
+        return EV_ERR_STATE;
+    }
+
+    if (!g_ev_irq_ctx.sleep_prepared) {
+        return EV_OK;
+    }
+
+    if (ev_esp8266_irq_confirm_sleep_ready() != EV_OK) {
+        return EV_ERR_STATE;
+    }
+
+    GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, g_ev_irq_ctx.active_gpio_mask);
+    return EV_OK;
 }
 
 ev_result_t ev_esp8266_irq_prepare_for_sleep(void)
 {
     uint32_t pending_samples;
+    uint32_t armed_mask = 0U;
     size_t i;
 
     if (!g_ev_irq_ctx.configured) {
@@ -466,11 +541,14 @@ ev_result_t ev_esp8266_irq_prepare_for_sleep(void)
     }
 
     ++g_ev_irq_ctx.sleep_prepare_attempts;
+    if (g_ev_irq_ctx.sleep_prepared) {
+        return EV_OK;
+    }
 
     portENTER_CRITICAL();
     pending_samples = g_ev_irq_ctx.write_seq - g_ev_irq_ctx.read_seq;
     portEXIT_CRITICAL();
-    if (pending_samples != 0U) {
+    if ((pending_samples != 0U) || (ev_esp8266_irq_pending_hw_status(&g_ev_irq_ctx) != 0U)) {
         ++g_ev_irq_ctx.sleep_prepare_failures;
         return EV_ERR_STATE;
     }
@@ -482,26 +560,25 @@ ev_result_t ev_esp8266_irq_prepare_for_sleep(void)
         }
         if (gpio_set_intr_type((gpio_num_t)line->gpio_num, GPIO_INTR_DISABLE) != ESP_OK) {
             ++g_ev_irq_ctx.sleep_prepare_failures;
-            (void)ev_esp8266_irq_restore_armed_lines(&g_ev_irq_ctx);
+            (void)ev_esp8266_irq_restore_mask(&g_ev_irq_ctx, armed_mask);
             return EV_ERR_STATE;
         }
+        armed_mask |= line->gpio_mask;
+        line->armed = false;
+        g_ev_irq_ctx.enabled_gpio_mask &= (uint32_t)(~line->gpio_mask);
         GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, line->gpio_mask);
     }
 
     portENTER_CRITICAL();
     pending_samples = g_ev_irq_ctx.write_seq - g_ev_irq_ctx.read_seq;
     portEXIT_CRITICAL();
-    if (pending_samples != 0U) {
+    if ((pending_samples != 0U) || (ev_esp8266_irq_pending_hw_status(&g_ev_irq_ctx) != 0U)) {
         ++g_ev_irq_ctx.sleep_prepare_failures;
-        (void)ev_esp8266_irq_restore_armed_lines(&g_ev_irq_ctx);
+        (void)ev_esp8266_irq_restore_mask(&g_ev_irq_ctx, armed_mask);
         return EV_ERR_STATE;
     }
 
-    for (i = 0U; i < g_ev_irq_ctx.line_count; ++i) {
-        g_ev_irq_ctx.lines[i].armed = false;
-    }
-    g_ev_irq_ctx.enabled_gpio_mask = 0U;
-    GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, g_ev_irq_ctx.active_gpio_mask);
-
+    g_ev_irq_ctx.sleep_prepared_gpio_mask = armed_mask;
+    g_ev_irq_ctx.sleep_prepared = armed_mask != 0U;
     return EV_OK;
 }

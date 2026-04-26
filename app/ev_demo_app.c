@@ -965,16 +965,67 @@ static ev_result_t ev_demo_app_sleep_quiescence_guard(void *ctx,
         report.due_timer_count = 1U;
     }
 
+    if ((report.pending_actor_messages > 0U) || (report.pending_irq_samples != 0U) ||
+        (report.due_timer_count != 0U) || (report.pending_oled_flush != 0U) ||
+        (report.pending_ds18b20_conversion != 0U)) {
+        report.reason = EV_POWER_SLEEP_REJECT_NOT_QUIESCENT;
+        if (out_report != NULL) {
+            *out_report = report;
+        }
+        return EV_ERR_STATE;
+    }
+
     if (out_report != NULL) {
         *out_report = report;
     }
 
-    if ((report.pending_actor_messages > 0U) || (report.pending_irq_samples != 0U) ||
-        (report.due_timer_count != 0U) || (report.pending_oled_flush != 0U) ||
-        (report.pending_ds18b20_conversion != 0U)) {
+    return EV_OK;
+}
+
+static ev_result_t ev_demo_app_sleep_arm(void *ctx,
+                                         uint64_t duration_us,
+                                         ev_power_quiescence_report_t *out_report)
+{
+    ev_demo_app_t *app = (ev_demo_app_t *)ctx;
+    ev_result_t rc;
+
+    if (app == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    (void)duration_us;
+    ++app->stats.sleep_arm_attempts;
+    if (app->sleep_arming) {
+        ++app->stats.sleep_arm_failures;
+        if (out_report != NULL) {
+            memset(out_report, 0, sizeof(*out_report));
+            out_report->reason = EV_POWER_SLEEP_REJECT_ARMING_FAILED;
+        }
         return EV_ERR_STATE;
     }
 
+    app->sleep_arming = true;
+    rc = ev_demo_app_sleep_quiescence_guard(app, duration_us, out_report);
+    if (rc != EV_OK) {
+        app->sleep_arming = false;
+        ++app->stats.sleep_arm_failures;
+        return rc;
+    }
+
+    ++app->stats.sleep_arm_successes;
+    return EV_OK;
+}
+
+static ev_result_t ev_demo_app_sleep_disarm(void *ctx)
+{
+    ev_demo_app_t *app = (ev_demo_app_t *)ctx;
+
+    if (app == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    ++app->stats.sleep_disarm_calls;
+    app->sleep_arming = false;
     return EV_OK;
 }
 
@@ -1049,7 +1100,7 @@ static ev_result_t ev_demo_app_collect_ingress(ev_demo_app_t *app,
     if ((app == NULL) || (budget == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
-    if ((app->irq_port == NULL) || (app->irq_port->pop == NULL) || budget->exhausted) {
+    if (app->sleep_arming || (app->irq_port == NULL) || (app->irq_port->pop == NULL) || budget->exhausted) {
         return EV_OK;
     }
 
@@ -1095,7 +1146,7 @@ static ev_result_t ev_demo_app_process_timers(ev_demo_app_t *app,
     if ((app == NULL) || (budget == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
-    if (budget->exhausted) {
+    if (budget->exhausted || app->sleep_arming) {
         return EV_OK;
     }
     if (ev_system_pump_pending(&app->system_pump) > 0U) {
@@ -1372,6 +1423,12 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_power_actor_set_quiescence_guard(&app->power_ctx, ev_demo_app_sleep_quiescence_guard, app);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_power_actor_set_sleep_arming(&app->power_ctx,
+                                         ev_demo_app_sleep_arm,
+                                         ev_demo_app_sleep_disarm,
+                                         app);
     if (rc != EV_OK) return rc;
 
     rc = ev_lease_pool_init(&app->lease_pool, app->lease_slots, app->lease_storage, EV_DEMO_APP_LEASE_SLOTS, EV_DEMO_APP_LEASE_SLOT_BYTES);

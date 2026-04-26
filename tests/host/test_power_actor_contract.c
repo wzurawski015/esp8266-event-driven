@@ -14,6 +14,17 @@ typedef struct {
     ev_power_quiescence_report_t report;
 } fake_guard_t;
 
+typedef struct {
+    ev_result_t arm_result;
+    ev_result_t disarm_result;
+    uint32_t arm_calls;
+    uint32_t disarm_calls;
+    uint32_t arm_order;
+    uint32_t disarm_order;
+    uint32_t *shared_sequence;
+    ev_power_quiescence_report_t report;
+} fake_arming_t;
+
 static ev_msg_t make_sleep_cmd(uint32_t duration_ms)
 {
     ev_msg_t msg = EV_MSG_INITIALIZER;
@@ -40,6 +51,36 @@ static ev_result_t fake_guard(void *ctx, uint64_t duration_us, ev_power_quiescen
         *out_report = guard->report;
     }
     return guard->result;
+}
+
+static ev_result_t fake_sleep_arm(void *ctx, uint64_t duration_us, ev_power_quiescence_report_t *out_report)
+{
+    fake_arming_t *arming = (fake_arming_t *)ctx;
+
+    assert(arming != NULL);
+    assert(duration_us > 0ULL);
+    ++arming->arm_calls;
+    if (arming->shared_sequence != NULL) {
+        ++(*arming->shared_sequence);
+        arming->arm_order = *arming->shared_sequence;
+    }
+    if (out_report != NULL) {
+        *out_report = arming->report;
+    }
+    return arming->arm_result;
+}
+
+static ev_result_t fake_sleep_disarm(void *ctx)
+{
+    fake_arming_t *arming = (fake_arming_t *)ctx;
+
+    assert(arming != NULL);
+    ++arming->disarm_calls;
+    if (arming->shared_sequence != NULL) {
+        ++(*arming->shared_sequence);
+        arming->disarm_order = *arming->shared_sequence;
+    }
+    return arming->disarm_result;
 }
 
 static void test_successful_sleep_order_and_counters(void)
@@ -239,6 +280,110 @@ static void test_unsupported_port_is_counted_without_sleep(void)
     assert(ev_msg_dispose(&msg) == EV_OK);
 }
 
+static void test_sleep_arming_rejects_before_log_and_prepare(void)
+{
+    fake_system_port_t fake_system;
+    fake_log_port_t fake_log;
+    fake_arming_t arming = {0};
+    ev_system_port_t system_port = {0};
+    ev_log_port_t log_port = {0};
+    ev_power_actor_ctx_t power = {0};
+    ev_msg_t msg = make_sleep_cmd(10U);
+
+    fake_system_port_init(&fake_system);
+    fake_log_port_init(&fake_log);
+    fake_system_port_bind(&system_port, &fake_system);
+    fake_log_port_bind(&log_port, &fake_log);
+    arming.arm_result = EV_ERR_STATE;
+    arming.report.reason = EV_POWER_SLEEP_REJECT_NOT_QUIESCENT;
+    arming.report.pending_irq_samples = 1U;
+
+    assert(ev_power_actor_init(&power, &system_port, &log_port, "test_power") == EV_OK);
+    assert(ev_power_actor_set_sleep_arming(&power, fake_sleep_arm, fake_sleep_disarm, &arming) == EV_OK);
+    assert(ev_power_actor_handle(&power, &msg) == EV_ERR_STATE);
+    assert(arming.arm_calls == 1U);
+    assert(arming.disarm_calls == 0U);
+    assert(fake_log.write_calls == 0U);
+    assert(fake_log.flush_calls == 0U);
+    assert(fake_system.prepare_for_sleep_calls == 0U);
+    assert(fake_system.deep_sleep_calls == 0U);
+    assert(power.sleep_arming_failures == 1U);
+    assert(power.sleep_quiescence_failures == 1U);
+    assert(power.sleep_requests_rejected == 1U);
+    assert(power.last_reject_reason == EV_POWER_SLEEP_REJECT_NOT_QUIESCENT);
+
+    assert(ev_msg_dispose(&msg) == EV_OK);
+}
+
+static void test_prepare_failure_disarms_sleep_arming(void)
+{
+    fake_system_port_t fake_system;
+    fake_log_port_t fake_log;
+    fake_arming_t arming = {0};
+    ev_system_port_t system_port = {0};
+    ev_log_port_t log_port = {0};
+    ev_power_actor_ctx_t power = {0};
+    ev_msg_t msg = make_sleep_cmd(10U);
+
+    fake_system_port_init(&fake_system);
+    fake_log_port_init(&fake_log);
+    fake_system.next_prepare_result = EV_ERR_STATE;
+    fake_system_port_bind(&system_port, &fake_system);
+    fake_log_port_bind(&log_port, &fake_log);
+    arming.arm_result = EV_OK;
+
+    assert(ev_power_actor_init(&power, &system_port, &log_port, "test_power") == EV_OK);
+    assert(ev_power_actor_set_sleep_arming(&power, fake_sleep_arm, fake_sleep_disarm, &arming) == EV_OK);
+    assert(ev_power_actor_handle(&power, &msg) == EV_ERR_STATE);
+    assert(arming.arm_calls == 1U);
+    assert(arming.disarm_calls == 1U);
+    assert(fake_system.prepare_for_sleep_calls == 1U);
+    assert(fake_system.deep_sleep_calls == 0U);
+    assert(power.prepare_for_sleep_failures == 1U);
+    assert(power.last_reject_reason == EV_POWER_SLEEP_REJECT_PREPARE_FAILED);
+
+    assert(ev_msg_dispose(&msg) == EV_OK);
+}
+
+static void test_deep_sleep_failure_cancels_platform_and_disarms(void)
+{
+    fake_system_port_t fake_system;
+    fake_log_port_t fake_log;
+    fake_arming_t arming = {0};
+    ev_system_port_t system_port = {0};
+    ev_log_port_t log_port = {0};
+    ev_power_actor_ctx_t power = {0};
+    ev_msg_t msg = make_sleep_cmd(10U);
+    uint32_t sequence = 0U;
+
+    fake_system_port_init(&fake_system);
+    fake_log_port_init(&fake_log);
+    fake_system.external_sequence = &sequence;
+    fake_log.shared_sequence = &sequence;
+    arming.shared_sequence = &sequence;
+    fake_system.next_result = EV_ERR_STATE;
+    fake_system_port_bind(&system_port, &fake_system);
+    fake_log_port_bind(&log_port, &fake_log);
+    arming.arm_result = EV_OK;
+
+    assert(ev_power_actor_init(&power, &system_port, &log_port, "test_power") == EV_OK);
+    assert(ev_power_actor_set_sleep_arming(&power, fake_sleep_arm, fake_sleep_disarm, &arming) == EV_OK);
+    assert(ev_power_actor_handle(&power, &msg) == EV_ERR_STATE);
+    assert(arming.arm_calls == 1U);
+    assert(fake_system.prepare_for_sleep_calls == 1U);
+    assert(fake_system.deep_sleep_calls == 1U);
+    assert(fake_system.cancel_sleep_prepare_calls == 1U);
+    assert(arming.disarm_calls == 1U);
+    assert(arming.arm_order < fake_log.write_order);
+    assert(fake_system.deep_sleep_order < fake_system.cancel_order);
+    assert(fake_system.cancel_order < arming.disarm_order);
+    assert(power.sleep_requests_accepted == 1U);
+    assert(power.deep_sleep_failures == 1U);
+    assert(power.last_reject_reason == EV_POWER_SLEEP_REJECT_DEEP_SLEEP_FAILED);
+
+    assert(ev_msg_dispose(&msg) == EV_OK);
+}
+
 int main(void)
 {
     test_successful_sleep_order_and_counters();
@@ -248,5 +393,8 @@ int main(void)
     test_deep_sleep_failure_is_counted_after_accept();
     test_bad_duration_rejected_before_port_calls();
     test_unsupported_port_is_counted_without_sleep();
+    test_sleep_arming_rejects_before_log_and_prepare();
+    test_prepare_failure_disarms_sleep_arming();
+    test_deep_sleep_failure_cancels_platform_and_disarms();
     return 0;
 }

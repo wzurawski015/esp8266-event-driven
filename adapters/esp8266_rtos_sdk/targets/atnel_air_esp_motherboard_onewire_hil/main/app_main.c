@@ -68,6 +68,8 @@ void app_main(void)
             .onewire_port = &s_board_onewire_port,
             .irq_port = &s_board_irq_port,
             .ds18b20_read_iterations = EV_BOARD_HIL_ONEWIRE_READS,
+            .max_reset_critical_section_us = EV_BOARD_HIL_ONEWIRE_MAX_RESET_CRITICAL_US,
+            .max_bit_critical_section_us = EV_BOARD_HIL_ONEWIRE_MAX_BIT_CRITICAL_US,
             .irq_flood_output_gpio = EV_BOARD_HIL_IRQ_FLOOD_OUTPUT_GPIO,
             .irq_flood_line_id = EV_BOARD_HIL_IRQ_FLOOD_LINE_ID,
         };

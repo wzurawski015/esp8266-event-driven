@@ -275,7 +275,7 @@ static void ev_hil_log_onewire_diag(const char *stage)
 
     if (ev_esp8266_onewire_get_diag(&diag) == EV_OK) {
         ESP_LOGI(EV_HIL_ONEWIRE_TAG,
-                 "onewire-diag:%s ops=%u crit=%u reset_crit=%u bit_crit=%u max_us=%u reset_max_us=%u bit_max_us=%u bus_errors=%u",
+                 "onewire-diag:%s ops=%u crit=%u reset_crit=%u bit_crit=%u max_us=%u reset_max_us=%u bit_max_us=%u budget_violations=%u reset_low_us=%u bus_errors=%u",
                  stage,
                  (unsigned)diag.operations_started,
                  (unsigned)diag.critical_sections,
@@ -284,6 +284,8 @@ static void ev_hil_log_onewire_diag(const char *stage)
                  (unsigned)diag.max_critical_section_us,
                  (unsigned)diag.max_reset_critical_section_us,
                  (unsigned)diag.max_bit_critical_section_us,
+                 (unsigned)diag.critical_section_budget_violations,
+                 (unsigned)diag.max_reset_low_hold_us,
                  (unsigned)diag.bus_errors);
     }
 }
@@ -358,13 +360,23 @@ static void ev_hil_test_ds18b20_read_irq_flood(const ev_esp8266_onewire_hil_conf
         ev_hil_fail(result, name, "no IRQ samples observed; check flood fixture wiring");
     } else if (after_ow.critical_sections <= before_ow.critical_sections) {
         ev_hil_fail(result, name, "OneWire critical sections were not measured");
+    } else if ((cfg->max_reset_critical_section_us != 0U) &&
+               (after_ow.max_reset_critical_section_us > cfg->max_reset_critical_section_us)) {
+        ev_hil_fail(result, name, "OneWire reset critical section budget exceeded");
+    } else if ((cfg->max_bit_critical_section_us != 0U) &&
+               (after_ow.max_bit_critical_section_us > cfg->max_bit_critical_section_us)) {
+        ev_hil_fail(result, name, "OneWire bit critical section budget exceeded");
+    } else if (after_ow.critical_section_budget_violations != before_ow.critical_section_budget_violations) {
+        ev_hil_fail(result, name, "OneWire critical section budget violation observed");
     } else {
         ESP_LOGI(EV_HIL_ONEWIRE_TAG,
-                 "%s drained=%u toggles=%u dropped_delta=0 max_crit_us=%u",
+                 "%s drained=%u toggles=%u dropped_delta=0 max_crit_us=%u reset_max_us=%u bit_max_us=%u",
                  name,
                  (unsigned)drained,
                  (unsigned)s_ev_hil_irq_flood_ctx.toggles,
-                 (unsigned)after_ow.max_critical_section_us);
+                 (unsigned)after_ow.max_critical_section_us,
+                 (unsigned)after_ow.max_reset_critical_section_us,
+                 (unsigned)after_ow.max_bit_critical_section_us);
         ev_hil_pass(result, name);
     }
 }

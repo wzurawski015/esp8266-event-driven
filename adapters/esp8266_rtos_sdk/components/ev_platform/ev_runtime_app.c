@@ -102,6 +102,30 @@ static ev_result_t ev_runtime_app_compute_wait_ms(const ev_demo_app_t *app,
     return EV_OK;
 }
 
+static ev_esp8266_system_sleep_profile_t ev_runtime_app_build_sleep_profile(
+    const ev_demo_app_board_profile_t *board_profile)
+{
+    const ev_demo_app_board_profile_t *profile =
+        (board_profile != NULL) ? board_profile : ev_demo_app_default_board_profile();
+    ev_esp8266_system_sleep_profile_t sleep_profile = {0};
+
+    sleep_profile.i2c_port_num = profile->i2c_port_num;
+    if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_I2C0) != 0U) {
+        sleep_profile.resource_mask |= EV_ESP8266_SLEEP_RESOURCE_I2C0;
+    }
+    if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_ONEWIRE0) != 0U) {
+        sleep_profile.resource_mask |= EV_ESP8266_SLEEP_RESOURCE_ONEWIRE0;
+    }
+    if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_GPIO_IRQ) != 0U) {
+        sleep_profile.resource_mask |= EV_ESP8266_SLEEP_RESOURCE_GPIO_IRQ;
+    }
+    if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_DEEP_SLEEP_WAKE_GPIO16) != 0U) {
+        sleep_profile.resource_mask |= EV_ESP8266_SLEEP_RESOURCE_WAKE_GPIO16;
+    }
+
+    return sleep_profile;
+}
+
 static void ev_runtime_app_wait_for_work(const ev_demo_app_t *app,
                                          const ev_clock_port_t *clock_port,
                                          ev_irq_port_t *irq_port)
@@ -151,6 +175,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
     ev_reset_port_t reset_port;
     ev_uart_port_t uart_port;
     ev_system_port_t system_port;
+    ev_esp8266_system_sleep_profile_t sleep_profile;
     ev_uart_config_t uart_cfg;
     ev_reset_reason_t reset_reason;
     ev_demo_app_config_t app_cfg = {0};
@@ -172,7 +197,8 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
     if (ev_esp8266_uart_port_init(&uart_port) != EV_OK) {
         return;
     }
-    if (ev_esp8266_system_port_init(&system_port) != EV_OK) {
+    sleep_profile = ev_runtime_app_build_sleep_profile(board_profile);
+    if (ev_esp8266_system_port_init_with_sleep_profile(&system_port, &sleep_profile) != EV_OK) {
         return;
     }
 

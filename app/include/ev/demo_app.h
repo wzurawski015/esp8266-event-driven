@@ -99,6 +99,10 @@ typedef struct {
     uint32_t last_poll_elapsed_ms;
     uint32_t max_poll_elapsed_ms;
     uint32_t disabled_route_deliveries;
+    uint32_t sleep_arm_attempts;
+    uint32_t sleep_arm_successes;
+    uint32_t sleep_arm_failures;
+    uint32_t sleep_disarm_calls;
 } ev_demo_app_stats_t;
 
 typedef struct ev_demo_app ev_demo_app_t;
@@ -151,6 +155,7 @@ struct ev_demo_app {
     uint32_t next_tick_ms;
     uint32_t next_tick_100ms_ms;
     bool boot_published;
+    bool sleep_arming;
     ev_irq_port_t *irq_port;
     ev_system_port_t *system_port;
     ev_demo_app_board_profile_t board_profile;
