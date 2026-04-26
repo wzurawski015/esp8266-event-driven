@@ -34,6 +34,7 @@ typedef struct {
     ev_mailbox_kind_t kind;
     ev_msg_t *storage;
     size_t storage_count;
+    size_t storage_mask;
     size_t head;
     size_t tail;
     size_t count;

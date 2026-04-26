@@ -57,9 +57,6 @@ ev_result_t ev_msg_init_publish(ev_msg_t *msg, ev_event_id_t event_id, ev_actor_
         return EV_ERR_OUT_OF_RANGE;
     }
 
-    if (ev_msg_has_cookie(msg)) {
-        (void)ev_msg_dispose(msg);
-    }
     ev_msg_reset(msg);
     msg->event_id = event_id;
     msg->source_actor = source_actor;
@@ -81,9 +78,6 @@ ev_result_t ev_msg_init_send(
         return EV_ERR_OUT_OF_RANGE;
     }
 
-    if (ev_msg_has_cookie(msg)) {
-        (void)ev_msg_dispose(msg);
-    }
     ev_msg_reset(msg);
     msg->event_id = event_id;
     msg->source_actor = source_actor;

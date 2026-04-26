@@ -24,7 +24,7 @@ ev_result_t ev_publish_ex(
 {
     ev_result_t rc;
     size_t i;
-    size_t matched_routes;
+    ev_route_span_t route_span;
     ev_publish_report_t local_report;
 
     if ((msg == NULL) || (deliver == NULL)) {
@@ -44,9 +44,9 @@ ev_result_t ev_publish_ex(
         return EV_ERR_CONTRACT;
     }
 
-    matched_routes = ev_route_count_for_event(msg->event_id);
-    local_report.matched_routes = matched_routes;
-    if (matched_routes == 0U) {
+    route_span = ev_route_span_for_event(msg->event_id);
+    local_report.matched_routes = route_span.count;
+    if (route_span.count == 0U) {
         local_report.first_error = EV_ERR_NOT_FOUND;
         if (report != NULL) {
             *report = local_report;
@@ -54,9 +54,9 @@ ev_result_t ev_publish_ex(
         return EV_ERR_NOT_FOUND;
     }
 
-    for (i = 0U; i < ev_route_count(); ++i) {
-        const ev_route_t *route = ev_route_at(i);
-        if ((route == NULL) || (route->event_id != msg->event_id)) {
+    for (i = 0U; i < route_span.count; ++i) {
+        const ev_route_t *route = ev_route_at(route_span.start_index + i);
+        if (route == NULL) {
             continue;
         }
 

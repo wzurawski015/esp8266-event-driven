@@ -105,7 +105,11 @@ int main(void)
                &lease_trace) == EV_OK);
     assert(lease_trace.releases == 2U);
 
-    /* Reinitializing a populated message also releases the attached payload. */
+    /* Reuse now makes ownership explicit: dispose first, then blind-init. */
+    assert(ev_msg_dispose(&msg) == EV_OK);
+    assert(lease_trace.releases == 3U);
+
+    memset(&msg, 0xA5, sizeof(msg));
     assert(ev_msg_init_send(&msg, EV_DIAG_SNAPSHOT_REQ, ACT_APP, ACT_DIAG) == EV_OK);
     assert(lease_trace.releases == 3U);
     assert(msg.target_actor == ACT_DIAG);

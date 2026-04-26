@@ -32,11 +32,16 @@ typedef struct {
 } ev_esp8266_irq_line_t;
 
 typedef struct {
-    ev_irq_sample_t ring[EV_ESP8266_IRQ_RING_CAPACITY];
+    uint32_t gpio_status;
+} ev_esp8266_irq_raw_sample_t;
+
+typedef struct {
+    ev_esp8266_irq_raw_sample_t ring[EV_ESP8266_IRQ_RING_CAPACITY];
     ev_esp8266_irq_line_t lines[EV_ESP8266_IRQ_MAX_LINES];
     volatile uint32_t write_seq;
     volatile uint32_t read_seq;
     volatile uint32_t dropped_samples;
+    uint32_t decode_status;
     uint32_t high_watermark;
     uint32_t active_gpio_mask;
     uint32_t enabled_gpio_mask;
@@ -130,13 +135,29 @@ static bool ev_esp8266_irq_line_configs_are_valid(const ev_gpio_irq_line_config_
 }
 
 
-static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const ev_irq_sample_t *sample)
+static uint32_t ev_esp8266_irq_pending_count_unsafe(const ev_esp8266_irq_adapter_ctx_t *adapter)
+{
+    uint32_t pending;
+
+    if (adapter == NULL) {
+        return 0U;
+    }
+
+    pending = adapter->write_seq - adapter->read_seq;
+    if (adapter->decode_status != 0U) {
+        ++pending;
+    }
+
+    return pending;
+}
+
+static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, uint32_t gpio_status)
 {
     BaseType_t higher_priority_woken = pdFALSE;
     uint32_t write_seq;
     uint32_t read_seq;
 
-    if ((adapter == NULL) || (sample == NULL)) {
+    if ((adapter == NULL) || (gpio_status == 0U)) {
         return;
     }
 
@@ -144,7 +165,7 @@ static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const
     read_seq = adapter->read_seq;
     if ((write_seq - read_seq) < EV_ESP8266_IRQ_RING_CAPACITY) {
         const uint32_t pending_after = (write_seq + 1U) - read_seq;
-        adapter->ring[write_seq & EV_ESP8266_IRQ_RING_MASK] = *sample;
+        adapter->ring[write_seq & EV_ESP8266_IRQ_RING_MASK].gpio_status = gpio_status;
         adapter->write_seq = write_seq + 1U;
         if (pending_after > adapter->high_watermark) {
             adapter->high_watermark = pending_after;
@@ -166,7 +187,6 @@ static void IRAM_ATTR ev_esp8266_irq_isr(void *arg)
 {
     ev_esp8266_irq_adapter_ctx_t *adapter = (ev_esp8266_irq_adapter_ctx_t *)arg;
     uint32_t status;
-    size_t i;
 
     if (adapter == NULL) {
         return;
@@ -179,29 +199,16 @@ static void IRAM_ATTR ev_esp8266_irq_isr(void *arg)
     }
 
     GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status);
-
-    for (i = 0U; i < adapter->line_count; ++i) {
-        ev_esp8266_irq_line_t *line = &adapter->lines[i];
-
-        if ((status & line->gpio_mask) != 0U) {
-            ev_irq_sample_t sample = {0};
-            const uint8_t level = (uint8_t)((gpio_get_level((gpio_num_t)line->gpio_num) != 0) ? 1U : 0U);
-
-            sample.line_id = line->line_id;
-            sample.edge = ev_esp8266_irq_edge_from_sample(line, level);
-            sample.level = level;
-            sample.timestamp_us = (uint32_t)esp_timer_get_time();
-            line->last_level = level;
-            ev_esp8266_irq_push_isr(adapter, &sample);
-        }
-    }
+    ev_esp8266_irq_push_isr(adapter, status);
 }
 
 
 static ev_result_t ev_esp8266_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
 {
     ev_esp8266_irq_adapter_ctx_t *adapter = (ev_esp8266_irq_adapter_ctx_t *)ctx;
+    ev_esp8266_irq_line_t *selected_line = NULL;
     uint32_t read_seq;
+    size_t i;
 
     if ((adapter == NULL) || (out_sample == NULL)) {
         return EV_ERR_INVALID_ARG;
@@ -212,18 +219,44 @@ static ev_result_t ev_esp8266_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
 
     portENTER_CRITICAL();
 
-    read_seq = adapter->read_seq;
-    if (read_seq == adapter->write_seq) {
-        portEXIT_CRITICAL();
+    if (adapter->decode_status == 0U) {
+        read_seq = adapter->read_seq;
+        if (read_seq == adapter->write_seq) {
+            portEXIT_CRITICAL();
+            return EV_ERR_EMPTY;
+        }
+
+        adapter->decode_status = adapter->ring[read_seq & EV_ESP8266_IRQ_RING_MASK].gpio_status & adapter->active_gpio_mask;
+        adapter->read_seq = read_seq + 1U;
+    }
+
+    for (i = 0U; i < adapter->line_count; ++i) {
+        ev_esp8266_irq_line_t *line = &adapter->lines[i];
+        if ((adapter->decode_status & line->gpio_mask) != 0U) {
+            adapter->decode_status &= (uint32_t)(~line->gpio_mask);
+            selected_line = line;
+            break;
+        }
+    }
+
+    portEXIT_CRITICAL();
+
+    if (selected_line == NULL) {
         return EV_ERR_EMPTY;
     }
 
-    *out_sample = adapter->ring[read_seq & EV_ESP8266_IRQ_RING_MASK];
-    adapter->read_seq = read_seq + 1U;
+    {
+        const uint8_t level = (uint8_t)((gpio_get_level((gpio_num_t)selected_line->gpio_num) != 0) ? 1U : 0U);
+        out_sample->line_id = selected_line->line_id;
+        out_sample->edge = ev_esp8266_irq_edge_from_sample(selected_line, level);
+        out_sample->level = level;
+        out_sample->timestamp_us = (uint32_t)esp_timer_get_time();
+        selected_line->last_level = level;
+    }
 
-    portEXIT_CRITICAL();
     return EV_OK;
 }
+
 
 static ev_result_t ev_esp8266_irq_wait(void *ctx, uint32_t timeout_ms, bool *out_woken)
 {
@@ -238,7 +271,7 @@ static ev_result_t ev_esp8266_irq_wait(void *ctx, uint32_t timeout_ms, bool *out
     }
 
     portENTER_CRITICAL();
-    if (adapter->read_seq != adapter->write_seq) {
+    if (ev_esp8266_irq_pending_count_unsafe(adapter) != 0U) {
         portEXIT_CRITICAL();
         *out_woken = true;
         return EV_OK;
@@ -281,7 +314,7 @@ static ev_result_t ev_esp8266_irq_get_stats(void *ctx, ev_irq_stats_t *out_stats
     read_seq = adapter->read_seq;
     out_stats->write_seq = write_seq;
     out_stats->read_seq = read_seq;
-    out_stats->pending_samples = write_seq - read_seq;
+    out_stats->pending_samples = (write_seq - read_seq) + ((adapter->decode_status != 0U) ? 1U : 0U);
     out_stats->dropped_samples = adapter->dropped_samples;
     out_stats->high_watermark = adapter->high_watermark;
     portEXIT_CRITICAL();
@@ -425,7 +458,7 @@ ev_result_t ev_esp8266_irq_get_diag(ev_esp8266_irq_diag_snapshot_t *out_snapshot
     read_seq = g_ev_irq_ctx.read_seq;
     out_snapshot->write_seq = write_seq;
     out_snapshot->read_seq = read_seq;
-    out_snapshot->pending_samples = write_seq - read_seq;
+    out_snapshot->pending_samples = (write_seq - read_seq) + ((g_ev_irq_ctx.decode_status != 0U) ? 1U : 0U);
     out_snapshot->dropped_samples = g_ev_irq_ctx.dropped_samples;
     out_snapshot->high_watermark = g_ev_irq_ctx.high_watermark;
     out_snapshot->active_gpio_mask = g_ev_irq_ctx.active_gpio_mask;
@@ -487,7 +520,7 @@ ev_result_t ev_esp8266_irq_confirm_sleep_ready(void)
     }
 
     portENTER_CRITICAL();
-    pending_samples = g_ev_irq_ctx.write_seq - g_ev_irq_ctx.read_seq;
+    pending_samples = ev_esp8266_irq_pending_count_unsafe(&g_ev_irq_ctx);
     portEXIT_CRITICAL();
     pending_status = ev_esp8266_irq_pending_hw_status(&g_ev_irq_ctx);
 
@@ -546,7 +579,7 @@ ev_result_t ev_esp8266_irq_prepare_for_sleep(void)
     }
 
     portENTER_CRITICAL();
-    pending_samples = g_ev_irq_ctx.write_seq - g_ev_irq_ctx.read_seq;
+    pending_samples = ev_esp8266_irq_pending_count_unsafe(&g_ev_irq_ctx);
     portEXIT_CRITICAL();
     if ((pending_samples != 0U) || (ev_esp8266_irq_pending_hw_status(&g_ev_irq_ctx) != 0U)) {
         ++g_ev_irq_ctx.sleep_prepare_failures;
@@ -570,7 +603,7 @@ ev_result_t ev_esp8266_irq_prepare_for_sleep(void)
     }
 
     portENTER_CRITICAL();
-    pending_samples = g_ev_irq_ctx.write_seq - g_ev_irq_ctx.read_seq;
+    pending_samples = ev_esp8266_irq_pending_count_unsafe(&g_ev_irq_ctx);
     portEXIT_CRITICAL();
     if ((pending_samples != 0U) || (ev_esp8266_irq_pending_hw_status(&g_ev_irq_ctx) != 0U)) {
         ++g_ev_irq_ctx.sleep_prepare_failures;

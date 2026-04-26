@@ -16,6 +16,14 @@ typedef struct {
 } ev_route_t;
 
 /**
+ * @brief Contiguous route span for one event in the grouped route table.
+ */
+typedef struct {
+    size_t start_index;
+    size_t count;
+} ev_route_span_t;
+
+/**
  * @brief Return the number of declared static routes.
  *
  * @return Number of route entries.
@@ -29,6 +37,14 @@ size_t ev_route_count(void);
  * @return Route pointer or NULL when out of range.
  */
 const ev_route_t *ev_route_at(size_t index);
+
+/**
+ * @brief Return the contiguous route span for a given event.
+ *
+ * @param event_id Event identifier.
+ * @return Route span. Invalid or unrouted events return {0, 0}.
+ */
+ev_route_span_t ev_route_span_for_event(ev_event_id_t event_id);
 
 /**
  * @brief Count static routes for a given event.

@@ -17,9 +17,14 @@ static void ev_mailbox_record_high_watermark(ev_mailbox_t *mailbox)
     }
 }
 
+static bool ev_mailbox_capacity_is_power_of_two(size_t storage_count)
+{
+    return (storage_count != 0U) && ((storage_count & (storage_count - 1U)) == 0U);
+}
+
 static size_t ev_mailbox_index_advance(const ev_mailbox_t *mailbox, size_t index)
 {
-    return (index + 1U) % mailbox->storage_count;
+    return (index + 1U) & mailbox->storage_mask;
 }
 
 static ev_result_t ev_mailbox_dispose_slot(ev_mailbox_t *mailbox, size_t index)
@@ -101,12 +106,16 @@ ev_result_t ev_mailbox_init(
     if (storage_count != ev_mailbox_kind_capacity(kind)) {
         return EV_ERR_OUT_OF_RANGE;
     }
+    if (!ev_mailbox_capacity_is_power_of_two(storage_count)) {
+        return EV_ERR_OUT_OF_RANGE;
+    }
 
     memset(mailbox, 0, sizeof(*mailbox));
     memset(storage, 0, sizeof(*storage) * storage_count);
     mailbox->kind = kind;
     mailbox->storage = storage;
     mailbox->storage_count = storage_count;
+    mailbox->storage_mask = storage_count - 1U;
     return EV_OK;
 }
 

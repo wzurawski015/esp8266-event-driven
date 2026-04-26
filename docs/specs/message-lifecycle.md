@@ -101,12 +101,13 @@ Every code review touching message flow should answer:
 
 ## Initialization safety
 
-`ev_msg_init_publish()` and `ev_msg_init_send()` must be safe on first use with
-indeterminate stack storage. The runtime therefore stamps every reset envelope
-with a contract cookie and treats disposal of an unknown envelope as a no-op
-that normalizes it into a disposed state.
+`ev_msg_init_publish()` and `ev_msg_init_send()` perform a blind overwrite and
+must not inspect any field of the destination envelope before resetting it.
+They are therefore safe on first use even when the caller provides arbitrary
+stack storage.
 
-This removes a dangerous hidden requirement that callers zero-initialize every
-transient `ev_msg_t` before first use. Reuse of an already initialized message
-remains leak-safe because reinitialization still disposes any attached payload
-before resetting the envelope.
+The cost of this MISRA-friendly rule is explicit reuse ownership: initializing
+a message does **not** release a previously attached payload. A caller that
+reuses a populated envelope must call `ev_msg_dispose()` first, then initialize
+the envelope again. This keeps first-use initialization free of undefined
+behavior and makes payload lifetime transitions explicit at call sites.
