@@ -34,6 +34,9 @@ typedef struct {
     void *deliver_context;
     uint32_t active_hardware_mask;
     uint32_t observed_hardware_mask;
+    uint32_t required_hardware_mask;
+    uint32_t optional_hardware_mask;
+    uint32_t known_hardware_mask;
     bool boot_observed;
     bool system_ready_published;
     uint32_t ticks_waited;
@@ -42,6 +45,10 @@ typedef struct {
 ev_result_t ev_supervisor_actor_init(ev_supervisor_actor_ctx_t *ctx,
                                      ev_delivery_fn_t deliver,
                                      void *deliver_context);
+
+ev_result_t ev_supervisor_actor_configure_hardware(ev_supervisor_actor_ctx_t *ctx,
+                                                   uint32_t required_hardware_mask,
+                                                   uint32_t optional_hardware_mask);
 
 ev_result_t ev_supervisor_actor_handle(void *actor_context, const ev_msg_t *msg);
 

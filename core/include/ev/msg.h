@@ -13,6 +13,7 @@
 
 #define EV_MSG_INLINE_CAPACITY 24U
 #define EV_MSG_COOKIE 0x45564D53u
+#define EV_MSG_INITIALIZER {0}
 
 /**
  * @brief Physical storage used by the runtime envelope.
@@ -92,9 +93,9 @@ void ev_msg_reset(ev_msg_t *msg);
 /**
  * @brief Initialize a message for publish delivery.
  *
- * Reinitializing an already populated message first releases any currently
- * attached payload so that reuse is leak-safe. First-time initialization is
- * also safe on indeterminate stack storage.
+ * Initialization performs a blind overwrite and is safe for arbitrary stack
+ * storage. It does not release any previously attached payload. Call
+ * ev_msg_dispose() explicitly before reusing a populated message.
  *
  * @param msg Message to initialize.
  * @param event_id Declared event identifier.
@@ -106,9 +107,9 @@ ev_result_t ev_msg_init_publish(ev_msg_t *msg, ev_event_id_t event_id, ev_actor_
 /**
  * @brief Initialize a message for direct send delivery.
  *
- * Reinitializing an already populated message first releases any currently
- * attached payload so that reuse is leak-safe. First-time initialization is
- * also safe on indeterminate stack storage.
+ * Initialization performs a blind overwrite and is safe for arbitrary stack
+ * storage. It does not release any previously attached payload. Call
+ * ev_msg_dispose() explicitly before reusing a populated message.
  *
  * @param msg Message to initialize.
  * @param event_id Declared event identifier.

@@ -1,9 +1,15 @@
 #include <stdint.h>
 
+#include "board_profile.h"
+
+#include "ev/compiler.h"
 #include "ev/esp8266_boot_diag.h"
 
-#define EV_BOARD_TAG "ev_generic"
-#define EV_BOARD_NAME "esp8266_generic_dev"
+#define EV_BOARD_TAG EV_BOARD_PROFILE_TAG
+#define EV_BOARD_NAME EV_BOARD_PROFILE_NAME
+
+EV_STATIC_ASSERT(EV_BOARD_PIN_STATUS_LED == 2U,
+                 "Generic development board status LED mapping must stay fixed to GPIO2");
 
 void app_main(void)
 {

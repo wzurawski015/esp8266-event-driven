@@ -73,6 +73,30 @@ typedef ev_result_t (*ev_irq_enable_fn_t)(void *ctx, ev_irq_line_id_t line_id, b
 typedef ev_result_t (*ev_irq_wait_fn_t)(void *ctx, uint32_t timeout_ms, bool *out_woken);
 
 /**
+ * @brief Bounded IRQ ingress statistics exposed through the portable port.
+ *
+ * The counters are monotonic best-effort diagnostics. They are intended for
+ * observability, HIL gates, and sleep-quiescence checks; callers must not use
+ * them as an ordering primitive.
+ */
+typedef struct ev_irq_stats {
+    uint32_t write_seq; /**< Monotonic number of samples accepted into the ring. */
+    uint32_t read_seq; /**< Monotonic number of samples popped from the ring. */
+    uint32_t pending_samples; /**< Currently pending samples in the adapter ring. */
+    uint32_t dropped_samples; /**< Samples dropped because the adapter ring was full. */
+    uint32_t high_watermark; /**< Maximum observed pending depth of the adapter ring. */
+} ev_irq_stats_t;
+
+/**
+ * @brief Copy a stable snapshot of IRQ ingress statistics.
+ *
+ * @param ctx Adapter-owned context bound into the public port object.
+ * @param out_stats Destination statistics snapshot.
+ * @return EV_OK on success or another error code when statistics are unavailable.
+ */
+typedef ev_result_t (*ev_irq_get_stats_fn_t)(void *ctx, ev_irq_stats_t *out_stats);
+
+/**
  * @brief Platform interrupt-ingress contract.
  */
 typedef struct ev_irq_port {
@@ -80,6 +104,7 @@ typedef struct ev_irq_port {
     ev_irq_pop_fn_t pop;
     ev_irq_enable_fn_t enable;
     ev_irq_wait_fn_t wait;
+    ev_irq_get_stats_fn_t get_stats;
 } ev_irq_port_t;
 
 #ifdef __cplusplus

@@ -21,6 +21,8 @@
 #include "ev/panel_actor.h"
 #include "ev/rtc_actor.h"
 #include "ev/supervisor_actor.h"
+#include "ev/power_actor.h"
+#include "ev/system_port.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,6 +32,32 @@ extern "C" {
 #define EV_DEMO_APP_LEASE_SLOTS 4U
 #define EV_DEMO_APP_SNAPSHOT_BYTES 16U
 #define EV_DEMO_APP_LEASE_SLOT_BYTES 96U
+
+#define EV_DEMO_APP_BOARD_CAP_I2C0 0x00000001UL
+#define EV_DEMO_APP_BOARD_CAP_ONEWIRE0 0x00000002UL
+#define EV_DEMO_APP_BOARD_CAP_GPIO_IRQ 0x00000004UL
+#define EV_DEMO_APP_BOARD_CAP_DEEP_SLEEP_WAKE_GPIO16 0x00000008UL
+
+/**
+ * @brief Board-owned hardware profile consumed by the portable runtime.
+ *
+ * Targets build this object from board_profile.h so I2C addresses, enabled
+ * hardware actors, and supervisor readiness policy stay outside app defaults.
+ */
+typedef struct {
+    uint32_t capabilities_mask;
+    uint32_t hardware_present_mask;
+    uint32_t supervisor_required_mask;
+    uint32_t supervisor_optional_mask;
+    ev_i2c_port_num_t i2c_port_num;
+    ev_irq_line_id_t rtc_sqw_line_id;
+    uint8_t mcp23008_addr_7bit;
+    uint8_t rtc_addr_7bit;
+    uint8_t oled_addr_7bit;
+    ev_oled_controller_t oled_controller;
+} ev_demo_app_board_profile_t;
+
+const ev_demo_app_board_profile_t *ev_demo_app_default_board_profile(void);
 
 /**
  * @brief Immutable wiring required by the portable demo runtime.
@@ -43,6 +71,8 @@ typedef struct {
     ev_irq_port_t *irq_port; /* Wstrzyknięty kontrakt wejścia IRQ dla aktorów sprzętowych. */
     ev_i2c_port_t *i2c_port; /* Wstrzyknięty kontrakt magistrali I2C dla aktorów sprzętowych. */
     ev_onewire_port_t *onewire_port; /* Wstrzyknięty kontrakt 1-Wire dla aktorów sprzętowych. */
+    ev_system_port_t *system_port; /* Wstrzyknięty kontrakt globalnego stanu zasilania. */
+    const ev_demo_app_board_profile_t *board_profile; /* BSP-derived hardware graph and device policy. */
 } ev_demo_app_config_t;
 
 /**
@@ -57,6 +87,9 @@ typedef struct {
     uint32_t publish_errors;
     uint32_t pump_errors;
     uint32_t irq_samples_drained;
+    uint32_t irq_samples_dropped_observed;
+    uint32_t irq_samples_pending_high_watermark;
+    uint32_t irq_ring_high_watermark_observed;
     size_t max_pending_before_poll;
     size_t max_pending_after_poll;
     size_t max_irq_samples_per_poll;
@@ -65,6 +98,11 @@ typedef struct {
     size_t max_messages_per_poll;
     uint32_t last_poll_elapsed_ms;
     uint32_t max_poll_elapsed_ms;
+    uint32_t disabled_route_deliveries;
+    uint32_t sleep_arm_attempts;
+    uint32_t sleep_arm_successes;
+    uint32_t sleep_arm_failures;
+    uint32_t sleep_disarm_calls;
 } ev_demo_app_stats_t;
 
 typedef struct ev_demo_app ev_demo_app_t;
@@ -117,7 +155,10 @@ struct ev_demo_app {
     uint32_t next_tick_ms;
     uint32_t next_tick_100ms_ms;
     bool boot_published;
+    bool sleep_arming;
     ev_irq_port_t *irq_port;
+    ev_system_port_t *system_port;
+    ev_demo_app_board_profile_t board_profile;
 
     ev_mailbox_t runtime_mailbox;
     ev_msg_t runtime_storage[8];
@@ -131,6 +172,7 @@ struct ev_demo_app {
     ev_mailbox_t ds18b20_mailbox; /* Skrzynka pocztowa dla DS18B20 */
     ev_mailbox_t oled_mailbox; /* Skrzynka pocztowa dla OLED */
     ev_mailbox_t supervisor_mailbox; /* Skrzynka pocztowa dla Supervisora */
+    ev_mailbox_t power_mailbox; /* Skrzynka pocztowa dla Aktora Power */
 
     ev_msg_t app_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
     ev_msg_t diag_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
@@ -140,6 +182,7 @@ struct ev_demo_app {
     ev_msg_t ds18b20_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla DS18B20 */
     ev_msg_t oled_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla OLED */
     ev_msg_t supervisor_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Supervisora */
+    ev_msg_t power_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Aktora Power */
 
     ev_actor_runtime_t app_runtime;
     ev_actor_runtime_t diag_runtime;
@@ -149,6 +192,7 @@ struct ev_demo_app {
     ev_actor_runtime_t ds18b20_runtime; /* Wątek logiczny Aktora DS18B20 */
     ev_actor_runtime_t oled_runtime; /* Wątek logiczny Aktora OLED */
     ev_actor_runtime_t supervisor_runtime; /* Wątek logiczny Aktora Supervisora */
+    ev_actor_runtime_t power_runtime; /* Wątek logiczny Aktora Power */
 
     ev_domain_pump_t fast_domain;
     ev_domain_pump_t slow_domain;
@@ -166,6 +210,7 @@ struct ev_demo_app {
     ev_ds18b20_actor_ctx_t ds18b20_ctx; /* Fizyczny stan i konfiguracja Aktora DS18B20 */
     ev_oled_actor_ctx_t oled_ctx; /* Fizyczny stan i bufor ekranu OLED */
     ev_supervisor_actor_ctx_t supervisor_ctx; /* Stan Supervisora platformy */
+    ev_power_actor_ctx_t power_ctx; /* Stan Aktora Power */
 
     ev_demo_app_stats_t stats;
 };

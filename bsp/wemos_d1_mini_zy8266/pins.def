@@ -1,27 +1,16 @@
-/**
- * @file pins.def
- * @brief Definicja pinów dla Wemos D1 Mini (Moduł ZY8266, Chip FT232)
- */
-
-/* --- SYSTEMOWE --- */
-/* Niebieska dioda LED na module ZY8266 (aktywna w stanie NISKIM) */
-EV_BSP_PIN(EV_PIN_LED_MODULE, 2, EV_PIN_MODE_OUTPUT_OD)
-
-/* --- MAGISTRALA I2C (Zgodnie ze standardem Wemos) --- */
-/* SCL -> D1 (GPIO5) */
-/* SDA -> D2 (GPIO4) */
-EV_BSP_PIN(EV_PIN_I2C_SCL,    5, EV_PIN_MODE_I2C)
-EV_BSP_PIN(EV_PIN_I2C_SDA,    4, EV_PIN_MODE_I2C)
-
-/* --- PINY CYFROWE (Mapowanie D-series dla Aktorów) --- */
-EV_BSP_PIN(EV_PIN_D0,        16, EV_PIN_MODE_INPUT)    /* Wake-up pin */
-EV_BSP_PIN(EV_PIN_D3,         0, EV_PIN_MODE_INPUT)    /* Przycisk Flash na niektórych shieldach */
-EV_BSP_PIN(EV_PIN_D5,        14, EV_PIN_MODE_SPI_SCK) 
-EV_BSP_PIN(EV_PIN_D6,        12, EV_PIN_MODE_SPI_MISO)
-EV_BSP_PIN(EV_PIN_D7,        13, EV_PIN_MODE_SPI_MOSI)
-EV_BSP_PIN(EV_PIN_D8,        15, EV_PIN_MODE_SPI_CS)
-
-/* --- ANALOG --- */
-/* Wejście A0 (ADC0) - Wemos posiada wbudowany dzielnik (100k/220k) */
-/* Pozwala na pomiar napięcia 0-3.3V */
-EV_BSP_PIN_ANALOG(EV_PIN_ADC_INPUT, 0)
+// Wemos D1 Mini (ZY8266 / FT232) board pin map.
+// Format:
+// EV_BSP_PIN(LOGICAL_NAME, GPIO_NUM, "summary")
+// EV_BSP_PIN_ANALOG(LOGICAL_NAME, "summary")
+EV_BSP_PIN(PIN_UART0_TX, 1U, "UART0 TX via FT232 USB-UART bridge")
+EV_BSP_PIN(PIN_UART0_RX, 3U, "UART0 RX via FT232 USB-UART bridge")
+EV_BSP_PIN(PIN_STATUS_LED, 2U, "Module blue LED; active low")
+EV_BSP_PIN(PIN_I2C0_SCL, 5U, "Primary I2C SCL on D1")
+EV_BSP_PIN(PIN_I2C0_SDA, 4U, "Primary I2C SDA on D2")
+EV_BSP_PIN(PIN_OPTIONAL_WAKE0, 16U, "Optional wake pin on D0")
+EV_BSP_PIN(PIN_BOOTSTRAP0, 0U, "Bootstrap / flash pin on D3")
+EV_BSP_PIN(PIN_SPI0_SCK, 14U, "Primary SPI clock on D5")
+EV_BSP_PIN(PIN_SPI0_MISO, 12U, "Primary SPI MISO on D6")
+EV_BSP_PIN(PIN_SPI0_MOSI, 13U, "Primary SPI MOSI on D7")
+EV_BSP_PIN(PIN_OPTIONAL_SPI0_CS0, 15U, "Optional SPI chip-select on D8")
+EV_BSP_PIN_ANALOG(PIN_ADC0_INPUT, "ADC0 / A0 input via on-board divider")

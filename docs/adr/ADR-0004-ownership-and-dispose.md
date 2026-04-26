@@ -83,11 +83,11 @@ Implementation should provide:
 ## Initialization safety
 
 `ev_msg_init_publish()` and `ev_msg_init_send()` must be safe on first use with
-indeterminate stack storage. The runtime therefore stamps every reset envelope
-with a contract cookie and treats disposal of an unknown envelope as a no-op
-that normalizes it into a disposed state.
+arbitrary stack storage. They therefore perform a blind reset before assigning
+event and actor fields and must not inspect `msg->cookie` or any payload field
+from the previous bytes.
 
 This removes a dangerous hidden requirement that callers zero-initialize every
-transient `ev_msg_t` before first use. Reuse of an already initialized message
-remains leak-safe because reinitialization still disposes any attached payload
-before resetting the envelope.
+transient `ev_msg_t` before first use. Reuse is intentionally explicit: callers
+that may hold an attached payload must call `ev_msg_dispose()` before the next
+initialization. Constructors do not release old payloads implicitly.

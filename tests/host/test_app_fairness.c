@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "ev/demo_app.h"
+#include "fakes/fake_board_profile.h"
 #include "fakes/fake_i2c_port.h"
 #include "fakes/fake_irq_port.h"
 #include "fakes/fake_onewire_port.h"
@@ -165,6 +166,7 @@ int main(void)
         .irq_port = &irq_port,
         .i2c_port = &i2c_port,
         .onewire_port = &onewire_port,
+        .board_profile = &k_fake_full_board_profile,
     };
     ev_irq_sample_t sample = {
         .line_id = 0U,
@@ -185,6 +187,23 @@ int main(void)
 
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
+
+    for (i = 0U; i < 4U; ++i) {
+        sample.timestamp_us = 5000U + (uint32_t)i;
+        assert(fake_irq_port_push(&fake_irq, &sample) == EV_OK);
+    }
+    assert(ev_demo_app_pending(&app) > 0U);
+    stats = ev_demo_app_stats(&app);
+    assert(stats != NULL);
+    before_irq_samples = stats->irq_samples_drained;
+    {
+        ev_result_t first_rc = ev_demo_app_poll(&app);
+        assert((first_rc == EV_OK) || (first_rc == EV_ERR_PARTIAL));
+    }
+    stats = ev_demo_app_stats(&app);
+    assert(stats->irq_samples_drained > before_irq_samples);
+    assert(stats->irq_ring_high_watermark_observed >= 4U);
+
     while ((ev_demo_app_pending(&app) > 0U) || (fake_irq.count > 0U)) {
         ev_result_t rc = ev_demo_app_poll(&app);
         assert((rc == EV_OK) || (rc == EV_ERR_PARTIAL));

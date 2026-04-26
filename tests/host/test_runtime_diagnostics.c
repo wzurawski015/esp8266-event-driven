@@ -53,7 +53,7 @@ int main(void)
     ev_actor_runtime_t diag_runtime_fail;
     ev_actor_registry_t registry = {0};
     ev_actor_registry_t partial_registry = {0};
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     ev_publish_report_t report;
     const ev_actor_registry_stats_t *registry_stats;
     const ev_actor_runtime_stats_t *diag_stats;

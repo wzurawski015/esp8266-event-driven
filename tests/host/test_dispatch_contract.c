@@ -32,7 +32,7 @@ static ev_result_t trace_delivery(ev_actor_id_t target_actor, const ev_msg_t *ms
 
 int main(void)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     trace_t trace = {0};
     ev_publish_report_t report;
     size_t delivered = 0U;

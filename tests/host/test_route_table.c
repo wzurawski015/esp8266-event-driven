@@ -10,8 +10,9 @@ int main(void)
 {
     size_t i;
     size_t j;
+    ev_route_span_t span;
 
-    assert(ev_route_count() == 36U);
+    assert(ev_route_count() == 37U);
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 7U);
     assert(ev_route_count_for_event(EV_TICK_1S) == 6U);
@@ -32,6 +33,19 @@ int main(void)
     assert(ev_route_count_for_event(EV_OLED_READY) == 1U);
     assert(ev_route_count_for_event(EV_DS18B20_READY) == 1U);
     assert(ev_route_count_for_event(EV_SYSTEM_READY) == 1U);
+    assert(ev_route_count_for_event(EV_SYS_GOTO_SLEEP_CMD) == 1U);
+
+    span = ev_route_span_for_event(EV_BOOT_COMPLETED);
+    assert(span.count == 7U);
+    assert(span.start_index < ev_route_count());
+    for (i = 0U; i < span.count; ++i) {
+        const ev_route_t *route = ev_route_at(span.start_index + i);
+        assert(route != NULL);
+        assert(route->event_id == EV_BOOT_COMPLETED);
+    }
+    span = ev_route_span_for_event((ev_event_id_t)EV_EVENT_COUNT);
+    assert(span.start_index == 0U);
+    assert(span.count == 0U);
 
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_DIAG));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_APP));
@@ -60,6 +74,7 @@ int main(void)
     assert(ev_route_exists(EV_OLED_READY, ACT_SUPERVISOR));
     assert(ev_route_exists(EV_DS18B20_READY, ACT_SUPERVISOR));
     assert(ev_route_exists(EV_SYSTEM_READY, ACT_APP));
+    assert(ev_route_exists(EV_SYS_GOTO_SLEEP_CMD, ACT_POWER));
     assert(ev_route_exists(EV_PANEL_LED_SET_CMD, ACT_MCP23008));
     assert(ev_route_exists(EV_TIME_UPDATED, ACT_APP));
     assert(ev_route_exists(EV_TEMP_UPDATED, ACT_APP));

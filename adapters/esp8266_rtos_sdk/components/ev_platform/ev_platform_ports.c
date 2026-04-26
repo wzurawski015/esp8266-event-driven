@@ -8,6 +8,7 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_sleep.h"
 
 #include "ev/esp8266_port_adapters.h"
 
@@ -409,4 +410,140 @@ ev_result_t ev_esp8266_uart_port_init(ev_uart_port_t *out_port)
     out_port->write = ev_uart_write_impl;
     out_port->read = ev_uart_read_impl;
     return EV_OK;
+}
+
+
+typedef struct ev_esp8266_system_adapter_ctx {
+    ev_esp8266_system_sleep_profile_t sleep_profile;
+    bool sleep_prepared;
+} ev_esp8266_system_adapter_ctx_t;
+
+static ev_esp8266_system_adapter_ctx_t g_ev_system_ctx;
+
+static ev_result_t ev_system_abort_sleep_prepare_impl(void *ctx)
+{
+    ev_esp8266_system_adapter_ctx_t *adapter = (ev_esp8266_system_adapter_ctx_t *)ctx;
+    ev_result_t rc = EV_OK;
+
+    if (adapter == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (!adapter->sleep_prepared) {
+        return EV_OK;
+    }
+
+    if ((adapter->sleep_profile.resource_mask & EV_ESP8266_SLEEP_RESOURCE_GPIO_IRQ) != 0U) {
+        rc = ev_esp8266_irq_abort_sleep_prepare();
+    }
+
+    adapter->sleep_prepared = false;
+    return rc;
+}
+
+static ev_result_t ev_system_prepare_for_sleep_impl(void *ctx, uint64_t duration_us)
+{
+    ev_esp8266_system_adapter_ctx_t *adapter = (ev_esp8266_system_adapter_ctx_t *)ctx;
+    ev_result_t rc;
+    bool irq_prepared = false;
+
+    (void)duration_us;
+
+    if (adapter == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (adapter->sleep_prepared) {
+        return EV_OK;
+    }
+
+    if ((adapter->sleep_profile.resource_mask & EV_ESP8266_SLEEP_RESOURCE_GPIO_IRQ) != 0U) {
+        rc = ev_esp8266_irq_prepare_for_sleep();
+        if (rc != EV_OK) {
+            return rc;
+        }
+        irq_prepared = true;
+    }
+
+    if ((adapter->sleep_profile.resource_mask & EV_ESP8266_SLEEP_RESOURCE_ONEWIRE0) != 0U) {
+        rc = ev_esp8266_onewire_prepare_for_sleep();
+        if (rc != EV_OK) {
+            if (irq_prepared) {
+                (void)ev_esp8266_irq_abort_sleep_prepare();
+            }
+            return rc;
+        }
+    }
+
+    if ((adapter->sleep_profile.resource_mask & EV_ESP8266_SLEEP_RESOURCE_I2C0) != 0U) {
+        rc = ev_esp8266_i2c_prepare_for_sleep(adapter->sleep_profile.i2c_port_num);
+        if (rc != EV_OK) {
+            if (irq_prepared) {
+                (void)ev_esp8266_irq_abort_sleep_prepare();
+            }
+            return rc;
+        }
+    }
+
+    if (irq_prepared) {
+        rc = ev_esp8266_irq_confirm_sleep_ready();
+        if (rc != EV_OK) {
+            (void)ev_esp8266_irq_abort_sleep_prepare();
+            return rc;
+        }
+    }
+
+    adapter->sleep_prepared = true;
+    return EV_OK;
+}
+
+static ev_result_t ev_system_deep_sleep_impl(void *ctx, uint64_t duration_us)
+{
+    ev_esp8266_system_adapter_ctx_t *adapter = (ev_esp8266_system_adapter_ctx_t *)ctx;
+    ev_result_t rc;
+
+    if (adapter == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if ((adapter->sleep_profile.resource_mask & EV_ESP8266_SLEEP_RESOURCE_GPIO_IRQ) != 0U) {
+        rc = ev_esp8266_irq_commit_sleep_prepare();
+        if (rc != EV_OK) {
+            (void)ev_system_abort_sleep_prepare_impl(adapter);
+            return rc;
+        }
+    }
+
+    esp_deep_sleep(duration_us);
+    return EV_ERR_STATE;
+}
+
+ev_result_t ev_esp8266_system_port_init_with_sleep_profile(
+    ev_system_port_t *out_port,
+    const ev_esp8266_system_sleep_profile_t *sleep_profile)
+{
+    ev_esp8266_system_sleep_profile_t profile = {0};
+
+    if (out_port == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    if (sleep_profile != NULL) {
+        profile = *sleep_profile;
+    }
+
+    g_ev_system_ctx.sleep_profile = profile;
+    g_ev_system_ctx.sleep_prepared = false;
+
+    out_port->ctx = &g_ev_system_ctx;
+    out_port->prepare_for_sleep = ev_system_prepare_for_sleep_impl;
+    out_port->cancel_sleep_prepare = ev_system_abort_sleep_prepare_impl;
+    out_port->deep_sleep = ev_system_deep_sleep_impl;
+    return EV_OK;
+}
+
+ev_result_t ev_esp8266_system_port_init(ev_system_port_t *out_port)
+{
+    const ev_esp8266_system_sleep_profile_t profile = {0};
+    return ev_esp8266_system_port_init_with_sleep_profile(out_port, &profile);
 }

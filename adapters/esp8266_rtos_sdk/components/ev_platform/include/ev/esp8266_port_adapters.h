@@ -1,6 +1,9 @@
 #ifndef EV_ESP8266_PORT_ADAPTERS_H
 #define EV_ESP8266_PORT_ADAPTERS_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 #include "ev/port_clock.h"
 #include "ev/port_i2c.h"
 #include "ev/port_irq.h"
@@ -9,10 +12,67 @@
 #include "ev/port_log.h"
 #include "ev/port_reset.h"
 #include "ev/port_uart.h"
+#include "ev/system_port.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief Snapshot of private ESP8266 zero-heap I2C adapter counters.
+ */
+typedef struct ev_esp8266_i2c_diag_snapshot {
+    uint32_t transactions_started; /**< Number of runtime I2C transactions that acquired the bus. */
+    uint32_t transactions_failed; /**< Number of runtime I2C transactions that ended with non-OK status. */
+    uint32_t nacks; /**< Number of normalized NACK outcomes. */
+    uint32_t timeouts; /**< Number of bounded timeout outcomes. */
+    uint32_t bus_locked; /**< Number of bus-locked or unsafe-bus outcomes. */
+    uint32_t bus_recoveries; /**< Number of attempted bounded bus-recovery sequences. */
+    uint32_t bus_recovery_failures; /**< Number of bus-recovery attempts that did not restore idle bus state. */
+    uint32_t sleep_prepare_attempts; /**< Number of bounded sleep-prepare checks touching the I2C bus. */
+    uint32_t sleep_prepare_failures; /**< Number of I2C sleep-prepare rejections. */
+    bool transaction_active; /**< True while a runtime transaction owns the software I2C master. */
+    bool sda_high; /**< Last sampled SDA idle level. */
+    bool scl_high; /**< Last sampled SCL idle level. */
+} ev_esp8266_i2c_diag_snapshot_t;
+
+/**
+ * @brief Snapshot of private ESP8266 IRQ ingress ring counters.
+ */
+typedef struct ev_esp8266_irq_diag_snapshot {
+    uint32_t write_seq; /**< Monotonic IRQ ring write sequence. */
+    uint32_t read_seq; /**< Monotonic IRQ ring read sequence. */
+    uint32_t pending_samples; /**< Number of currently pending IRQ samples. */
+    uint32_t dropped_samples; /**< Number of IRQ samples dropped because the ring was full. */
+    uint32_t high_watermark; /**< Maximum observed pending IRQ ring depth. */
+    uint32_t active_gpio_mask; /**< GPIO bit mask currently accepted by the ISR. */
+    uint32_t enabled_gpio_mask; /**< GPIO bit mask currently armed for interrupts. */
+    uint32_t sleep_prepare_attempts; /**< Number of IRQ sleep-prepare attempts. */
+    uint32_t sleep_prepare_failures; /**< Number of IRQ sleep-prepare rejections. */
+    uint32_t sleep_prepared_gpio_mask; /**< GPIO mask disabled during a prepared sleep transition. */
+    bool sleep_prepared; /**< True after IRQ ingress has been frozen for sleep. */
+} ev_esp8266_irq_diag_snapshot_t;
+
+/**
+ * @brief Snapshot of private ESP8266 1-Wire adapter state.
+ */
+typedef struct ev_esp8266_onewire_diag_snapshot {
+    uint32_t operations_started; /**< Number of 1-Wire reset/read/write operations entered. */
+    uint32_t sleep_prepare_attempts; /**< Number of 1-Wire sleep-prepare checks. */
+    uint32_t sleep_prepare_failures; /**< Number of 1-Wire sleep-prepare rejections. */
+    uint32_t bus_errors; /**< Number of observed 1-Wire bus errors or unsafe bus states. */
+    uint32_t critical_sections; /**< Number of measured scheduler-protected timing-critical 1-Wire sections. */
+    uint32_t reset_critical_sections; /**< Number of measured reset-pulse scheduler-protected timing sections. */
+    uint32_t bit_critical_sections; /**< Number of measured bit-slot scheduler-protected timing sections. */
+    uint32_t max_critical_section_us; /**< Maximum measured scheduler-protected timing section duration. */
+    uint32_t max_reset_critical_section_us; /**< Maximum measured reset-pulse scheduler-protected timing section duration. */
+    uint32_t max_bit_critical_section_us; /**< Maximum measured bit-slot scheduler-protected timing section duration. */
+    uint32_t critical_section_budget_violations; /**< Scheduler-protected timing sections exceeding the configured 1-Wire timing budget. */
+    uint32_t max_reset_low_hold_us; /**< Maximum reset low pulse duration measured during the protected reset waveform. */
+    bool configured; /**< True after the adapter was initialized. */
+    bool busy; /**< True while a bit-banged 1-Wire operation is active. */
+    bool dq_high; /**< Last sampled released DQ line level. */
+} ev_esp8266_onewire_diag_snapshot_t;
 
 /**
  * @brief Initialize the ESP8266-backed clock adapter.
@@ -25,8 +85,9 @@ ev_result_t ev_esp8266_clock_port_init(ev_clock_port_t *out_port);
 /**
  * @brief Initialize the ESP8266-backed I2C adapter.
  *
- * The adapter installs the SDK master driver for `I2C_NUM_0` and creates one
- * global bus mutex used to serialize all bounded I2C transactions.
+ * The adapter owns a zero-heap GPIO open-drain software I2C master and creates
+ * one bootstrap-time global bus mutex used to serialize all bounded
+ * transactions.  Runtime calls do not allocate SDK command links.
  *
  * @param out_port Destination public contract populated on success.
  * @param sda_pin GPIO number used for SDA.
@@ -34,6 +95,23 @@ ev_result_t ev_esp8266_clock_port_init(ev_clock_port_t *out_port);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int scl_pin);
+
+/**
+ * @brief Copy private ESP8266 I2C adapter counters for diagnostics and HIL gates.
+ *
+ * @param port_num Logical I2C controller identifier.
+ * @param out_snapshot Destination snapshot populated on success.
+ * @return EV_OK on success or EV_ERR_INVALID_ARG/EV_ERR_STATE.
+ */
+ev_result_t ev_esp8266_i2c_get_diag(ev_i2c_port_num_t port_num, ev_esp8266_i2c_diag_snapshot_t *out_snapshot);
+
+/**
+ * @brief Verify and park the ESP8266 zero-heap I2C bus before Deep Sleep.
+ *
+ * @param port_num Logical I2C controller identifier.
+ * @return EV_OK when SDA/SCL are released and idle, otherwise a bounded rejection.
+ */
+ev_result_t ev_esp8266_i2c_prepare_for_sleep(ev_i2c_port_num_t port_num);
 
 /**
  * @brief Scan one initialized I2C controller and log detected slaves.
@@ -64,6 +142,24 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
                                      size_t line_count);
 
 /**
+ * @brief Copy private ESP8266 IRQ ring counters for diagnostics and HIL gates.
+ *
+ * @param out_snapshot Destination snapshot populated on success.
+ * @return EV_OK on success or EV_ERR_INVALID_ARG/EV_ERR_STATE.
+ */
+ev_result_t ev_esp8266_irq_get_diag(ev_esp8266_irq_diag_snapshot_t *out_snapshot);
+
+/**
+ * @brief Disable configured GPIO IRQ sources after proving the IRQ ring is empty.
+ *
+ * @return EV_OK when IRQ ingress is parked for Deep Sleep.
+ */
+ev_result_t ev_esp8266_irq_prepare_for_sleep(void);
+ev_result_t ev_esp8266_irq_confirm_sleep_ready(void);
+ev_result_t ev_esp8266_irq_abort_sleep_prepare(void);
+ev_result_t ev_esp8266_irq_commit_sleep_prepare(void);
+
+/**
  * @brief Initialize the ESP8266-backed 1-Wire adapter.
  *
  * The adapter configures one open-drain GPIO line used later by the DS18B20
@@ -74,6 +170,16 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_onewire_port_init(ev_onewire_port_t *out_port, int data_pin);
+
+/**
+ * @brief Copy private ESP8266 1-Wire adapter state for diagnostics.
+ */
+ev_result_t ev_esp8266_onewire_get_diag(ev_esp8266_onewire_diag_snapshot_t *out_snapshot);
+
+/**
+ * @brief Release and validate the 1-Wire DQ line before Deep Sleep.
+ */
+ev_result_t ev_esp8266_onewire_prepare_for_sleep(void);
 
 /**
  * @brief Initialize the ESP8266-backed log adapter.
@@ -98,6 +204,38 @@ ev_result_t ev_esp8266_reset_port_init(ev_reset_port_t *out_port);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_uart_port_init(ev_uart_port_t *out_port);
+
+#define EV_ESP8266_SLEEP_RESOURCE_I2C0 0x00000001UL
+#define EV_ESP8266_SLEEP_RESOURCE_ONEWIRE0 0x00000002UL
+#define EV_ESP8266_SLEEP_RESOURCE_GPIO_IRQ 0x00000004UL
+#define EV_ESP8266_SLEEP_RESOURCE_WAKE_GPIO16 0x00000008UL
+
+/**
+ * @brief Board-derived resources that the ESP8266 system adapter must park before sleep.
+ */
+typedef struct ev_esp8266_system_sleep_profile {
+    uint32_t resource_mask;
+    ev_i2c_port_num_t i2c_port_num;
+} ev_esp8266_system_sleep_profile_t;
+
+/**
+ * @brief Initialize the ESP8266-backed system-control adapter.
+ *
+ * @param out_port Destination contract populated on success.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_esp8266_system_port_init(ev_system_port_t *out_port);
+
+/**
+ * @brief Initialize the ESP8266 system-control adapter with a board-aware sleep profile.
+ *
+ * @param out_port Destination contract populated on success.
+ * @param sleep_profile Board-derived resources to check and park before deep sleep.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_esp8266_system_port_init_with_sleep_profile(
+    ev_system_port_t *out_port,
+    const ev_esp8266_system_sleep_profile_t *sleep_profile);
 
 /**
  * @brief Convert one normalized reset reason into a stable diagnostic string.

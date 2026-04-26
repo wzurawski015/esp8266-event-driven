@@ -26,7 +26,7 @@ static ev_result_t pump_handler(void *actor_context, const ev_msg_t *msg)
 
 static void enqueue_diag_requests(ev_mailbox_t *mailbox, size_t count)
 {
-    ev_msg_t msg;
+    ev_msg_t msg = EV_MSG_INITIALIZER;
     size_t i;
 
     assert(mailbox != NULL);

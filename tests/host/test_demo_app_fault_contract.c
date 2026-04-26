@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "ev/demo_app.h"
+#include "fakes/fake_board_profile.h"
 #include "fakes/fake_i2c_port.h"
 #include "fakes/fake_irq_port.h"
 #include "fakes/fake_onewire_port.h"
@@ -175,6 +176,7 @@ static ev_demo_app_config_t make_default_cfg(ev_clock_port_t *clock_port,
         .irq_port = irq_port,
         .i2c_port = i2c_port,
         .onewire_port = onewire_port,
+        .board_profile = &k_fake_full_board_profile,
     };
 
     return cfg;

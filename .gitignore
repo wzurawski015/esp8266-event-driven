@@ -75,3 +75,8 @@ cscope.*
 .LSOverride
 Thumbs.db
 Desktop.ini
+
+# Patch files and system artifacts
+*.patch
+*.diff
+*:Zone.Identifier

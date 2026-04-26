@@ -31,6 +31,7 @@ static ev_i2c_status_t fake_i2c_write_stream(void *ctx,
     }
 
     ++fake->write_stream_calls;
+    ++fake->write_stream_calls_by_addr[device_address_7bit];
     fake->last_addr = device_address_7bit;
     status = fake_i2c_port_status_for(fake, device_address_7bit);
     if (status != EV_I2C_OK) {
@@ -61,6 +62,7 @@ static ev_i2c_status_t fake_i2c_write_regs(void *ctx,
     }
 
     ++fake->write_regs_calls;
+    ++fake->write_regs_calls_by_addr[device_address_7bit];
     fake->last_addr = device_address_7bit;
     fake->last_reg = first_reg;
     status = fake_i2c_port_status_for(fake, device_address_7bit);
@@ -91,6 +93,7 @@ static ev_i2c_status_t fake_i2c_read_regs(void *ctx,
     }
 
     ++fake->read_regs_calls;
+    ++fake->read_regs_calls_by_addr[device_address_7bit];
     fake->last_addr = device_address_7bit;
     fake->last_reg = first_reg;
     status = fake_i2c_port_status_for(fake, device_address_7bit);

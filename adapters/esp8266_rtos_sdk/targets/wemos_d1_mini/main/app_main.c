@@ -1,9 +1,17 @@
 #include <stdint.h>
 
+#include "board_profile.h"
+
+#include "ev/compiler.h"
 #include "ev/esp8266_boot_diag.h"
 
-#define EV_BOARD_TAG "ev_generic"
-#define EV_BOARD_NAME "esp8266_generic_dev"
+#define EV_BOARD_TAG EV_BOARD_PROFILE_TAG
+#define EV_BOARD_NAME EV_BOARD_PROFILE_NAME
+
+EV_STATIC_ASSERT(EV_BOARD_PIN_I2C0_SCL == 5U,
+                 "Wemos D1 Mini SCL must stay fixed to GPIO5");
+EV_STATIC_ASSERT(EV_BOARD_PIN_I2C0_SDA == 4U,
+                 "Wemos D1 Mini SDA must stay fixed to GPIO4");
 
 void app_main(void)
 {
