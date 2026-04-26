@@ -34,6 +34,15 @@ static bool ev_system_pump_domain_is_valid(ev_execution_domain_t domain)
     return (domain >= 0) && (domain < EV_DOMAIN_COUNT);
 }
 
+static size_t ev_system_pump_cursor_advance(size_t cursor)
+{
+    ++cursor;
+    if (cursor >= EV_DOMAIN_COUNT) {
+        cursor = 0U;
+    }
+    return cursor;
+}
+
 void ev_system_pump_report_reset(ev_system_pump_report_t *report)
 {
     if (report == NULL) {
@@ -171,13 +180,17 @@ ev_result_t ev_system_pump_run(
     }
 
     remaining_turns = turn_budget;
+    if (pump->next_domain_index >= EV_DOMAIN_COUNT) {
+        pump->next_domain_index = 0U;
+    }
 
     while (remaining_turns > 0U) {
         bool progressed_this_pass = false;
         size_t offset;
+        size_t index = pump->next_domain_index;
 
-        for (offset = 0U; offset < EV_DOMAIN_COUNT; ++offset) {
-            size_t index = (pump->next_domain_index + offset) % EV_DOMAIN_COUNT;
+        for (offset = 0U; offset < EV_DOMAIN_COUNT;
+             ++offset, index = ev_system_pump_cursor_advance(index)) {
             ev_domain_pump_t *domain_pump = pump->slots[index];
             ev_domain_pump_report_t domain_report = {0};
             size_t domain_budget;
@@ -204,7 +217,7 @@ ev_result_t ev_system_pump_run(
             }
 
             rc = ev_domain_pump_run(domain_pump, domain_budget, &domain_report);
-            pump->next_domain_index = (index + 1U) % EV_DOMAIN_COUNT;
+            pump->next_domain_index = ev_system_pump_cursor_advance(index);
             pump->stats.last_domain = domain_pump->domain;
             report->last_domain = domain_pump->domain;
 

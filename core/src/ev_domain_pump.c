@@ -22,6 +22,20 @@ static bool ev_domain_pump_actor_matches(ev_actor_id_t actor_id, ev_execution_do
     const ev_actor_meta_t *meta = ev_actor_meta(actor_id);
     return (meta != NULL) && (meta->execution_domain == domain);
 }
+
+static size_t ev_domain_pump_cursor_advance(size_t cursor, size_t count)
+{
+    if (count == 0U) {
+        return 0U;
+    }
+
+    ++cursor;
+    if (cursor >= count) {
+        cursor = 0U;
+    }
+    return cursor;
+}
+
 static void ev_domain_pump_record_pending_high_watermark(ev_domain_pump_t *pump, size_t pending)
 {
     if ((pump != NULL) && (pending > pump->stats.pending_high_watermark)) {
@@ -188,14 +202,18 @@ ev_result_t ev_domain_pump_run(
 
     remaining = budget;
     actor_count = ev_actor_count();
+    if (pump->next_actor_index >= actor_count) {
+        pump->next_actor_index = 0U;
+    }
 
     while (remaining > 0U) {
         bool progressed_this_pass = false;
         size_t offset;
         size_t start_index = pump->next_actor_index;
+        size_t index = start_index;
 
-        for (offset = 0U; offset < actor_count; ++offset) {
-            size_t index = (start_index + offset) % actor_count;
+        for (offset = 0U; offset < actor_count;
+             ++offset, index = ev_domain_pump_cursor_advance(index, actor_count)) {
             ev_actor_runtime_t *runtime;
             size_t actor_budget;
             ev_actor_pump_report_t actor_report = {0};
@@ -229,7 +247,7 @@ ev_result_t ev_domain_pump_run(
             }
 
             rc = ev_actor_runtime_pump(runtime, actor_budget, &actor_report);
-            pump->next_actor_index = (index + 1U) % actor_count;
+            pump->next_actor_index = ev_domain_pump_cursor_advance(index, actor_count);
             pump->stats.last_actor = runtime->actor_id;
             report->last_actor = runtime->actor_id;
 

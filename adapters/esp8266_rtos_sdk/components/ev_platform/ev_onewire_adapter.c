@@ -150,41 +150,29 @@ static void ev_esp8266_onewire_resume_scheduler(void)
     (void)xTaskResumeAll();
 }
 
-static bool ev_esp8266_onewire_begin_operation(ev_esp8266_onewire_adapter_ctx_t *ctx)
+static bool ev_esp8266_onewire_begin_operation_unlocked(ev_esp8266_onewire_adapter_ctx_t *ctx)
 {
-    bool acquired = false;
-
-    if (!ev_esp8266_onewire_ctx_is_valid(ctx)) {
+    if (!ev_esp8266_onewire_ctx_is_valid(ctx) || ctx->busy) {
         return false;
     }
 
-    ev_esp8266_onewire_suspend_scheduler();
-    if (!ctx->busy) {
-        ctx->busy = true;
-        ++ctx->operations_started;
-        acquired = true;
-    }
-    ev_esp8266_onewire_resume_scheduler();
-
-    return acquired;
+    ctx->busy = true;
+    ++ctx->operations_started;
+    return true;
 }
 
-static void ev_esp8266_onewire_end_operation(ev_esp8266_onewire_adapter_ctx_t *ctx)
+static void ev_esp8266_onewire_end_operation_unlocked(ev_esp8266_onewire_adapter_ctx_t *ctx)
 {
     if (ctx != NULL) {
-        ev_esp8266_onewire_suspend_scheduler();
         ctx->busy = false;
-        ev_esp8266_onewire_resume_scheduler();
     }
 }
 
-static uint8_t ev_esp8266_onewire_bit_io(ev_esp8266_onewire_adapter_ctx_t *ctx, uint8_t bit_value)
+static uint8_t ev_esp8266_onewire_bit_io_unlocked(ev_esp8266_onewire_adapter_ctx_t *ctx, uint8_t bit_value)
 {
     uint8_t sampled = 0U;
     const int64_t start_us = esp_timer_get_time();
     int64_t end_us;
-
-    ev_esp8266_onewire_suspend_scheduler();
 
     ev_esp8266_onewire_drive_low(ctx);
     ets_delay_us(EV_ESP8266_ONEWIRE_READ_INIT_LOW_US);
@@ -197,7 +185,6 @@ static uint8_t ev_esp8266_onewire_bit_io(ev_esp8266_onewire_adapter_ctx_t *ctx, 
     ev_esp8266_onewire_release_bus(ctx);
 
     end_us = esp_timer_get_time();
-    ev_esp8266_onewire_resume_scheduler();
     ev_esp8266_onewire_record_timing_section(ctx, ev_esp8266_onewire_elapsed_us(start_us, end_us), false);
     return sampled;
 }
@@ -212,22 +199,22 @@ static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
     int64_t reset_start_us;
     int64_t reset_end_us;
 
-    if (!ev_esp8266_onewire_begin_operation(adapter)) {
-        if (adapter != NULL) {
-            ++adapter->bus_errors;
-        }
-        return ev_esp8266_onewire_bus_error_slowpath();
-    }
-
     /*
      * Protect the complete reset timing envelope from FreeRTOS task preemption
      * while leaving hardware interrupts enabled.  ISRs can still enqueue IRQ
      * samples into their ring buffer; context switches are deferred until
      * xTaskResumeAll(), preserving both 1-Wire timing and ISR latency.
      */
-    reset_start_us = esp_timer_get_time();
     ev_esp8266_onewire_suspend_scheduler();
+    if (!ev_esp8266_onewire_begin_operation_unlocked(adapter)) {
+        if (adapter != NULL) {
+            ++adapter->bus_errors;
+        }
+        ev_esp8266_onewire_resume_scheduler();
+        return ev_esp8266_onewire_bus_error_slowpath();
+    }
 
+    reset_start_us = esp_timer_get_time();
     reset_low_start_us = esp_timer_get_time();
     ev_esp8266_onewire_drive_low(adapter);
     ets_delay_us(EV_ESP8266_ONEWIRE_RESET_LOW_US);
@@ -243,13 +230,12 @@ static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
     stuck_low = !ev_esp8266_onewire_sample_bus(adapter);
 
     reset_end_us = esp_timer_get_time();
-    ev_esp8266_onewire_resume_scheduler();
     ev_esp8266_onewire_record_timing_section(
         adapter,
         ev_esp8266_onewire_elapsed_us(reset_start_us, reset_end_us),
         true);
-
-    ev_esp8266_onewire_end_operation(adapter);
+    ev_esp8266_onewire_end_operation_unlocked(adapter);
+    ev_esp8266_onewire_resume_scheduler();
 
     if (stuck_low) {
         ++adapter->bus_errors;
@@ -267,14 +253,15 @@ static ev_onewire_status_t ev_esp8266_onewire_write_byte(void *ctx, uint8_t valu
     ev_esp8266_onewire_adapter_ctx_t *adapter = (ev_esp8266_onewire_adapter_ctx_t *)ctx;
     uint8_t bit_index;
 
-    if (!ev_esp8266_onewire_begin_operation(adapter)) {
+    ev_esp8266_onewire_suspend_scheduler();
+    if (!ev_esp8266_onewire_begin_operation_unlocked(adapter)) {
         if (adapter != NULL) {
             ++adapter->bus_errors;
         }
+        ev_esp8266_onewire_resume_scheduler();
         return ev_esp8266_onewire_bus_error_slowpath();
     }
 
-    ev_esp8266_onewire_suspend_scheduler();
     for (bit_index = 0U; bit_index < 8U; ++bit_index) {
         const int64_t start_us = esp_timer_get_time();
         int64_t end_us;
@@ -294,9 +281,9 @@ static ev_onewire_status_t ev_esp8266_onewire_write_byte(void *ctx, uint8_t valu
         ev_esp8266_onewire_record_timing_section(adapter, ev_esp8266_onewire_elapsed_us(start_us, end_us), false);
         value = (uint8_t)(value >> 1U);
     }
-    ev_esp8266_onewire_resume_scheduler();
 
-    ev_esp8266_onewire_end_operation(adapter);
+    ev_esp8266_onewire_end_operation_unlocked(adapter);
+    ev_esp8266_onewire_resume_scheduler();
     return EV_ONEWIRE_OK;
 }
 
@@ -306,7 +293,7 @@ static ev_onewire_status_t ev_esp8266_onewire_read_byte(void *ctx, uint8_t *out_
     uint8_t value = 0U;
     uint8_t bit_index;
 
-    if ((out_value == NULL) || !ev_esp8266_onewire_begin_operation(adapter)) {
+    if (out_value == NULL) {
         if (adapter != NULL) {
             ++adapter->bus_errors;
         }
@@ -314,16 +301,24 @@ static ev_onewire_status_t ev_esp8266_onewire_read_byte(void *ctx, uint8_t *out_
     }
 
     ev_esp8266_onewire_suspend_scheduler();
+    if (!ev_esp8266_onewire_begin_operation_unlocked(adapter)) {
+        if (adapter != NULL) {
+            ++adapter->bus_errors;
+        }
+        ev_esp8266_onewire_resume_scheduler();
+        return ev_esp8266_onewire_bus_error_slowpath();
+    }
+
     for (bit_index = 0U; bit_index < 8U; ++bit_index) {
-        const uint8_t sampled = ev_esp8266_onewire_bit_io(adapter, 1U);
+        const uint8_t sampled = ev_esp8266_onewire_bit_io_unlocked(adapter, 1U);
         value = (uint8_t)(value >> 1U);
         if (sampled != 0U) {
             value = (uint8_t)(value | 0x80U);
         }
     }
-    ev_esp8266_onewire_resume_scheduler();
 
-    ev_esp8266_onewire_end_operation(adapter);
+    ev_esp8266_onewire_end_operation_unlocked(adapter);
+    ev_esp8266_onewire_resume_scheduler();
     *out_value = value;
     return EV_ONEWIRE_OK;
 }
