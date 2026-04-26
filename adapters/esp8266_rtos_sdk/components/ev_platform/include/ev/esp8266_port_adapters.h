@@ -61,14 +61,14 @@ typedef struct ev_esp8266_onewire_diag_snapshot {
     uint32_t sleep_prepare_attempts; /**< Number of 1-Wire sleep-prepare checks. */
     uint32_t sleep_prepare_failures; /**< Number of 1-Wire sleep-prepare rejections. */
     uint32_t bus_errors; /**< Number of observed 1-Wire bus errors or unsafe bus states. */
-    uint32_t critical_sections; /**< Number of measured timing-critical 1-Wire sections. */
-    uint32_t reset_critical_sections; /**< Number of measured reset-pulse critical sections. */
-    uint32_t bit_critical_sections; /**< Number of measured bit-slot critical sections. */
-    uint32_t max_critical_section_us; /**< Maximum measured critical section duration. */
-    uint32_t max_reset_critical_section_us; /**< Maximum measured reset-pulse critical section duration. */
-    uint32_t max_bit_critical_section_us; /**< Maximum measured bit-slot critical section duration. */
-    uint32_t critical_section_budget_violations; /**< Critical sections exceeding the configured IRQ-latency budget. */
-    uint32_t max_reset_low_hold_us; /**< Maximum reset low pulse duration measured outside the IRQ-disabled region. */
+    uint32_t critical_sections; /**< Number of measured scheduler-protected timing-critical 1-Wire sections. */
+    uint32_t reset_critical_sections; /**< Number of measured reset-pulse scheduler-protected timing sections. */
+    uint32_t bit_critical_sections; /**< Number of measured bit-slot scheduler-protected timing sections. */
+    uint32_t max_critical_section_us; /**< Maximum measured scheduler-protected timing section duration. */
+    uint32_t max_reset_critical_section_us; /**< Maximum measured reset-pulse scheduler-protected timing section duration. */
+    uint32_t max_bit_critical_section_us; /**< Maximum measured bit-slot scheduler-protected timing section duration. */
+    uint32_t critical_section_budget_violations; /**< Scheduler-protected timing sections exceeding the configured 1-Wire timing budget. */
+    uint32_t max_reset_low_hold_us; /**< Maximum reset low pulse duration measured during the protected reset waveform. */
     bool configured; /**< True after the adapter was initialized. */
     bool busy; /**< True while a bit-banged 1-Wire operation is active. */
     bool dq_high; /**< Last sampled released DQ line level. */

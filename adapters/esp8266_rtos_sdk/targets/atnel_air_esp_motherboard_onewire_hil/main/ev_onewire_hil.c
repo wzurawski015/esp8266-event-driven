@@ -359,15 +359,15 @@ static void ev_hil_test_ds18b20_read_irq_flood(const ev_esp8266_onewire_hil_conf
     } else if (drained == 0U) {
         ev_hil_fail(result, name, "no IRQ samples observed; check flood fixture wiring");
     } else if (after_ow.critical_sections <= before_ow.critical_sections) {
-        ev_hil_fail(result, name, "OneWire critical sections were not measured");
+        ev_hil_fail(result, name, "OneWire scheduler-protected timing sections were not measured");
     } else if ((cfg->max_reset_critical_section_us != 0U) &&
                (after_ow.max_reset_critical_section_us > cfg->max_reset_critical_section_us)) {
-        ev_hil_fail(result, name, "OneWire reset critical section budget exceeded");
+        ev_hil_fail(result, name, "OneWire reset scheduler-protected timing section budget exceeded");
     } else if ((cfg->max_bit_critical_section_us != 0U) &&
                (after_ow.max_bit_critical_section_us > cfg->max_bit_critical_section_us)) {
-        ev_hil_fail(result, name, "OneWire bit critical section budget exceeded");
+        ev_hil_fail(result, name, "OneWire bit scheduler-protected timing section budget exceeded");
     } else if (after_ow.critical_section_budget_violations != before_ow.critical_section_budget_violations) {
-        ev_hil_fail(result, name, "OneWire critical section budget violation observed");
+        ev_hil_fail(result, name, "OneWire scheduler-protected timing section budget violation observed");
     } else {
         ESP_LOGI(EV_HIL_ONEWIRE_TAG,
                  "%s drained=%u toggles=%u dropped_delta=0 max_crit_us=%u reset_max_us=%u bit_max_us=%u",

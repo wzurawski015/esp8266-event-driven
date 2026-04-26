@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "driver/gpio.h"
 #include "esp_err.h"
@@ -21,7 +22,8 @@
 #define EV_ESP8266_ONEWIRE_READ_SAMPLE_US 9U
 #define EV_ESP8266_ONEWIRE_READ_RELEASE_US 55U
 #define EV_ESP8266_ONEWIRE_RELEASE_SETTLE_US 4U
-#define EV_ESP8266_ONEWIRE_CRITICAL_SECTION_BUDGET_US 120U
+#define EV_ESP8266_ONEWIRE_RESET_TIMING_SECTION_BUDGET_US 1250U
+#define EV_ESP8266_ONEWIRE_BIT_TIMING_SECTION_BUDGET_US 120U
 
 typedef struct ev_esp8266_onewire_adapter_ctx {
     int data_pin;
@@ -57,16 +59,20 @@ static uint32_t ev_esp8266_onewire_elapsed_us(int64_t start_us, int64_t end_us)
     return (uint32_t)(end_us - start_us);
 }
 
-static void ev_esp8266_onewire_record_critical_section(ev_esp8266_onewire_adapter_ctx_t *ctx,
-                                                       uint32_t elapsed_us,
-                                                       bool reset_section)
+static void ev_esp8266_onewire_record_timing_section(ev_esp8266_onewire_adapter_ctx_t *ctx,
+                                                     uint32_t elapsed_us,
+                                                     bool reset_section)
 {
+    const uint32_t budget_us = reset_section ?
+        EV_ESP8266_ONEWIRE_RESET_TIMING_SECTION_BUDGET_US :
+        EV_ESP8266_ONEWIRE_BIT_TIMING_SECTION_BUDGET_US;
+
     if (ctx == NULL) {
         return;
     }
 
     ++ctx->critical_sections;
-    if (elapsed_us > EV_ESP8266_ONEWIRE_CRITICAL_SECTION_BUDGET_US) {
+    if (elapsed_us > budget_us) {
         ++ctx->critical_section_budget_violations;
     }
     if (elapsed_us > ctx->max_critical_section_us) {
@@ -87,7 +93,7 @@ static void ev_esp8266_onewire_record_critical_section(ev_esp8266_onewire_adapte
 }
 
 static void ev_esp8266_onewire_record_reset_low_hold(ev_esp8266_onewire_adapter_ctx_t *ctx,
-                                                         uint32_t elapsed_us)
+                                                     uint32_t elapsed_us)
 {
     if (ctx == NULL) {
         return;
@@ -134,6 +140,16 @@ static __attribute__((noinline)) ev_onewire_status_t ev_esp8266_onewire_no_devic
     return EV_ONEWIRE_ERR_NO_DEVICE;
 }
 
+static void ev_esp8266_onewire_suspend_scheduler(void)
+{
+    vTaskSuspendAll();
+}
+
+static void ev_esp8266_onewire_resume_scheduler(void)
+{
+    (void)xTaskResumeAll();
+}
+
 static bool ev_esp8266_onewire_begin_operation(ev_esp8266_onewire_adapter_ctx_t *ctx)
 {
     bool acquired = false;
@@ -142,13 +158,13 @@ static bool ev_esp8266_onewire_begin_operation(ev_esp8266_onewire_adapter_ctx_t 
         return false;
     }
 
-    portENTER_CRITICAL();
+    ev_esp8266_onewire_suspend_scheduler();
     if (!ctx->busy) {
         ctx->busy = true;
         ++ctx->operations_started;
         acquired = true;
     }
-    portEXIT_CRITICAL();
+    ev_esp8266_onewire_resume_scheduler();
 
     return acquired;
 }
@@ -156,35 +172,33 @@ static bool ev_esp8266_onewire_begin_operation(ev_esp8266_onewire_adapter_ctx_t 
 static void ev_esp8266_onewire_end_operation(ev_esp8266_onewire_adapter_ctx_t *ctx)
 {
     if (ctx != NULL) {
-        portENTER_CRITICAL();
+        ev_esp8266_onewire_suspend_scheduler();
         ctx->busy = false;
-        portEXIT_CRITICAL();
+        ev_esp8266_onewire_resume_scheduler();
     }
 }
 
 static uint8_t ev_esp8266_onewire_bit_io(ev_esp8266_onewire_adapter_ctx_t *ctx, uint8_t bit_value)
 {
     uint8_t sampled = 0U;
-    int64_t start_us;
+    const int64_t start_us = esp_timer_get_time();
     int64_t end_us;
 
-    start_us = esp_timer_get_time();
-    portENTER_CRITICAL();
+    ev_esp8266_onewire_suspend_scheduler();
 
     ev_esp8266_onewire_drive_low(ctx);
-    ets_delay_us(1U);
+    ets_delay_us(EV_ESP8266_ONEWIRE_READ_INIT_LOW_US);
     if (bit_value != 0U) {
         ev_esp8266_onewire_release_bus(ctx);
     }
-    ets_delay_us(15U);
+    ets_delay_us(EV_ESP8266_ONEWIRE_READ_SAMPLE_US);
     sampled = ev_esp8266_onewire_sample_bus(ctx) ? 1U : 0U;
-    ets_delay_us(45U);
+    ets_delay_us(EV_ESP8266_ONEWIRE_READ_RELEASE_US);
     ev_esp8266_onewire_release_bus(ctx);
 
-    portEXIT_CRITICAL();
     end_us = esp_timer_get_time();
-    ev_esp8266_onewire_record_critical_section(ctx, ev_esp8266_onewire_elapsed_us(start_us, end_us), false);
-
+    ev_esp8266_onewire_resume_scheduler();
+    ev_esp8266_onewire_record_timing_section(ctx, ev_esp8266_onewire_elapsed_us(start_us, end_us), false);
     return sampled;
 }
 
@@ -195,8 +209,8 @@ static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
     bool stuck_low;
     int64_t reset_low_start_us;
     int64_t reset_low_end_us;
-    int64_t sample_start_us;
-    int64_t sample_end_us;
+    int64_t reset_start_us;
+    int64_t reset_end_us;
 
     if (!ev_esp8266_onewire_begin_operation(adapter)) {
         if (adapter != NULL) {
@@ -206,36 +220,34 @@ static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
     }
 
     /*
-     * Only the edge-setting and presence-sampling windows need interrupts
-     * masked.  The 480 us reset low hold and 410 us post-sample recovery are
-     * bus-timing waits, not shared-state critical sections; keeping IRQs
-     * enabled there removes the previous ~960 us interrupt blackout.
+     * Protect the complete reset timing envelope from FreeRTOS task preemption
+     * while leaving hardware interrupts enabled.  ISRs can still enqueue IRQ
+     * samples into their ring buffer; context switches are deferred until
+     * xTaskResumeAll(), preserving both 1-Wire timing and ISR latency.
      */
-    reset_low_start_us = esp_timer_get_time();
-    portENTER_CRITICAL();
-    ev_esp8266_onewire_drive_low(adapter);
-    portEXIT_CRITICAL();
+    reset_start_us = esp_timer_get_time();
+    ev_esp8266_onewire_suspend_scheduler();
 
+    reset_low_start_us = esp_timer_get_time();
+    ev_esp8266_onewire_drive_low(adapter);
     ets_delay_us(EV_ESP8266_ONEWIRE_RESET_LOW_US);
     reset_low_end_us = esp_timer_get_time();
     ev_esp8266_onewire_record_reset_low_hold(
         adapter,
         ev_esp8266_onewire_elapsed_us(reset_low_start_us, reset_low_end_us));
 
-    sample_start_us = esp_timer_get_time();
-    portENTER_CRITICAL();
     ev_esp8266_onewire_release_bus(adapter);
     ets_delay_us(EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_US);
     presence_high = ev_esp8266_onewire_sample_bus(adapter);
-    portEXIT_CRITICAL();
-    sample_end_us = esp_timer_get_time();
-    ev_esp8266_onewire_record_critical_section(
-        adapter,
-        ev_esp8266_onewire_elapsed_us(sample_start_us, sample_end_us),
-        true);
-
     ets_delay_us(EV_ESP8266_ONEWIRE_RESET_RELEASE_US);
     stuck_low = !ev_esp8266_onewire_sample_bus(adapter);
+
+    reset_end_us = esp_timer_get_time();
+    ev_esp8266_onewire_resume_scheduler();
+    ev_esp8266_onewire_record_timing_section(
+        adapter,
+        ev_esp8266_onewire_elapsed_us(reset_start_us, reset_end_us),
+        true);
 
     ev_esp8266_onewire_end_operation(adapter);
 
@@ -262,31 +274,27 @@ static ev_onewire_status_t ev_esp8266_onewire_write_byte(void *ctx, uint8_t valu
         return ev_esp8266_onewire_bus_error_slowpath();
     }
 
+    ev_esp8266_onewire_suspend_scheduler();
     for (bit_index = 0U; bit_index < 8U; ++bit_index) {
-        {
-            int64_t start_us = esp_timer_get_time();
-            int64_t end_us;
+        const int64_t start_us = esp_timer_get_time();
+        int64_t end_us;
 
-            portENTER_CRITICAL();
-
-            ev_esp8266_onewire_drive_low(adapter);
-            if ((value & 0x01U) != 0U) {
-                ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_1_LOW_US);
-                ev_esp8266_onewire_release_bus(adapter);
-                ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_1_RELEASE_US);
-            } else {
-                ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_0_LOW_US);
-                ev_esp8266_onewire_release_bus(adapter);
-                ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_0_RELEASE_US);
-            }
-
-            portEXIT_CRITICAL();
-            end_us = esp_timer_get_time();
-            ev_esp8266_onewire_record_critical_section(adapter, ev_esp8266_onewire_elapsed_us(start_us, end_us), false);
+        ev_esp8266_onewire_drive_low(adapter);
+        if ((value & 0x01U) != 0U) {
+            ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_1_LOW_US);
+            ev_esp8266_onewire_release_bus(adapter);
+            ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_1_RELEASE_US);
+        } else {
+            ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_0_LOW_US);
+            ev_esp8266_onewire_release_bus(adapter);
+            ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_0_RELEASE_US);
         }
 
+        end_us = esp_timer_get_time();
+        ev_esp8266_onewire_record_timing_section(adapter, ev_esp8266_onewire_elapsed_us(start_us, end_us), false);
         value = (uint8_t)(value >> 1U);
     }
+    ev_esp8266_onewire_resume_scheduler();
 
     ev_esp8266_onewire_end_operation(adapter);
     return EV_ONEWIRE_OK;
@@ -305,6 +313,7 @@ static ev_onewire_status_t ev_esp8266_onewire_read_byte(void *ctx, uint8_t *out_
         return ev_esp8266_onewire_bus_error_slowpath();
     }
 
+    ev_esp8266_onewire_suspend_scheduler();
     for (bit_index = 0U; bit_index < 8U; ++bit_index) {
         const uint8_t sampled = ev_esp8266_onewire_bit_io(adapter, 1U);
         value = (uint8_t)(value >> 1U);
@@ -312,6 +321,7 @@ static ev_onewire_status_t ev_esp8266_onewire_read_byte(void *ctx, uint8_t *out_
             value = (uint8_t)(value | 0x80U);
         }
     }
+    ev_esp8266_onewire_resume_scheduler();
 
     ev_esp8266_onewire_end_operation(adapter);
     *out_value = value;
