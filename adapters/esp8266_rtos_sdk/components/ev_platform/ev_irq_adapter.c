@@ -27,6 +27,7 @@ typedef struct {
     uint32_t gpio_mask;
     ev_gpio_irq_trigger_t trigger;
     uint8_t last_level;
+    bool armed;
     bool configured;
 } ev_esp8266_irq_line_t;
 
@@ -37,6 +38,9 @@ typedef struct {
     volatile uint32_t read_seq;
     volatile uint32_t dropped_samples;
     uint32_t active_gpio_mask;
+    uint32_t enabled_gpio_mask;
+    uint32_t sleep_prepare_attempts;
+    uint32_t sleep_prepare_failures;
     size_t line_count;
     bool configured;
     SemaphoreHandle_t wait_sem;
@@ -281,6 +285,13 @@ static ev_result_t ev_esp8266_irq_enable(void *ctx, ev_irq_line_id_t line_id, bo
             return EV_ERR_STATE;
         }
 
+        line->armed = enabled;
+        if (enabled) {
+            adapter->enabled_gpio_mask |= line->gpio_mask;
+        } else {
+            adapter->enabled_gpio_mask &= ~line->gpio_mask;
+        }
+
         return EV_OK;
     }
 
@@ -383,7 +394,81 @@ ev_result_t ev_esp8266_irq_get_diag(ev_esp8266_irq_diag_snapshot_t *out_snapshot
     out_snapshot->pending_samples = write_seq - read_seq;
     out_snapshot->dropped_samples = g_ev_irq_ctx.dropped_samples;
     out_snapshot->active_gpio_mask = g_ev_irq_ctx.active_gpio_mask;
+    out_snapshot->enabled_gpio_mask = g_ev_irq_ctx.enabled_gpio_mask;
+    out_snapshot->sleep_prepare_attempts = g_ev_irq_ctx.sleep_prepare_attempts;
+    out_snapshot->sleep_prepare_failures = g_ev_irq_ctx.sleep_prepare_failures;
     portEXIT_CRITICAL();
+
+    return EV_OK;
+}
+static ev_result_t ev_esp8266_irq_restore_armed_lines(ev_esp8266_irq_adapter_ctx_t *adapter)
+{
+    size_t i;
+    ev_result_t result = EV_OK;
+
+    if (adapter == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    for (i = 0U; i < adapter->line_count; ++i) {
+        ev_esp8266_irq_line_t *line = &adapter->lines[i];
+        if (line->armed) {
+            const gpio_int_type_t intr_type = ev_esp8266_gpio_intr_type_from_cfg(line->trigger);
+            if (gpio_set_intr_type((gpio_num_t)line->gpio_num, intr_type) != ESP_OK) {
+                result = EV_ERR_STATE;
+            }
+        }
+    }
+
+    return result;
+}
+
+ev_result_t ev_esp8266_irq_prepare_for_sleep(void)
+{
+    uint32_t pending_samples;
+    size_t i;
+
+    if (!g_ev_irq_ctx.configured) {
+        return EV_ERR_STATE;
+    }
+
+    ++g_ev_irq_ctx.sleep_prepare_attempts;
+
+    portENTER_CRITICAL();
+    pending_samples = g_ev_irq_ctx.write_seq - g_ev_irq_ctx.read_seq;
+    portEXIT_CRITICAL();
+    if (pending_samples != 0U) {
+        ++g_ev_irq_ctx.sleep_prepare_failures;
+        return EV_ERR_STATE;
+    }
+
+    for (i = 0U; i < g_ev_irq_ctx.line_count; ++i) {
+        ev_esp8266_irq_line_t *line = &g_ev_irq_ctx.lines[i];
+        if (!line->armed) {
+            continue;
+        }
+        if (gpio_set_intr_type((gpio_num_t)line->gpio_num, GPIO_INTR_DISABLE) != ESP_OK) {
+            ++g_ev_irq_ctx.sleep_prepare_failures;
+            (void)ev_esp8266_irq_restore_armed_lines(&g_ev_irq_ctx);
+            return EV_ERR_STATE;
+        }
+        GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, line->gpio_mask);
+    }
+
+    portENTER_CRITICAL();
+    pending_samples = g_ev_irq_ctx.write_seq - g_ev_irq_ctx.read_seq;
+    portEXIT_CRITICAL();
+    if (pending_samples != 0U) {
+        ++g_ev_irq_ctx.sleep_prepare_failures;
+        (void)ev_esp8266_irq_restore_armed_lines(&g_ev_irq_ctx);
+        return EV_ERR_STATE;
+    }
+
+    for (i = 0U; i < g_ev_irq_ctx.line_count; ++i) {
+        g_ev_irq_ctx.lines[i].armed = false;
+    }
+    g_ev_irq_ctx.enabled_gpio_mask = 0U;
+    GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, g_ev_irq_ctx.active_gpio_mask);
 
     return EV_OK;
 }

@@ -415,8 +415,32 @@ ev_result_t ev_esp8266_uart_port_init(ev_uart_port_t *out_port)
 
 static ev_result_t ev_system_prepare_for_sleep_impl(void *ctx, uint64_t duration_us)
 {
+    ev_esp8266_irq_diag_snapshot_t irq_diag = {0};
+    ev_result_t rc;
+
     (void)ctx;
     (void)duration_us;
+
+    rc = ev_esp8266_irq_get_diag(&irq_diag);
+    if ((rc != EV_OK) || (irq_diag.pending_samples != 0U)) {
+        return EV_ERR_STATE;
+    }
+
+    rc = ev_esp8266_onewire_prepare_for_sleep();
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    rc = ev_esp8266_i2c_prepare_for_sleep(EV_I2C_PORT_NUM_0);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    rc = ev_esp8266_irq_prepare_for_sleep();
+    if (rc != EV_OK) {
+        return rc;
+    }
+
     return EV_OK;
 }
 

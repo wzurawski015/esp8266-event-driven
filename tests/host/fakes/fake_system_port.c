@@ -2,6 +2,17 @@
 
 #include <string.h>
 
+static uint32_t fake_system_next_order(fake_system_port_t *fake)
+{
+    if (fake->external_sequence != NULL) {
+        ++(*fake->external_sequence);
+        return *fake->external_sequence;
+    }
+
+    ++fake->call_sequence;
+    return fake->call_sequence;
+}
+
 static ev_result_t fake_system_prepare_for_sleep(void *ctx, uint64_t duration_us)
 {
     fake_system_port_t *fake = (fake_system_port_t *)ctx;
@@ -11,6 +22,7 @@ static ev_result_t fake_system_prepare_for_sleep(void *ctx, uint64_t duration_us
     }
 
     ++fake->prepare_for_sleep_calls;
+    fake->prepare_order = fake_system_next_order(fake);
     fake->last_prepare_duration_us = duration_us;
     return fake->next_prepare_result;
 }
@@ -24,6 +36,7 @@ static ev_result_t fake_system_deep_sleep(void *ctx, uint64_t duration_us)
     }
 
     ++fake->deep_sleep_calls;
+    fake->deep_sleep_order = fake_system_next_order(fake);
     fake->last_duration_us = duration_us;
     return fake->next_result;
 }

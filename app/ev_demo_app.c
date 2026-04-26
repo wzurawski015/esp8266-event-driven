@@ -728,6 +728,64 @@ static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
            ((cfg->system_port == NULL) || (cfg->system_port->deep_sleep != NULL));
 }
 
+static ev_result_t ev_demo_app_sleep_quiescence_guard(void *ctx,
+                                                       uint64_t duration_us,
+                                                       ev_power_quiescence_report_t *out_report)
+{
+    ev_demo_app_t *app = (ev_demo_app_t *)ctx;
+    ev_power_quiescence_report_t report;
+    bool irq_pending = false;
+    uint32_t now_ms = 0U;
+    ev_result_t rc;
+
+    (void)duration_us;
+
+    if (app == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    memset(&report, 0, sizeof(report));
+    report.pending_actor_messages = (uint32_t)ev_system_pump_pending(&app->system_pump);
+    report.pending_oled_flush = app->oled_ctx.pending_flush ? 1U : 0U;
+    report.pending_ds18b20_conversion = app->ds18b20_ctx.conversion_pending ? 1U : 0U;
+
+    if ((app->irq_port != NULL) && (app->irq_port->wait != NULL)) {
+        rc = app->irq_port->wait(app->irq_port->ctx, 0U, &irq_pending);
+        if (rc != EV_OK) {
+            if (out_report != NULL) {
+                *out_report = report;
+            }
+            return rc;
+        }
+        report.pending_irq_samples = irq_pending ? 1U : 0U;
+    }
+
+    rc = ev_demo_app_now_ms(app, &now_ms);
+    if (rc != EV_OK) {
+        if (out_report != NULL) {
+            *out_report = report;
+        }
+        return rc;
+    }
+
+    if (((int32_t)(now_ms - app->next_tick_100ms_ms) >= 0) ||
+        ((int32_t)(now_ms - app->next_tick_ms) >= 0)) {
+        report.due_timer_count = 1U;
+    }
+
+    if (out_report != NULL) {
+        *out_report = report;
+    }
+
+    if ((report.pending_actor_messages > 0U) || (report.pending_irq_samples != 0U) ||
+        (report.due_timer_count != 0U) || (report.pending_oled_flush != 0U) ||
+        (report.pending_ds18b20_conversion != 0U)) {
+        return EV_ERR_STATE;
+    }
+
+    return EV_OK;
+}
+
 static bool ev_demo_app_budget_exhausted(const ev_poll_budget_t *budget)
 {
     if (budget == NULL) {
@@ -1089,6 +1147,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_system_pump_bind(&app->system_pump, &app->slow_domain);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_power_actor_set_quiescence_guard(&app->power_ctx, ev_demo_app_sleep_quiescence_guard, app);
     if (rc != EV_OK) return rc;
 
     rc = ev_lease_pool_init(&app->lease_pool, app->lease_slots, app->lease_storage, EV_DEMO_APP_LEASE_SLOTS, EV_DEMO_APP_LEASE_SLOT_BYTES);

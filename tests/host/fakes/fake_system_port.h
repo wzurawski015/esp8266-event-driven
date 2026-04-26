@@ -12,6 +12,10 @@ extern "C" {
 typedef struct {
     uint32_t prepare_for_sleep_calls;
     uint32_t deep_sleep_calls;
+    uint32_t prepare_order;
+    uint32_t deep_sleep_order;
+    uint32_t call_sequence;
+    uint32_t *external_sequence;
     uint64_t last_prepare_duration_us;
     uint64_t last_duration_us;
     ev_result_t next_prepare_result;

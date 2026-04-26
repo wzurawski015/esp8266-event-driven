@@ -36,7 +36,8 @@ TEST_SUPPORT_SRCS := \
     tests/host/fakes/fake_i2c_port.c \
     tests/host/fakes/fake_irq_port.c \
     tests/host/fakes/fake_onewire_port.c \
-    tests/host/fakes/fake_system_port.c
+    tests/host/fakes/fake_system_port.c \
+    tests/host/fakes/fake_log_port.c
 
 COMMON_SRCS := $(CORE_SRCS) $(APP_SRCS) $(TEST_SUPPORT_SRCS)
 
@@ -53,6 +54,7 @@ HOST_TESTS := \
     test_domain_pump_contract \
     test_system_pump_contract \
     test_power_actor_contract \
+    test_demo_app_sleep_quiescence \
     test_demo_app_contract \
     test_demo_app_fault_contract \
     test_app_starvation \

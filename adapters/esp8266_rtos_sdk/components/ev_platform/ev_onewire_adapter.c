@@ -19,10 +19,16 @@
 #define EV_ESP8266_ONEWIRE_READ_INIT_LOW_US 6U
 #define EV_ESP8266_ONEWIRE_READ_SAMPLE_US 9U
 #define EV_ESP8266_ONEWIRE_READ_RELEASE_US 55U
+#define EV_ESP8266_ONEWIRE_RELEASE_SETTLE_US 4U
 
 typedef struct ev_esp8266_onewire_adapter_ctx {
     int data_pin;
     bool configured;
+    volatile bool busy;
+    uint32_t operations_started;
+    uint32_t sleep_prepare_attempts;
+    uint32_t sleep_prepare_failures;
+    uint32_t bus_errors;
 } ev_esp8266_onewire_adapter_ctx_t;
 
 static ev_esp8266_onewire_adapter_ctx_t g_ev_onewire0_ctx = {
@@ -66,6 +72,33 @@ static __attribute__((noinline)) ev_onewire_status_t ev_esp8266_onewire_no_devic
     return EV_ONEWIRE_ERR_NO_DEVICE;
 }
 
+static bool ev_esp8266_onewire_begin_operation(ev_esp8266_onewire_adapter_ctx_t *ctx)
+{
+    bool acquired = false;
+
+    if (!ev_esp8266_onewire_ctx_is_valid(ctx)) {
+        return false;
+    }
+
+    portENTER_CRITICAL();
+    if (!ctx->busy) {
+        ctx->busy = true;
+        ++ctx->operations_started;
+        acquired = true;
+    }
+    portEXIT_CRITICAL();
+
+    return acquired;
+}
+
+static void ev_esp8266_onewire_end_operation(ev_esp8266_onewire_adapter_ctx_t *ctx)
+{
+    if (ctx != NULL) {
+        portENTER_CRITICAL();
+        ctx->busy = false;
+        portEXIT_CRITICAL();
+    }
+}
 
 static uint8_t ev_esp8266_onewire_bit_io(const ev_esp8266_onewire_adapter_ctx_t *ctx, uint8_t bit_value)
 {
@@ -94,7 +127,10 @@ static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
     bool presence_high;
     bool stuck_low;
 
-    if (!ev_esp8266_onewire_ctx_is_valid(adapter)) {
+    if (!ev_esp8266_onewire_begin_operation(adapter)) {
+        if (adapter != NULL) {
+            ++adapter->bus_errors;
+        }
         return ev_esp8266_onewire_bus_error_slowpath();
     }
 
@@ -109,8 +145,10 @@ static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
     stuck_low = !ev_esp8266_onewire_sample_bus(adapter);
 
     portEXIT_CRITICAL();
+    ev_esp8266_onewire_end_operation(adapter);
 
     if (stuck_low) {
+        ++adapter->bus_errors;
         return ev_esp8266_onewire_bus_error_slowpath();
     }
     if (presence_high) {
@@ -125,7 +163,10 @@ static ev_onewire_status_t ev_esp8266_onewire_write_byte(void *ctx, uint8_t valu
     ev_esp8266_onewire_adapter_ctx_t *adapter = (ev_esp8266_onewire_adapter_ctx_t *)ctx;
     uint8_t bit_index;
 
-    if (!ev_esp8266_onewire_ctx_is_valid(adapter)) {
+    if (!ev_esp8266_onewire_begin_operation(adapter)) {
+        if (adapter != NULL) {
+            ++adapter->bus_errors;
+        }
         return ev_esp8266_onewire_bus_error_slowpath();
     }
 
@@ -148,6 +189,7 @@ static ev_onewire_status_t ev_esp8266_onewire_write_byte(void *ctx, uint8_t valu
         value = (uint8_t)(value >> 1U);
     }
 
+    ev_esp8266_onewire_end_operation(adapter);
     return EV_ONEWIRE_OK;
 }
 
@@ -157,7 +199,10 @@ static ev_onewire_status_t ev_esp8266_onewire_read_byte(void *ctx, uint8_t *out_
     uint8_t value = 0U;
     uint8_t bit_index;
 
-    if (!ev_esp8266_onewire_ctx_is_valid(adapter) || (out_value == NULL)) {
+    if ((out_value == NULL) || !ev_esp8266_onewire_begin_operation(adapter)) {
+        if (adapter != NULL) {
+            ++adapter->bus_errors;
+        }
         return ev_esp8266_onewire_bus_error_slowpath();
     }
 
@@ -169,8 +214,49 @@ static ev_onewire_status_t ev_esp8266_onewire_read_byte(void *ctx, uint8_t *out_
         }
     }
 
+    ev_esp8266_onewire_end_operation(adapter);
     *out_value = value;
     return EV_ONEWIRE_OK;
+}
+
+ev_result_t ev_esp8266_onewire_get_diag(ev_esp8266_onewire_diag_snapshot_t *out_snapshot)
+{
+    if (out_snapshot == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    out_snapshot->operations_started = g_ev_onewire0_ctx.operations_started;
+    out_snapshot->sleep_prepare_attempts = g_ev_onewire0_ctx.sleep_prepare_attempts;
+    out_snapshot->sleep_prepare_failures = g_ev_onewire0_ctx.sleep_prepare_failures;
+    out_snapshot->bus_errors = g_ev_onewire0_ctx.bus_errors;
+    out_snapshot->configured = g_ev_onewire0_ctx.configured;
+    out_snapshot->busy = g_ev_onewire0_ctx.busy;
+    out_snapshot->dq_high = ev_esp8266_onewire_ctx_is_valid(&g_ev_onewire0_ctx) ?
+                                ev_esp8266_onewire_sample_bus(&g_ev_onewire0_ctx) : false;
+    return EV_OK;
+}
+
+ev_result_t ev_esp8266_onewire_prepare_for_sleep(void)
+{
+    if (!ev_esp8266_onewire_ctx_is_valid(&g_ev_onewire0_ctx)) {
+        return EV_ERR_STATE;
+    }
+
+    ++g_ev_onewire0_ctx.sleep_prepare_attempts;
+    if (g_ev_onewire0_ctx.busy) {
+        ++g_ev_onewire0_ctx.sleep_prepare_failures;
+        return EV_ERR_STATE;
+    }
+
+    ev_esp8266_onewire_release_bus(&g_ev_onewire0_ctx);
+    ets_delay_us(EV_ESP8266_ONEWIRE_RELEASE_SETTLE_US);
+    if (!ev_esp8266_onewire_sample_bus(&g_ev_onewire0_ctx)) {
+        ++g_ev_onewire0_ctx.sleep_prepare_failures;
+        ++g_ev_onewire0_ctx.bus_errors;
+        return EV_ERR_STATE;
+    }
+
+    return EV_OK;
 }
 
 ev_result_t ev_esp8266_onewire_port_init(ev_onewire_port_t *out_port, int data_pin)
@@ -196,6 +282,11 @@ ev_result_t ev_esp8266_onewire_port_init(ev_onewire_port_t *out_port, int data_p
 
     g_ev_onewire0_ctx.data_pin = data_pin;
     g_ev_onewire0_ctx.configured = true;
+    g_ev_onewire0_ctx.busy = false;
+    g_ev_onewire0_ctx.operations_started = 0U;
+    g_ev_onewire0_ctx.sleep_prepare_attempts = 0U;
+    g_ev_onewire0_ctx.sleep_prepare_failures = 0U;
+    g_ev_onewire0_ctx.bus_errors = 0U;
 
     out_port->ctx = &g_ev_onewire0_ctx;
     out_port->reset = ev_esp8266_onewire_reset;
