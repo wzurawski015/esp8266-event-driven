@@ -15,6 +15,7 @@
 #define EV_DEMO_APP_FAST_TICK_MS 100U
 #define EV_DEMO_APP_TURN_BUDGET 4U
 #define EV_APP_POLL_MAX_IRQ_SAMPLES 16U
+#define EV_APP_POLL_RESERVED_IRQ_SAMPLES 4U
 #define EV_APP_POLL_MAX_MESSAGES 32U
 #define EV_APP_POLL_MAX_PUMP_TURNS 10U
 #define EV_DEMO_APP_RTC_SQW_LINE_ID 0U
@@ -716,6 +717,26 @@ static void ev_demo_app_record_poll_diag(ev_demo_app_t *app,
     }
 }
 
+static void ev_demo_app_record_irq_stats(ev_demo_app_t *app)
+{
+    ev_irq_stats_t irq_stats = {0};
+
+    if ((app == NULL) || (app->irq_port == NULL) || (app->irq_port->get_stats == NULL)) {
+        return;
+    }
+    if (app->irq_port->get_stats(app->irq_port->ctx, &irq_stats) != EV_OK) {
+        return;
+    }
+
+    app->stats.irq_samples_dropped_observed = irq_stats.dropped_samples;
+    if (irq_stats.pending_samples > app->stats.irq_samples_pending_high_watermark) {
+        app->stats.irq_samples_pending_high_watermark = irq_stats.pending_samples;
+    }
+    if (irq_stats.high_watermark > app->stats.irq_ring_high_watermark_observed) {
+        app->stats.irq_ring_high_watermark_observed = irq_stats.high_watermark;
+    }
+}
+
 static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
 {
     return (cfg != NULL) && (cfg->app_tag != NULL) && (cfg->board_name != NULL) && (cfg->clock_port != NULL) &&
@@ -749,7 +770,17 @@ static ev_result_t ev_demo_app_sleep_quiescence_guard(void *ctx,
     report.pending_oled_flush = app->oled_ctx.pending_flush ? 1U : 0U;
     report.pending_ds18b20_conversion = app->ds18b20_ctx.conversion_pending ? 1U : 0U;
 
-    if ((app->irq_port != NULL) && (app->irq_port->wait != NULL)) {
+    if ((app->irq_port != NULL) && (app->irq_port->get_stats != NULL)) {
+        ev_irq_stats_t irq_stats = {0};
+        rc = app->irq_port->get_stats(app->irq_port->ctx, &irq_stats);
+        if (rc != EV_OK) {
+            if (out_report != NULL) {
+                *out_report = report;
+            }
+            return rc;
+        }
+        report.pending_irq_samples = irq_stats.pending_samples;
+    } else if ((app->irq_port != NULL) && (app->irq_port->wait != NULL)) {
         rc = app->irq_port->wait(app->irq_port->ctx, 0U, &irq_pending);
         if (rc != EV_OK) {
             if (out_report != NULL) {
@@ -852,6 +883,7 @@ static ev_result_t ev_demo_app_collect_ingress(ev_demo_app_t *app,
 {
     ev_result_t rc;
     ev_irq_sample_t sample = {0};
+    size_t reserved_used = 0U;
 
     if ((app == NULL) || (budget == NULL)) {
         return EV_ERR_INVALID_ARG;
@@ -859,33 +891,35 @@ static ev_result_t ev_demo_app_collect_ingress(ev_demo_app_t *app,
     if ((app->irq_port == NULL) || (app->irq_port->pop == NULL) || budget->exhausted) {
         return EV_OK;
     }
-    if (ev_system_pump_pending(&app->system_pump) > 0U) {
-        return EV_OK;
+
+    while ((budget->irq_samples_used < EV_APP_POLL_MAX_IRQ_SAMPLES) &&
+           !budget->exhausted &&
+           (reserved_used < EV_APP_POLL_RESERVED_IRQ_SAMPLES)) {
+        rc = app->irq_port->pop(app->irq_port->ctx, &sample);
+        if (rc == EV_ERR_EMPTY) {
+            break;
+        }
+        if (rc != EV_OK) {
+            return rc;
+        }
+
+        ++budget->irq_samples_used;
+        ++reserved_used;
+        if (diag != NULL) {
+            ++diag->irq_samples;
+        }
+
+        rc = ev_demo_app_publish_irq_sample(app, &sample);
+        if (rc != EV_OK) {
+            return rc;
+        }
+
+        budget->exhausted = ev_demo_app_budget_exhausted(budget);
     }
+
     if (budget->irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES) {
         budget->exhausted = true;
-        return EV_OK;
     }
-
-    rc = app->irq_port->pop(app->irq_port->ctx, &sample);
-    if (rc == EV_ERR_EMPTY) {
-        return EV_OK;
-    }
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    ++budget->irq_samples_used;
-    if (diag != NULL) {
-        ++diag->irq_samples;
-    }
-
-    rc = ev_demo_app_publish_irq_sample(app, &sample);
-    if (rc != EV_OK) {
-        return rc;
-    }
-
-    budget->exhausted = ev_demo_app_budget_exhausted(budget);
     return EV_OK;
 }
 
@@ -1261,6 +1295,7 @@ finalize:
         elapsed_ms = end_ms - start_ms;
     }
     ev_demo_app_record_poll_diag(app, &diag, pending_before, pending_after, elapsed_ms);
+    ev_demo_app_record_irq_stats(app);
     if ((rc == EV_OK) && budget.exhausted) {
         bool irq_work_pending = false;
         uint32_t current_now_ms = end_ms;

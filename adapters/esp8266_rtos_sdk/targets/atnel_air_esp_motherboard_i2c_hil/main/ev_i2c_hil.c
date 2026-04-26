@@ -245,12 +245,13 @@ static void ev_hil_log_irq_diag(const char *stage)
 
     if (ev_esp8266_irq_get_diag(&diag) == EV_OK) {
         ESP_LOGI(EV_HIL_I2C_TAG,
-                 "irq-diag:%s write=%u read=%u pending=%u dropped=%u mask=0x%08X",
+                 "irq-diag:%s write=%u read=%u pending=%u dropped=%u high_watermark=%u mask=0x%08X",
                  stage,
                  (unsigned)diag.write_seq,
                  (unsigned)diag.read_seq,
                  (unsigned)diag.pending_samples,
                  (unsigned)diag.dropped_samples,
+                 (unsigned)diag.high_watermark,
                  (unsigned)diag.active_gpio_mask);
     }
 }

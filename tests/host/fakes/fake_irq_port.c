@@ -2,6 +2,13 @@
 
 #include <string.h>
 
+static void fake_irq_record_high_watermark(fake_irq_port_t *fake)
+{
+    if ((fake != NULL) && (fake->count > fake->high_watermark)) {
+        fake->high_watermark = fake->count;
+    }
+}
+
 static ev_result_t fake_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
 {
     fake_irq_port_t *fake = (fake_irq_port_t *)ctx;
@@ -16,11 +23,11 @@ static ev_result_t fake_irq_pop(void *ctx, ev_irq_sample_t *out_sample)
     }
 
     *out_sample = fake->ring[fake->head];
-    fake->head = (fake->head + 1U) % (sizeof(fake->ring) / sizeof(fake->ring[0]));
+    fake->head = (fake->head + 1U) % FAKE_IRQ_PORT_CAPACITY;
     --fake->count;
+    ++fake->read_seq;
     return EV_OK;
 }
-
 
 static ev_result_t fake_irq_wait(void *ctx, uint32_t timeout_ms, bool *out_woken)
 {
@@ -33,6 +40,23 @@ static ev_result_t fake_irq_wait(void *ctx, uint32_t timeout_ms, bool *out_woken
     (void)timeout_ms;
     ++fake->wait_calls;
     *out_woken = (fake->count > 0U);
+    return EV_OK;
+}
+
+static ev_result_t fake_irq_get_stats(void *ctx, ev_irq_stats_t *out_stats)
+{
+    fake_irq_port_t *fake = (fake_irq_port_t *)ctx;
+
+    if ((fake == NULL) || (out_stats == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    ++fake->get_stats_calls;
+    out_stats->write_seq = fake->write_seq;
+    out_stats->read_seq = fake->read_seq;
+    out_stats->pending_samples = (uint32_t)fake->count;
+    out_stats->dropped_samples = fake->dropped_samples;
+    out_stats->high_watermark = (uint32_t)fake->high_watermark;
     return EV_OK;
 }
 
@@ -64,25 +88,26 @@ void fake_irq_port_bind(ev_irq_port_t *out_port, fake_irq_port_t *fake)
         out_port->pop = fake_irq_pop;
         out_port->enable = fake_irq_enable;
         out_port->wait = fake_irq_wait;
+        out_port->get_stats = fake_irq_get_stats;
     }
 }
 
 ev_result_t fake_irq_port_push(fake_irq_port_t *fake, const ev_irq_sample_t *sample)
 {
-    size_t capacity;
-
     if ((fake == NULL) || (sample == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 
-    capacity = sizeof(fake->ring) / sizeof(fake->ring[0]);
-    if (fake->count >= capacity) {
+    if (fake->count >= FAKE_IRQ_PORT_CAPACITY) {
+        ++fake->dropped_samples;
         return EV_ERR_FULL;
     }
 
     fake->ring[fake->tail] = *sample;
-    fake->tail = (fake->tail + 1U) % capacity;
+    fake->tail = (fake->tail + 1U) % FAKE_IRQ_PORT_CAPACITY;
     ++fake->count;
+    ++fake->write_seq;
+    fake_irq_record_high_watermark(fake);
     return EV_OK;
 }
 

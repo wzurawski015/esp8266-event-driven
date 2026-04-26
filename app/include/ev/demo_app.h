@@ -60,6 +60,9 @@ typedef struct {
     uint32_t publish_errors;
     uint32_t pump_errors;
     uint32_t irq_samples_drained;
+    uint32_t irq_samples_dropped_observed;
+    uint32_t irq_samples_pending_high_watermark;
+    uint32_t irq_ring_high_watermark_observed;
     size_t max_pending_before_poll;
     size_t max_pending_after_poll;
     size_t max_irq_samples_per_poll;

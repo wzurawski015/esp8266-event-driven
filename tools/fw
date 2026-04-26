@@ -8,7 +8,8 @@ sdk_default_monitor_baud() {
   case "$1" in
     adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev|\
     adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard|\
-    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil)
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil|\
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil)
       printf '%s\n' '115200'
       ;;
     *)
@@ -25,6 +26,8 @@ RUN_USER="${FW_RUN_USER:-$(id -u):$(id -g)}"
 SDK_PROJECT_DIR_REL="${FW_SDK_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev}"
 HIL_I2C_PROJECT_DIR_REL="${FW_HIL_I2C_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil}"
 HIL_I2C_MONITOR_TIMEOUT_S="${FW_HIL_I2C_TIMEOUT_S:-180}"
+HIL_ONEWIRE_PROJECT_DIR_REL="${FW_HIL_ONEWIRE_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil}"
+HIL_ONEWIRE_MONITOR_TIMEOUT_S="${FW_HIL_ONEWIRE_TIMEOUT_S:-240}"
 SDK_SERIAL_PORT="${FW_ESPPORT:-${ESPPORT:-}}"
 SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-$(sdk_default_monitor_baud "$SDK_PROJECT_DIR_REL")}}"
 SDK_FLASH_BEFORE="${FW_FLASH_BEFORE:-default_reset}"
@@ -66,6 +69,11 @@ Usage:
   ./tools/fw hil-i2c-flash
   ./tools/fw hil-i2c-monitor
   ./tools/fw hil-i2c-run
+
+  ./tools/fw hil-onewire-build
+  ./tools/fw hil-onewire-flash
+  ./tools/fw hil-onewire-monitor
+  ./tools/fw hil-onewire-run
 
 Notes:
   - All developer-facing validation runs inside Docker by default.
@@ -597,6 +605,35 @@ hil_i2c_run() {
   hil_i2c_monitor
 }
 
+hil_onewire_select_project() {
+  SDK_PROJECT_DIR_REL="$HIL_ONEWIRE_PROJECT_DIR_REL"
+  SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-115200}}"
+}
+
+hil_onewire_build() {
+  hil_onewire_select_project
+  sdk_build
+}
+
+hil_onewire_flash() {
+  hil_onewire_select_project
+  sdk_flash
+}
+
+hil_onewire_monitor() {
+  hil_onewire_select_project
+  require_serial_port
+  run_in_sdk_with_device_i \
+    python3 -u /work/tools/hil/onewire_irq_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" "$HIL_ONEWIRE_MONITOR_TIMEOUT_S"
+}
+
+hil_onewire_run() {
+  hil_onewire_select_project
+  sdk_build
+  sdk_flash
+  hil_onewire_monitor
+}
+
 cmd="${1:-}"
 
 case "$cmd" in
@@ -685,6 +722,18 @@ case "$cmd" in
     ;;
   hil-i2c-run)
     hil_i2c_run
+    ;;
+  hil-onewire-build)
+    hil_onewire_build
+    ;;
+  hil-onewire-flash)
+    hil_onewire_flash
+    ;;
+  hil-onewire-monitor)
+    hil_onewire_monitor
+    ;;
+  hil-onewire-run)
+    hil_onewire_run
     ;;
   *)
     usage

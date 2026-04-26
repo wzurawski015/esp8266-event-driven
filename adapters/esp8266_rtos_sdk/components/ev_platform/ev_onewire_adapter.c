@@ -5,6 +5,7 @@
 
 #include "driver/gpio.h"
 #include "esp_err.h"
+#include "esp_timer.h"
 #include "rom/ets_sys.h"
 
 #include "ev/esp8266_port_adapters.h"
@@ -29,12 +30,55 @@ typedef struct ev_esp8266_onewire_adapter_ctx {
     uint32_t sleep_prepare_attempts;
     uint32_t sleep_prepare_failures;
     uint32_t bus_errors;
+    uint32_t critical_sections;
+    uint32_t reset_critical_sections;
+    uint32_t bit_critical_sections;
+    uint32_t max_critical_section_us;
+    uint32_t max_reset_critical_section_us;
+    uint32_t max_bit_critical_section_us;
 } ev_esp8266_onewire_adapter_ctx_t;
 
 static ev_esp8266_onewire_adapter_ctx_t g_ev_onewire0_ctx = {
     .data_pin = -1,
     .configured = false,
 };
+
+static uint32_t ev_esp8266_onewire_elapsed_us(int64_t start_us, int64_t end_us)
+{
+    if (end_us <= start_us) {
+        return 0U;
+    }
+    if ((uint64_t)(end_us - start_us) > UINT32_MAX) {
+        return UINT32_MAX;
+    }
+    return (uint32_t)(end_us - start_us);
+}
+
+static void ev_esp8266_onewire_record_critical_section(ev_esp8266_onewire_adapter_ctx_t *ctx,
+                                                       uint32_t elapsed_us,
+                                                       bool reset_section)
+{
+    if (ctx == NULL) {
+        return;
+    }
+
+    ++ctx->critical_sections;
+    if (elapsed_us > ctx->max_critical_section_us) {
+        ctx->max_critical_section_us = elapsed_us;
+    }
+
+    if (reset_section) {
+        ++ctx->reset_critical_sections;
+        if (elapsed_us > ctx->max_reset_critical_section_us) {
+            ctx->max_reset_critical_section_us = elapsed_us;
+        }
+    } else {
+        ++ctx->bit_critical_sections;
+        if (elapsed_us > ctx->max_bit_critical_section_us) {
+            ctx->max_bit_critical_section_us = elapsed_us;
+        }
+    }
+}
 
 static bool ev_esp8266_onewire_pin_is_valid(int pin)
 {
@@ -100,10 +144,13 @@ static void ev_esp8266_onewire_end_operation(ev_esp8266_onewire_adapter_ctx_t *c
     }
 }
 
-static uint8_t ev_esp8266_onewire_bit_io(const ev_esp8266_onewire_adapter_ctx_t *ctx, uint8_t bit_value)
+static uint8_t ev_esp8266_onewire_bit_io(ev_esp8266_onewire_adapter_ctx_t *ctx, uint8_t bit_value)
 {
     uint8_t sampled = 0U;
+    int64_t start_us;
+    int64_t end_us;
 
+    start_us = esp_timer_get_time();
     portENTER_CRITICAL();
 
     ev_esp8266_onewire_drive_low(ctx);
@@ -117,6 +164,8 @@ static uint8_t ev_esp8266_onewire_bit_io(const ev_esp8266_onewire_adapter_ctx_t 
     ev_esp8266_onewire_release_bus(ctx);
 
     portEXIT_CRITICAL();
+    end_us = esp_timer_get_time();
+    ev_esp8266_onewire_record_critical_section(ctx, ev_esp8266_onewire_elapsed_us(start_us, end_us), false);
 
     return sampled;
 }
@@ -134,17 +183,24 @@ static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
         return ev_esp8266_onewire_bus_error_slowpath();
     }
 
-    portENTER_CRITICAL();
+    {
+        int64_t start_us = esp_timer_get_time();
+        int64_t end_us;
 
-    ev_esp8266_onewire_drive_low(adapter);
-    ets_delay_us(EV_ESP8266_ONEWIRE_RESET_LOW_US);
-    ev_esp8266_onewire_release_bus(adapter);
-    ets_delay_us(EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_US);
-    presence_high = ev_esp8266_onewire_sample_bus(adapter);
-    ets_delay_us(EV_ESP8266_ONEWIRE_RESET_RELEASE_US);
-    stuck_low = !ev_esp8266_onewire_sample_bus(adapter);
+        portENTER_CRITICAL();
 
-    portEXIT_CRITICAL();
+        ev_esp8266_onewire_drive_low(adapter);
+        ets_delay_us(EV_ESP8266_ONEWIRE_RESET_LOW_US);
+        ev_esp8266_onewire_release_bus(adapter);
+        ets_delay_us(EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_US);
+        presence_high = ev_esp8266_onewire_sample_bus(adapter);
+        ets_delay_us(EV_ESP8266_ONEWIRE_RESET_RELEASE_US);
+        stuck_low = !ev_esp8266_onewire_sample_bus(adapter);
+
+        portEXIT_CRITICAL();
+        end_us = esp_timer_get_time();
+        ev_esp8266_onewire_record_critical_section(adapter, ev_esp8266_onewire_elapsed_us(start_us, end_us), true);
+    }
     ev_esp8266_onewire_end_operation(adapter);
 
     if (stuck_low) {
@@ -171,20 +227,27 @@ static ev_onewire_status_t ev_esp8266_onewire_write_byte(void *ctx, uint8_t valu
     }
 
     for (bit_index = 0U; bit_index < 8U; ++bit_index) {
-        portENTER_CRITICAL();
+        {
+            int64_t start_us = esp_timer_get_time();
+            int64_t end_us;
 
-        ev_esp8266_onewire_drive_low(adapter);
-        if ((value & 0x01U) != 0U) {
-            ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_1_LOW_US);
-            ev_esp8266_onewire_release_bus(adapter);
-            ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_1_RELEASE_US);
-        } else {
-            ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_0_LOW_US);
-            ev_esp8266_onewire_release_bus(adapter);
-            ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_0_RELEASE_US);
+            portENTER_CRITICAL();
+
+            ev_esp8266_onewire_drive_low(adapter);
+            if ((value & 0x01U) != 0U) {
+                ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_1_LOW_US);
+                ev_esp8266_onewire_release_bus(adapter);
+                ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_1_RELEASE_US);
+            } else {
+                ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_0_LOW_US);
+                ev_esp8266_onewire_release_bus(adapter);
+                ets_delay_us(EV_ESP8266_ONEWIRE_WRITE_0_RELEASE_US);
+            }
+
+            portEXIT_CRITICAL();
+            end_us = esp_timer_get_time();
+            ev_esp8266_onewire_record_critical_section(adapter, ev_esp8266_onewire_elapsed_us(start_us, end_us), false);
         }
-
-        portEXIT_CRITICAL();
 
         value = (uint8_t)(value >> 1U);
     }
@@ -229,6 +292,12 @@ ev_result_t ev_esp8266_onewire_get_diag(ev_esp8266_onewire_diag_snapshot_t *out_
     out_snapshot->sleep_prepare_attempts = g_ev_onewire0_ctx.sleep_prepare_attempts;
     out_snapshot->sleep_prepare_failures = g_ev_onewire0_ctx.sleep_prepare_failures;
     out_snapshot->bus_errors = g_ev_onewire0_ctx.bus_errors;
+    out_snapshot->critical_sections = g_ev_onewire0_ctx.critical_sections;
+    out_snapshot->reset_critical_sections = g_ev_onewire0_ctx.reset_critical_sections;
+    out_snapshot->bit_critical_sections = g_ev_onewire0_ctx.bit_critical_sections;
+    out_snapshot->max_critical_section_us = g_ev_onewire0_ctx.max_critical_section_us;
+    out_snapshot->max_reset_critical_section_us = g_ev_onewire0_ctx.max_reset_critical_section_us;
+    out_snapshot->max_bit_critical_section_us = g_ev_onewire0_ctx.max_bit_critical_section_us;
     out_snapshot->configured = g_ev_onewire0_ctx.configured;
     out_snapshot->busy = g_ev_onewire0_ctx.busy;
     out_snapshot->dq_high = ev_esp8266_onewire_ctx_is_valid(&g_ev_onewire0_ctx) ?
@@ -287,6 +356,12 @@ ev_result_t ev_esp8266_onewire_port_init(ev_onewire_port_t *out_port, int data_p
     g_ev_onewire0_ctx.sleep_prepare_attempts = 0U;
     g_ev_onewire0_ctx.sleep_prepare_failures = 0U;
     g_ev_onewire0_ctx.bus_errors = 0U;
+    g_ev_onewire0_ctx.critical_sections = 0U;
+    g_ev_onewire0_ctx.reset_critical_sections = 0U;
+    g_ev_onewire0_ctx.bit_critical_sections = 0U;
+    g_ev_onewire0_ctx.max_critical_section_us = 0U;
+    g_ev_onewire0_ctx.max_reset_critical_section_us = 0U;
+    g_ev_onewire0_ctx.max_bit_critical_section_us = 0U;
 
     out_port->ctx = &g_ev_onewire0_ctx;
     out_port->reset = ev_esp8266_onewire_reset;

@@ -11,15 +11,22 @@
 extern "C" {
 #endif
 
+#define FAKE_IRQ_PORT_CAPACITY 32U
+
 typedef struct {
-    ev_irq_sample_t ring[32];
+    ev_irq_sample_t ring[FAKE_IRQ_PORT_CAPACITY];
     size_t head;
     size_t tail;
     size_t count;
+    size_t high_watermark;
     bool enabled[8];
     uint32_t pop_calls;
     uint32_t enable_calls;
     uint32_t wait_calls;
+    uint32_t get_stats_calls;
+    uint32_t write_seq;
+    uint32_t read_seq;
+    uint32_t dropped_samples;
 } fake_irq_port_t;
 
 void fake_irq_port_init(fake_irq_port_t *fake);

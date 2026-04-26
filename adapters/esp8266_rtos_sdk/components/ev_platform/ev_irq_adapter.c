@@ -37,6 +37,7 @@ typedef struct {
     volatile uint32_t write_seq;
     volatile uint32_t read_seq;
     volatile uint32_t dropped_samples;
+    uint32_t high_watermark;
     uint32_t active_gpio_mask;
     uint32_t enabled_gpio_mask;
     uint32_t sleep_prepare_attempts;
@@ -140,8 +141,12 @@ static void ev_esp8266_irq_push_isr(ev_esp8266_irq_adapter_ctx_t *adapter, const
     write_seq = adapter->write_seq;
     read_seq = adapter->read_seq;
     if ((write_seq - read_seq) < EV_ESP8266_IRQ_RING_CAPACITY) {
+        const uint32_t pending_after = (write_seq + 1U) - read_seq;
         adapter->ring[write_seq & EV_ESP8266_IRQ_RING_MASK] = *sample;
         adapter->write_seq = write_seq + 1U;
+        if (pending_after > adapter->high_watermark) {
+            adapter->high_watermark = pending_after;
+        }
         if (adapter->wait_sem != NULL) {
             (void)xSemaphoreGiveFromISR(adapter->wait_sem, &higher_priority_woken);
         }
@@ -253,6 +258,32 @@ static ev_result_t ev_esp8266_irq_wait(void *ctx, uint32_t timeout_ms, bool *out
     }
 
     *out_woken = false;
+    return EV_OK;
+}
+
+static ev_result_t ev_esp8266_irq_get_stats(void *ctx, ev_irq_stats_t *out_stats)
+{
+    ev_esp8266_irq_adapter_ctx_t *adapter = (ev_esp8266_irq_adapter_ctx_t *)ctx;
+    uint32_t write_seq;
+    uint32_t read_seq;
+
+    if ((adapter == NULL) || (out_stats == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!adapter->configured) {
+        return EV_ERR_STATE;
+    }
+
+    portENTER_CRITICAL();
+    write_seq = adapter->write_seq;
+    read_seq = adapter->read_seq;
+    out_stats->write_seq = write_seq;
+    out_stats->read_seq = read_seq;
+    out_stats->pending_samples = write_seq - read_seq;
+    out_stats->dropped_samples = adapter->dropped_samples;
+    out_stats->high_watermark = adapter->high_watermark;
+    portEXIT_CRITICAL();
+
     return EV_OK;
 }
 
@@ -371,6 +402,7 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
     out_port->pop = ev_esp8266_irq_pop;
     out_port->enable = ev_esp8266_irq_enable;
     out_port->wait = ev_esp8266_irq_wait;
+    out_port->get_stats = ev_esp8266_irq_get_stats;
     return EV_OK;
 }
 
@@ -393,6 +425,7 @@ ev_result_t ev_esp8266_irq_get_diag(ev_esp8266_irq_diag_snapshot_t *out_snapshot
     out_snapshot->read_seq = read_seq;
     out_snapshot->pending_samples = write_seq - read_seq;
     out_snapshot->dropped_samples = g_ev_irq_ctx.dropped_samples;
+    out_snapshot->high_watermark = g_ev_irq_ctx.high_watermark;
     out_snapshot->active_gpio_mask = g_ev_irq_ctx.active_gpio_mask;
     out_snapshot->enabled_gpio_mask = g_ev_irq_ctx.enabled_gpio_mask;
     out_snapshot->sleep_prepare_attempts = g_ev_irq_ctx.sleep_prepare_attempts;

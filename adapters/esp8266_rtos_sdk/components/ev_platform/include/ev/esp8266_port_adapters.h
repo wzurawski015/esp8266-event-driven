@@ -44,6 +44,7 @@ typedef struct ev_esp8266_irq_diag_snapshot {
     uint32_t read_seq; /**< Monotonic IRQ ring read sequence. */
     uint32_t pending_samples; /**< Number of currently pending IRQ samples. */
     uint32_t dropped_samples; /**< Number of IRQ samples dropped because the ring was full. */
+    uint32_t high_watermark; /**< Maximum observed pending IRQ ring depth. */
     uint32_t active_gpio_mask; /**< GPIO bit mask currently accepted by the ISR. */
     uint32_t enabled_gpio_mask; /**< GPIO bit mask currently armed for interrupts. */
     uint32_t sleep_prepare_attempts; /**< Number of IRQ sleep-prepare attempts. */
@@ -58,6 +59,12 @@ typedef struct ev_esp8266_onewire_diag_snapshot {
     uint32_t sleep_prepare_attempts; /**< Number of 1-Wire sleep-prepare checks. */
     uint32_t sleep_prepare_failures; /**< Number of 1-Wire sleep-prepare rejections. */
     uint32_t bus_errors; /**< Number of observed 1-Wire bus errors or unsafe bus states. */
+    uint32_t critical_sections; /**< Number of measured timing-critical 1-Wire sections. */
+    uint32_t reset_critical_sections; /**< Number of measured reset-pulse critical sections. */
+    uint32_t bit_critical_sections; /**< Number of measured bit-slot critical sections. */
+    uint32_t max_critical_section_us; /**< Maximum measured critical section duration. */
+    uint32_t max_reset_critical_section_us; /**< Maximum measured reset-pulse critical section duration. */
+    uint32_t max_bit_critical_section_us; /**< Maximum measured bit-slot critical section duration. */
     bool configured; /**< True after the adapter was initialized. */
     bool busy; /**< True while a bit-banged 1-Wire operation is active. */
     bool dq_high; /**< Last sampled released DQ line level. */
