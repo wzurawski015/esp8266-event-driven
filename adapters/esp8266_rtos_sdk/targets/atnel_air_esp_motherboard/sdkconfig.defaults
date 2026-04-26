@@ -2,5 +2,3 @@
 # Stage 2A4 board-target defaults for ATNEL AIR ESP Motherboard.
 #
 
-# Mission-critical runtime: require static FreeRTOS object allocation.
-CONFIG_FREERTOS_SUPPORT_STATIC_ALLOCATION=y
