@@ -15,6 +15,19 @@ adapters/esp8266_rtos_sdk/components/ev_platform/
 - `ev_log_port_t`
 - `ev_reset_port_t`
 - `ev_uart_port_t`
+- `ev_i2c_port_t` (zero-heap software master)
+- `ev_irq_port_t`
+- `ev_onewire_port_t`
+
+
+## Zero-heap I2C adapter note
+
+The ESP8266 I2C adapter intentionally avoids `i2c_cmd_link_create()` and
+`i2c_cmd_link_delete()` in runtime transactions.  Those SDK command-link calls
+allocate descriptors dynamically and violate the post-bootstrap zero-heap
+policy.  The adapter therefore uses one bootstrap-time mutex plus bounded GPIO
+open-drain bit-banging, a fixed byte budget, clock-stretch timeout, and a
+bounded bus-recovery sequence before each transaction.
 
 ## Shared bring-up harness
 
@@ -42,7 +55,7 @@ The adapters are intentionally narrow:
 - wall-clock time is still reported as unsupported,
 - the log adapter is task-context only and not ISR-safe,
 - the UART adapter is tuned for UART0 boot/diagnostic flow,
-- no GPIO/I2C/1-Wire adapter is claimed yet.
+- GPIO IRQ, I2C, and 1-Wire adapters are now present in the ESP8266 component; I2C is implemented as a bounded zero-heap GPIO open-drain software master instead of the SDK command-link API.
 
 ## Clock-resolution note
 

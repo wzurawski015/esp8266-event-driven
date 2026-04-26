@@ -26,8 +26,9 @@ ev_result_t ev_esp8266_clock_port_init(ev_clock_port_t *out_port);
 /**
  * @brief Initialize the ESP8266-backed I2C adapter.
  *
- * The adapter installs the SDK master driver for `I2C_NUM_0` and creates one
- * global bus mutex used to serialize all bounded I2C transactions.
+ * The adapter owns a zero-heap GPIO open-drain software I2C master and creates
+ * one bootstrap-time global bus mutex used to serialize all bounded
+ * transactions.  Runtime calls do not allocate SDK command links.
  *
  * @param out_port Destination public contract populated on success.
  * @param sda_pin GPIO number used for SDA.
