@@ -12,6 +12,7 @@
 #include "ev/port_log.h"
 #include "ev/port_reset.h"
 #include "ev/port_uart.h"
+#include "ev/port_wdt.h"
 #include "ev/system_port.h"
 
 #ifdef __cplusplus
@@ -196,6 +197,20 @@ ev_result_t ev_esp8266_log_port_init(ev_log_port_t *out_port);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_reset_port_init(ev_reset_port_t *out_port);
+
+
+/**
+ * @brief Initialize the ESP8266-backed watchdog mechanism adapter.
+ *
+ * The current ESP8266 RTOS SDK headers bundled in this repository do not expose
+ * a verified hardware-watchdog feed API. The adapter therefore reports
+ * unsupported unless a future target enables a verified vendor implementation.
+ * The actor policy is still fully testable through the portable WDT contract.
+ *
+ * @param out_port Destination contract populated on success.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_esp8266_wdt_port_init(ev_wdt_port_t *out_port);
 
 /**
  * @brief Initialize the ESP8266-backed UART adapter.

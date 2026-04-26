@@ -7,7 +7,7 @@
 
 #include "ev/route_table.h"
 
-#define EV_ROUTE_TABLE_GENERATED_COUNT 37U
+#define EV_ROUTE_TABLE_GENERATED_COUNT 38U
 
 enum {
     EV_ROUTE_UNIQUE__EV_BOOT_STARTED__ACT_DIAG = 1,
@@ -20,6 +20,7 @@ enum {
     EV_ROUTE_UNIQUE__EV_BOOT_COMPLETED__ACT_SUPERVISOR = 1,
     EV_ROUTE_UNIQUE__EV_TICK_1S__ACT_DIAG = 1,
     EV_ROUTE_UNIQUE__EV_TICK_1S__ACT_APP = 1,
+    EV_ROUTE_UNIQUE__EV_TICK_1S__ACT_WATCHDOG = 1,
     EV_ROUTE_UNIQUE__EV_TICK_1S__ACT_RTC = 1,
     EV_ROUTE_UNIQUE__EV_TICK_1S__ACT_DS18B20 = 1,
     EV_ROUTE_UNIQUE__EV_TICK_1S__ACT_OLED = 1,
@@ -61,6 +62,7 @@ static const ev_route_t k_ev_route_table_generated[] = {
     { EV_BOOT_COMPLETED, ACT_SUPERVISOR },
     { EV_TICK_1S, ACT_DIAG },
     { EV_TICK_1S, ACT_APP },
+    { EV_TICK_1S, ACT_WATCHDOG },
     { EV_TICK_1S, ACT_RTC },
     { EV_TICK_1S, ACT_DS18B20 },
     { EV_TICK_1S, ACT_OLED },
@@ -93,25 +95,25 @@ static const ev_route_t k_ev_route_table_generated[] = {
 static const ev_route_span_t k_ev_route_spans_generated[EV_EVENT_COUNT] = {
     [EV_BOOT_STARTED] = { 0U, 1U },
     [EV_BOOT_COMPLETED] = { 1U, 7U },
-    [EV_TICK_1S] = { 8U, 6U },
-    [EV_STREAM_CHUNK_READY] = { 14U, 1U },
-    [EV_DIAG_SNAPSHOT_REQ] = { 15U, 1U },
-    [EV_DIAG_SNAPSHOT_RSP] = { 16U, 1U },
-    [EV_OLED_DISPLAY_TEXT_CMD] = { 17U, 1U },
-    [EV_OLED_COMMIT_FRAME] = { 18U, 1U },
-    [EV_TIME_UPDATED] = { 19U, 1U },
-    [EV_TEMP_UPDATED] = { 20U, 1U },
-    [EV_TICK_100MS] = { 21U, 3U },
-    [EV_GPIO_IRQ] = { 24U, 2U },
-    [EV_MCP23008_INPUT_CHANGED] = { 26U, 1U },
-    [EV_BUTTON_EVENT] = { 27U, 1U },
-    [EV_PANEL_LED_SET_CMD] = { 28U, 1U },
-    [EV_MCP23008_READY] = { 29U, 3U },
-    [EV_RTC_READY] = { 32U, 1U },
-    [EV_OLED_READY] = { 33U, 1U },
-    [EV_DS18B20_READY] = { 34U, 1U },
-    [EV_SYSTEM_READY] = { 35U, 1U },
-    [EV_SYS_GOTO_SLEEP_CMD] = { 36U, 1U },
+    [EV_TICK_1S] = { 8U, 7U },
+    [EV_STREAM_CHUNK_READY] = { 15U, 1U },
+    [EV_DIAG_SNAPSHOT_REQ] = { 16U, 1U },
+    [EV_DIAG_SNAPSHOT_RSP] = { 17U, 1U },
+    [EV_OLED_DISPLAY_TEXT_CMD] = { 18U, 1U },
+    [EV_OLED_COMMIT_FRAME] = { 19U, 1U },
+    [EV_TIME_UPDATED] = { 20U, 1U },
+    [EV_TEMP_UPDATED] = { 21U, 1U },
+    [EV_TICK_100MS] = { 22U, 3U },
+    [EV_GPIO_IRQ] = { 25U, 2U },
+    [EV_MCP23008_INPUT_CHANGED] = { 27U, 1U },
+    [EV_BUTTON_EVENT] = { 28U, 1U },
+    [EV_PANEL_LED_SET_CMD] = { 29U, 1U },
+    [EV_MCP23008_READY] = { 30U, 3U },
+    [EV_RTC_READY] = { 33U, 1U },
+    [EV_OLED_READY] = { 34U, 1U },
+    [EV_DS18B20_READY] = { 35U, 1U },
+    [EV_SYSTEM_READY] = { 36U, 1U },
+    [EV_SYS_GOTO_SLEEP_CMD] = { 37U, 1U },
 };
 
 #endif /* EV_ROUTE_TABLE_GENERATED_H */

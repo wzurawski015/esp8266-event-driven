@@ -12,10 +12,10 @@ int main(void)
     size_t j;
     ev_route_span_t span;
 
-    assert(ev_route_count() == 37U);
+    assert(ev_route_count() == 38U);
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 7U);
-    assert(ev_route_count_for_event(EV_TICK_1S) == 6U);
+    assert(ev_route_count_for_event(EV_TICK_1S) == 7U);
     assert(ev_route_count_for_event(EV_TICK_100MS) == 3U);
     assert(ev_route_count_for_event(EV_GPIO_IRQ) == 2U);
     assert(ev_route_count_for_event(EV_TIME_UPDATED) == 1U);
@@ -61,6 +61,7 @@ int main(void)
     assert(ev_route_exists(EV_TICK_1S, ACT_OLED));
     assert(ev_route_exists(EV_TICK_1S, ACT_RTC));
     assert(ev_route_exists(EV_TICK_1S, ACT_SUPERVISOR));
+    assert(ev_route_exists(EV_TICK_1S, ACT_WATCHDOG));
 
     assert(ev_route_exists(EV_TICK_100MS, ACT_DIAG));
     assert(ev_route_exists(EV_TICK_100MS, ACT_PANEL));
