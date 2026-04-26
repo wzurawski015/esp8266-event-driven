@@ -10,7 +10,8 @@
  * control for a fully static FreeRTOS configuration. The project therefore
  * keeps the previously approved vendor-bootstrap exception for SDK-owned heap
  * use, while enabling the application to provide static kernel task memory
- * when the patched SDK exposes configSUPPORT_STATIC_ALLOCATION.
+ * when the SDK FreeRTOSConfig.h exposes configSUPPORT_STATIC_ALLOCATION
+ * through idempotent sdk-check injection or pre-injected SDK image configuration.
  *
  * These hooks are adapter-layer only. They provide static .bss storage for the
  * FreeRTOS Idle task and, when enabled by the SDK, the Timer Service task.

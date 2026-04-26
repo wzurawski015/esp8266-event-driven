@@ -23,15 +23,7 @@ heap in runtime paths.
 
 ## FreeRTOS kernel hooks
 
-The repository provides an SDK patch:
-
-```text
-tools/patches/0002-esp8266-freertos-static-task-hooks.patch
-```
-
-The patch enables guarded FreeRTOS static allocation support in the vendor
-`FreeRTOSConfig.h` while keeping dynamic allocation enabled as a bootstrap
-compatibility bridge:
+`./tools/fw sdk-check` injects guarded FreeRTOS static allocation support idempotently into the vendor `FreeRTOSConfig.h`. This replaces the previous fragile standalone FreeRTOSConfig patch-file approach that could fail Docker builds with malformed patch errors. The injection keeps dynamic allocation enabled as a bootstrap compatibility bridge:
 
 ```text
 configSUPPORT_STATIC_ALLOCATION = 1
@@ -72,6 +64,5 @@ grep -RIn "portMAX_DELAY" core ports app adapters tests
 grep -RIn "xSemaphoreCreateMutexStatic\\|xSemaphoreCreateBinaryStatic" adapters/esp8266_rtos_sdk/components/ev_platform
 ```
 
-`./tools/fw sdk-check` verifies that the SDK image contains the patched
-`FreeRTOSConfig.h` definitions. A full ESP8266 SDK build is still required for
+`./tools/fw sdk-check` verifies that the SDK `FreeRTOSConfig.h` contains exactly one effective definition for each required static-allocation macro after idempotent injection. A full ESP8266 SDK build is still required for
 final toolchain validation. Physical HIL is not implied by this policy.
