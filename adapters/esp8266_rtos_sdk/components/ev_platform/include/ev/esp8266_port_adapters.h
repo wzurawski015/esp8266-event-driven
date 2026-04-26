@@ -16,6 +16,30 @@ extern "C" {
 #endif
 
 /**
+ * @brief Snapshot of private ESP8266 zero-heap I2C adapter counters.
+ */
+typedef struct ev_esp8266_i2c_diag_snapshot {
+    uint32_t transactions_started; /**< Number of runtime I2C transactions that acquired the bus. */
+    uint32_t transactions_failed; /**< Number of runtime I2C transactions that ended with non-OK status. */
+    uint32_t nacks; /**< Number of normalized NACK outcomes. */
+    uint32_t timeouts; /**< Number of bounded timeout outcomes. */
+    uint32_t bus_locked; /**< Number of bus-locked or unsafe-bus outcomes. */
+    uint32_t bus_recoveries; /**< Number of attempted bounded bus-recovery sequences. */
+    uint32_t bus_recovery_failures; /**< Number of bus-recovery attempts that did not restore idle bus state. */
+} ev_esp8266_i2c_diag_snapshot_t;
+
+/**
+ * @brief Snapshot of private ESP8266 IRQ ingress ring counters.
+ */
+typedef struct ev_esp8266_irq_diag_snapshot {
+    uint32_t write_seq; /**< Monotonic IRQ ring write sequence. */
+    uint32_t read_seq; /**< Monotonic IRQ ring read sequence. */
+    uint32_t pending_samples; /**< Number of currently pending IRQ samples. */
+    uint32_t dropped_samples; /**< Number of IRQ samples dropped because the ring was full. */
+    uint32_t active_gpio_mask; /**< GPIO bit mask currently accepted by the ISR. */
+} ev_esp8266_irq_diag_snapshot_t;
+
+/**
  * @brief Initialize the ESP8266-backed clock adapter.
  *
  * @param out_port Destination contract populated on success.
@@ -36,6 +60,15 @@ ev_result_t ev_esp8266_clock_port_init(ev_clock_port_t *out_port);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int scl_pin);
+
+/**
+ * @brief Copy private ESP8266 I2C adapter counters for diagnostics and HIL gates.
+ *
+ * @param port_num Logical I2C controller identifier.
+ * @param out_snapshot Destination snapshot populated on success.
+ * @return EV_OK on success or EV_ERR_INVALID_ARG/EV_ERR_STATE.
+ */
+ev_result_t ev_esp8266_i2c_get_diag(ev_i2c_port_num_t port_num, ev_esp8266_i2c_diag_snapshot_t *out_snapshot);
 
 /**
  * @brief Scan one initialized I2C controller and log detected slaves.
@@ -64,6 +97,14 @@ ev_result_t ev_i2c_scan(ev_i2c_port_num_t port_num);
 ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
                                      const ev_gpio_irq_line_config_t *line_cfgs,
                                      size_t line_count);
+
+/**
+ * @brief Copy private ESP8266 IRQ ring counters for diagnostics and HIL gates.
+ *
+ * @param out_snapshot Destination snapshot populated on success.
+ * @return EV_OK on success or EV_ERR_INVALID_ARG/EV_ERR_STATE.
+ */
+ev_result_t ev_esp8266_irq_get_diag(ev_esp8266_irq_diag_snapshot_t *out_snapshot);
 
 /**
  * @brief Initialize the ESP8266-backed 1-Wire adapter.

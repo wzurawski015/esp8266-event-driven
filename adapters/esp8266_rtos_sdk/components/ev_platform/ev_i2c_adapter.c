@@ -715,6 +715,27 @@ ev_result_t ev_i2c_scan(ev_i2c_port_num_t port_num)
     return EV_OK;
 }
 
+
+ev_result_t ev_esp8266_i2c_get_diag(ev_i2c_port_num_t port_num, ev_esp8266_i2c_diag_snapshot_t *out_snapshot)
+{
+    ev_esp8266_i2c_adapter_ctx_t *ctx = ev_esp8266_i2c_ctx_from_port(port_num);
+
+    if (out_snapshot == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if ((ctx == NULL) || !ctx->configured) {
+        return EV_ERR_STATE;
+    }
+
+    out_snapshot->transactions_started = ctx->transactions_started;
+    out_snapshot->transactions_failed = ctx->transactions_failed;
+    out_snapshot->nacks = ctx->nacks;
+    out_snapshot->timeouts = ctx->timeouts;
+    out_snapshot->bus_locked = ctx->bus_locked;
+    out_snapshot->bus_recoveries = ctx->bus_recoveries;
+    out_snapshot->bus_recovery_failures = ctx->bus_recovery_failures;
+    return EV_OK;
+}
 ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int scl_pin)
 {
     gpio_config_t sdk_cfg = {0};

@@ -362,3 +362,28 @@ ev_result_t ev_esp8266_irq_port_init(ev_irq_port_t *out_port,
     out_port->wait = ev_esp8266_irq_wait;
     return EV_OK;
 }
+
+ev_result_t ev_esp8266_irq_get_diag(ev_esp8266_irq_diag_snapshot_t *out_snapshot)
+{
+    uint32_t write_seq;
+    uint32_t read_seq;
+
+    if (out_snapshot == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!g_ev_irq_ctx.configured) {
+        return EV_ERR_STATE;
+    }
+
+    portENTER_CRITICAL();
+    write_seq = g_ev_irq_ctx.write_seq;
+    read_seq = g_ev_irq_ctx.read_seq;
+    out_snapshot->write_seq = write_seq;
+    out_snapshot->read_seq = read_seq;
+    out_snapshot->pending_samples = write_seq - read_seq;
+    out_snapshot->dropped_samples = g_ev_irq_ctx.dropped_samples;
+    out_snapshot->active_gpio_mask = g_ev_irq_ctx.active_gpio_mask;
+    portEXIT_CRITICAL();
+
+    return EV_OK;
+}
