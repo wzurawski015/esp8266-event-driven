@@ -55,8 +55,39 @@ RUN git config --global advice.detachedHead false \
     && git submodule update --init --recursive \
     && for p in /tmp/ev-sdk-patches/*.patch; do \
            [ -f "$p" ] || continue; \
+           case "$(basename "$p")" in \
+             *freertos-static-task-hooks*.patch) \
+               echo "note: skipping obsolete FreeRTOSConfig patch file; tools/fw sdk-check now performs idempotent injection"; \
+               continue; \
+               ;; \
+           esac; \
            patch --batch -p1 < "$p"; \
        done \
+    && freertos_config=/opt/esp/ESP8266_RTOS_SDK/components/freertos/port/esp8266/include/freertos/FreeRTOSConfig.h \
+    && tmp_file="${freertos_config}.ev-static" \
+    && sed '/EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN/,/EV_FREERTOS_STATIC_ALLOC_CONFIG_END/d' "$freertos_config" \
+       | sed \
+           -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_STATIC_ALLOCATION[[:space:]]/d' \
+           -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]/d' \
+         > "$tmp_file" \
+    && cat "$tmp_file" > "$freertos_config" \
+    && rm -f "$tmp_file" \
+    && { \
+         printf '\n/* EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN\n'; \
+         printf ' * Project environment hardening: static Idle/Timer task hooks are enabled.\n'; \
+         printf ' * Dynamic allocation remains enabled only as an ESP8266 vendor SDK bootstrap bridge.\n'; \
+         printf ' * Runtime actor/event/I2C/IRQ hot paths remain zero-heap by project policy.\n'; \
+         printf ' */\n'; \
+         printf '#ifndef configSUPPORT_STATIC_ALLOCATION\n'; \
+         printf '#define configSUPPORT_STATIC_ALLOCATION 1\n'; \
+         printf '#endif\n'; \
+         printf '#ifndef configSUPPORT_DYNAMIC_ALLOCATION\n'; \
+         printf '#define configSUPPORT_DYNAMIC_ALLOCATION 1\n'; \
+         printf '#endif\n'; \
+         printf '/* EV_FREERTOS_STATIC_ALLOC_CONFIG_END */\n'; \
+       } >> "$freertos_config" \
+    && grep -Eq '^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" \
+    && grep -Eq '^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" \
     && rm -rf /tmp/ev-sdk-patches \
     && git config --system --add safe.directory /opt/esp/ESP8266_RTOS_SDK
 
