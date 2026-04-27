@@ -16,6 +16,15 @@ The ATNEL target passes WiFi/MQTT configuration from `bsp/atnel_air_esp_motherbo
 
 If `EV_BOARD_NET_MQTT_BROKER_URI` is empty, WiFi may still be started but the MQTT client remains disabled and `publish_mqtt` returns unsupported/state errors.
 
+## MQTT foundation policy
+
+This adapter does not route sensor telemetry and does not execute remote
+commands. `EV_NET_TX_CMD` is rejected unless an SDK MQTT session is explicitly
+connected. MQTT RX events are copied into bounded inline fields and delivered
+to `ACT_NETWORK` only as inert ingress events; topic parsing for commands is a
+future, separately reviewed commit. Oversize topics or payloads are dropped and
+counted.
+
 ## Verification status
 
 This document describes code-level integration only. ESP8266 SDK build, WiFi association, MQTT broker connection, and physical network HIL must be run on hardware before production network readiness is claimed.

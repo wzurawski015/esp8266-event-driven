@@ -26,6 +26,7 @@ typedef struct ev_network_actor_stats {
     uint32_t mqtt_up_events;
     uint32_t mqtt_down_events;
     uint32_t mqtt_rx_events;
+    uint32_t mqtt_rx_ignored_foundation;
     uint32_t tx_commands_seen;
     uint32_t tx_attempts;
     uint32_t tx_ok;

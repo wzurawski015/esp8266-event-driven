@@ -113,8 +113,17 @@ static void test_fake_net_ring_backpressure_and_oversize(void)
     }
     assert(fake_net_port_pending(&fake) == EV_NET_INGRESS_RING_CAPACITY);
     assert(fake.high_watermark == EV_NET_INGRESS_RING_CAPACITY);
+    assert(fake.wifi_up_events == EV_NET_INGRESS_RING_CAPACITY);
     assert(fake_net_port_callback_push(&fake, &event) == EV_ERR_FULL);
     assert(fake.dropped_events == 1U);
+
+    {
+        ev_net_stats_t stats;
+        assert(port.get_stats(port.ctx, &stats) == EV_OK);
+        assert(stats.wifi_up_events == EV_NET_INGRESS_RING_CAPACITY);
+        assert(stats.dropped_events == 1U);
+        assert(stats.high_watermark == EV_NET_INGRESS_RING_CAPACITY);
+    }
 
     assert(port.poll_ingress(port.ctx, &out_event) == EV_OK);
     assert(fake_net_port_pending(&fake) == (EV_NET_INGRESS_RING_CAPACITY - 1U));
@@ -165,6 +174,31 @@ static void test_network_actor_state_machine_and_tx_policy(void)
     assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
     assert(fake.publish_mqtt_calls == 1U);
     assert(actor.stats.tx_ok == 1U);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    {
+        ev_net_ingress_event_t rx_event;
+        memset(&rx_event, 0, sizeof(rx_event));
+        rx_event.kind = EV_NET_EVENT_MQTT_MSG_RX;
+        rx_event.topic_len = 5U;
+        memcpy(rx_event.topic, "cmd/x", 5U);
+        rx_event.payload_len = 1U;
+        rx_event.payload[0] = 1U;
+        assert(ev_msg_init_publish(&msg, EV_NET_MQTT_MSG_RX, ACT_RUNTIME) == EV_OK);
+        assert(ev_msg_set_inline_payload(&msg, &rx_event, sizeof(rx_event)) == EV_OK);
+        assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+        assert(actor.stats.mqtt_rx_events == 1U);
+        assert(actor.stats.mqtt_rx_ignored_foundation == 1U);
+        assert(fake.publish_mqtt_calls == 1U);
+        assert(ev_msg_dispose(&msg) == EV_OK);
+    }
+
+    fake.next_publish_result = EV_ERR_UNSUPPORTED;
+    assert(ev_msg_init_publish(&msg, EV_NET_TX_CMD, ACT_APP) == EV_OK);
+    assert(ev_msg_set_inline_payload(&msg, &tx_cmd, sizeof(tx_cmd)) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_ERR_UNSUPPORTED);
+    assert(actor.stats.tx_failed == 1U);
+    assert(fake.tx_rejected_state == 1U);
     assert(ev_msg_dispose(&msg) == EV_OK);
 }
 

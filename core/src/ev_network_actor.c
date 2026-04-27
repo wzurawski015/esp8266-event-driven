@@ -57,6 +57,7 @@ static ev_result_t ev_network_actor_handle_mqtt_rx(ev_network_actor_ctx_t *ctx, 
         return EV_ERR_CONTRACT;
     }
     ++ctx->stats.mqtt_rx_events;
+    ++ctx->stats.mqtt_rx_ignored_foundation;
     return EV_OK;
 }
 

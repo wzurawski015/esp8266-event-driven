@@ -50,10 +50,15 @@ scope for this commit.
 
 ## ESP8266 adapter status
 
-The current ESP8266 adapter is a non-blocking unsupported scaffold because this
-repository does not contain verified ESP8266 WiFi/MQTT SDK headers for a safe
-implementation.  A future hardware commit must replace the scaffold with a
-verified SDK callback bridge and HIL tests.
+The ESP8266 adapter is a bounded WiFi/MQTT foundation behind this airlock.
+WiFi station callbacks push `EV_NET_WIFI_UP` / `EV_NET_WIFI_DOWN` into the
+static ingress ring. MQTT is intentionally foundation-only at this stage:
+when the BSP broker URI is empty the adapter keeps MQTT disabled and rejects
+TX with diagnostics; when a broker is configured, SDK MQTT callbacks may only
+push bounded `EV_NET_*` ingress events. This layer still does not implement
+telemetry routing, Home Assistant discovery, or remote command execution.
+Physical WiFi/MQTT HIL remains required before production network readiness is
+claimed.
 
 ## Verification requirements for future hardware adapter
 

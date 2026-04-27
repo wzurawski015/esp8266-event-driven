@@ -18,6 +18,33 @@ static void fake_net_record_high_watermark(fake_net_port_t *fake)
     }
 }
 
+static void fake_net_record_event_kind(fake_net_port_t *fake, ev_net_event_kind_t kind)
+{
+    if (fake == NULL) {
+        return;
+    }
+
+    switch (kind) {
+    case EV_NET_EVENT_WIFI_UP:
+        ++fake->wifi_up_events;
+        break;
+    case EV_NET_EVENT_WIFI_DOWN:
+        ++fake->wifi_down_events;
+        break;
+    case EV_NET_EVENT_MQTT_UP:
+        ++fake->mqtt_up_events;
+        break;
+    case EV_NET_EVENT_MQTT_DOWN:
+        ++fake->mqtt_down_events;
+        break;
+    case EV_NET_EVENT_MQTT_MSG_RX:
+        ++fake->mqtt_rx_events;
+        break;
+    default:
+        break;
+    }
+}
+
 static ev_result_t fake_net_init_fn(void *ctx)
 {
     fake_net_port_t *fake = (fake_net_port_t *)ctx;
@@ -59,6 +86,10 @@ static ev_result_t fake_net_publish_mqtt_fn(void *ctx, const ev_net_mqtt_publish
         ++fake->publish_mqtt_ok;
     } else {
         ++fake->publish_mqtt_failed;
+        if ((fake->next_publish_result == EV_ERR_STATE) ||
+            (fake->next_publish_result == EV_ERR_UNSUPPORTED)) {
+            ++fake->tx_rejected_state;
+        }
     }
     return fake->next_publish_result;
 }
@@ -98,9 +129,19 @@ static ev_result_t fake_net_get_stats_fn(void *ctx, ev_net_stats_t *out_stats)
     out_stats->dropped_oversize = fake->dropped_oversize;
     out_stats->dropped_no_payload_slot = fake->dropped_no_payload_slot;
     out_stats->high_watermark = fake->high_watermark;
+    out_stats->wifi_up_events = fake->wifi_up_events;
+    out_stats->wifi_down_events = fake->wifi_down_events;
+    out_stats->reconnect_attempts = fake->reconnect_attempts;
+    out_stats->mqtt_disabled = fake->mqtt_disabled;
+    out_stats->mqtt_connect_attempts = fake->mqtt_connect_attempts;
+    out_stats->mqtt_up_events = fake->mqtt_up_events;
+    out_stats->mqtt_down_events = fake->mqtt_down_events;
+    out_stats->mqtt_rx_events = fake->mqtt_rx_events;
     out_stats->tx_attempts = fake->publish_mqtt_calls;
     out_stats->tx_ok = fake->publish_mqtt_ok;
     out_stats->tx_failed = fake->publish_mqtt_failed;
+    out_stats->tx_rejected_state = fake->tx_rejected_state;
+    out_stats->tx_rejected_oversize = fake->tx_rejected_oversize;
     return EV_OK;
 }
 
@@ -142,6 +183,7 @@ ev_result_t fake_net_port_callback_push(fake_net_port_t *fake, const ev_net_ingr
     index = fake->write_seq & EV_NET_INGRESS_RING_MASK;
     fake->ring[index] = *event;
     ++fake->write_seq;
+    fake_net_record_event_kind(fake, event->kind);
     fake_net_record_high_watermark(fake);
     return EV_OK;
 }

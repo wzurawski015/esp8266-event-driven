@@ -19,6 +19,16 @@ typedef struct fake_net_port {
     uint32_t dropped_oversize;
     uint32_t dropped_no_payload_slot;
     uint32_t high_watermark;
+    uint32_t wifi_up_events;
+    uint32_t wifi_down_events;
+    uint32_t reconnect_attempts;
+    uint32_t mqtt_disabled;
+    uint32_t mqtt_connect_attempts;
+    uint32_t mqtt_up_events;
+    uint32_t mqtt_down_events;
+    uint32_t mqtt_rx_events;
+    uint32_t tx_rejected_state;
+    uint32_t tx_rejected_oversize;
     uint32_t init_calls;
     uint32_t start_calls;
     uint32_t stop_calls;
