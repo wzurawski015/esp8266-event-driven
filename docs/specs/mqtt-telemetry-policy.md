@@ -74,3 +74,5 @@ provided topic or payload pointers after the call returns.
 This policy is host-tested. Physical MQTT broker connection and MQTT HIL are
 not claimed by this specification. MQTT remains opt-in through the ESP8266 build
 gate and board/broker configuration.
+
+Remote command execution is not part of telemetry. Authenticated command handling is isolated in `ACT_COMMAND`; see `remote-command-dispatcher.md`.

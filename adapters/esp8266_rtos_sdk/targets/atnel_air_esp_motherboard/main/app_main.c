@@ -72,6 +72,8 @@ static const ev_demo_app_board_profile_t k_board_runtime_profile = {
     .oled_addr_7bit = EV_BOARD_OLED_ADDR_7BIT,
     .oled_controller = EV_BOARD_OLED_CONTROLLER,
     .watchdog_timeout_ms = EV_BOARD_WDT_TIMEOUT_MS,
+    .remote_command_token = EV_BOARD_NET_COMMAND_TOKEN,
+    .remote_command_capabilities = EV_BOARD_REMOTE_COMMAND_CAPABILITIES,
 };
 
 void app_main(void)

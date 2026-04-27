@@ -138,3 +138,5 @@ Telemetry is strictly outbound, QoS 0, retain=false, and rate-limited. MQTT RX
 remains foundation-only and cannot execute local commands. Larger telemetry
 topics use `ev_net_mqtt_publish_view_t`, which is consumed synchronously by the
 network port without retaining pointers.
+
+Remote commands are handled by a separate `ACT_COMMAND`; SDK callbacks still enter only through the bounded network airlock. See `remote-command-dispatcher.md`.

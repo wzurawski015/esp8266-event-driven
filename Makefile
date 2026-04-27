@@ -29,7 +29,8 @@ CORE_SRCS := \
     core/src/ev_supervisor_actor.c \
     core/src/ev_power_actor.c \
     core/src/ev_watchdog_actor.c \
-    core/src/ev_network_actor.c
+    core/src/ev_network_actor.c \
+    core/src/ev_command_actor.c
 
 APP_SRCS := \
     app/ev_demo_app.c
@@ -69,7 +70,8 @@ HOST_TESTS := \
     test_demo_app_fault_contract \
     test_app_starvation \
     test_app_fairness \
-    test_network_isolation
+    test_network_isolation \
+    test_command_actor_contract
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
 

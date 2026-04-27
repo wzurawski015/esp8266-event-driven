@@ -53,6 +53,14 @@
 #ifndef EV_BOARD_NET_MQTT_CLIENT_ID
 #define EV_BOARD_NET_MQTT_CLIENT_ID EV_BOARD_PROFILE_TAG
 #endif
+
+#ifndef EV_BOARD_NET_COMMAND_TOKEN
+#define EV_BOARD_NET_COMMAND_TOKEN ""
+#endif
+
+#ifndef EV_BOARD_REMOTE_COMMAND_CAPABILITIES
+#define EV_BOARD_REMOTE_COMMAND_CAPABILITIES 0U
+#endif
 enum {
 #define EV_BSP_PIN(name, gpio, desc) EV_BOARD_##name = (gpio),
 #define EV_BSP_PIN_ANALOG(name, desc)

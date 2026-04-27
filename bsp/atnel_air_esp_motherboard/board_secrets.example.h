@@ -21,4 +21,10 @@
 #define EV_BOARD_NET_MQTT_BROKER_URI ""
 #define EV_BOARD_NET_MQTT_CLIENT_ID EV_BOARD_PROFILE_TAG
 
+/* Optional remote command dispatcher. Leave token empty and capabilities zero
+ * unless MQTT command HIL is intentionally enabled.
+ */
+#define EV_BOARD_NET_COMMAND_TOKEN "YOUR_COMMAND_TOKEN"
+#define EV_BOARD_REMOTE_COMMAND_CAPABILITIES 0U
+
 #endif /* EV_ATNEL_AIR_BOARD_SECRETS_EXAMPLE_H */
