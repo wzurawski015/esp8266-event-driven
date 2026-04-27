@@ -19,6 +19,7 @@
 #include "ev/ds18b20_actor.h"
 #include "ev/mcp23008_actor.h"
 #include "ev/network_actor.h"
+#include "ev/command_actor.h"
 #include "ev/oled_actor.h"
 #include "ev/panel_actor.h"
 #include "ev/rtc_actor.h"
@@ -42,6 +43,7 @@ extern "C" {
 #define EV_DEMO_APP_BOARD_CAP_DEEP_SLEEP_WAKE_GPIO16 0x00000008UL
 #define EV_DEMO_APP_BOARD_CAP_WDT 0x00000010UL
 #define EV_DEMO_APP_BOARD_CAP_NET 0x00000020UL
+#define EV_DEMO_APP_BOARD_CAP_REMOTE_COMMANDS 0x00000040UL
 
 /**
  * @brief Board-owned hardware profile consumed by the portable runtime.
@@ -61,6 +63,8 @@ typedef struct {
     uint8_t oled_addr_7bit;
     ev_oled_controller_t oled_controller;
     uint32_t watchdog_timeout_ms;
+    const char *remote_command_token;
+    uint32_t remote_command_capabilities;
 } ev_demo_app_board_profile_t;
 
 const ev_demo_app_board_profile_t *ev_demo_app_default_board_profile(void);
@@ -193,6 +197,7 @@ struct ev_demo_app {
     ev_mailbox_t power_mailbox; /* Skrzynka pocztowa dla Aktora Power */
     ev_mailbox_t watchdog_mailbox; /* Skrzynka pocztowa dla Aktora Watchdog */
     ev_mailbox_t network_mailbox; /* Skrzynka pocztowa dla Aktora Network */
+    ev_mailbox_t command_mailbox; /* Mailbox for authenticated remote command actor */
 
     ev_msg_t app_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
     ev_msg_t diag_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
@@ -205,6 +210,7 @@ struct ev_demo_app {
     ev_msg_t power_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Aktora Power */
     ev_msg_t watchdog_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Aktora Watchdog */
     ev_msg_t network_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Aktora Network */
+    ev_msg_t command_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Storage for authenticated remote command actor */
 
     ev_actor_runtime_t app_runtime;
     ev_actor_runtime_t diag_runtime;
@@ -217,6 +223,7 @@ struct ev_demo_app {
     ev_actor_runtime_t power_runtime; /* Wątek logiczny Aktora Power */
     ev_actor_runtime_t watchdog_runtime; /* Wątek logiczny Aktora Watchdog */
     ev_actor_runtime_t network_runtime; /* Wątek logiczny Aktora Network */
+    ev_actor_runtime_t command_runtime; /* Runtime for authenticated remote command actor */
 
     ev_domain_pump_t fast_domain;
     ev_domain_pump_t slow_domain;
@@ -237,6 +244,7 @@ struct ev_demo_app {
     ev_power_actor_ctx_t power_ctx; /* Stan Aktora Power */
     ev_watchdog_actor_ctx_t watchdog_ctx; /* Stan Aktora Watchdog */
     ev_network_actor_ctx_t network_ctx; /* Stan Aktora Network */
+    ev_command_actor_ctx_t command_ctx; /* Authenticated remote command dispatcher state */
 
     ev_demo_app_stats_t stats;
 };
@@ -300,6 +308,7 @@ const ev_demo_app_stats_t *ev_demo_app_stats(const ev_demo_app_t *app);
 const ev_system_pump_stats_t *ev_demo_app_system_pump_stats(const ev_demo_app_t *app);
 const ev_watchdog_actor_stats_t *ev_demo_app_watchdog_stats(const ev_demo_app_t *app);
 const ev_network_actor_stats_t *ev_demo_app_network_stats(const ev_demo_app_t *app);
+const ev_command_actor_stats_t *ev_demo_app_command_stats(const ev_demo_app_t *app);
 
 #ifdef __cplusplus
 }

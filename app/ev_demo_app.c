@@ -49,6 +49,8 @@ static const ev_demo_app_board_profile_t k_ev_demo_app_default_board_profile = {
     .oled_addr_7bit = 0U,
     .oled_controller = EV_OLED_CONTROLLER_SSD1306,
     .watchdog_timeout_ms = 0U,
+    .remote_command_token = "",
+    .remote_command_capabilities = 0U,
 };
 
 const ev_demo_app_board_profile_t *ev_demo_app_default_board_profile(void)
@@ -879,6 +881,8 @@ static bool ev_demo_app_actor_enabled(const ev_demo_app_t *app, ev_actor_id_t ac
         return (app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U;
     case ACT_NETWORK:
         return (app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_NET) != 0U;
+    case ACT_COMMAND:
+        return true;
     default:
         return true;
     }
@@ -1303,6 +1307,18 @@ static ev_result_t ev_demo_app_collect_ingress(ev_demo_app_t *app,
 }
 
 
+static void ev_demo_app_release_net_event_external_payload(const ev_net_ingress_event_t *event)
+{
+    if ((event != NULL) && (event->payload_storage == EV_NET_PAYLOAD_LEASE) &&
+        (event->external_payload.release_fn != NULL) && (event->external_payload.data != NULL) &&
+        (event->external_payload.size > 0U)) {
+        event->external_payload.release_fn(
+            event->external_payload.lifecycle_ctx,
+            event->external_payload.data,
+            event->external_payload.size);
+    }
+}
+
 static ev_result_t ev_demo_app_publish_net_event(ev_demo_app_t *app, const ev_net_ingress_event_t *event)
 {
     ev_msg_t msg = {0};
@@ -1327,25 +1343,69 @@ static ev_result_t ev_demo_app_publish_net_event(ev_demo_app_t *app, const ev_ne
         event_id = EV_NET_MQTT_DOWN;
         break;
     case EV_NET_EVENT_MQTT_MSG_RX:
-        event_id = EV_NET_MQTT_MSG_RX;
+        event_id = (event->payload_storage == EV_NET_PAYLOAD_LEASE) ? EV_NET_MQTT_MSG_RX_LEASE : EV_NET_MQTT_MSG_RX;
         break;
     default:
+        ev_demo_app_release_net_event_external_payload(event);
         return EV_ERR_CONTRACT;
     }
 
     rc = ev_msg_init_publish(&msg, event_id, ACT_RUNTIME);
     if (rc != EV_OK) {
+        ev_demo_app_release_net_event_external_payload(event);
         return rc;
     }
     if (event_id == EV_NET_MQTT_MSG_RX) {
-        rc = ev_msg_set_inline_payload(&msg, event, sizeof(*event));
+        ev_net_mqtt_inline_payload_t inline_payload;
+
+        if (event->payload_storage != EV_NET_PAYLOAD_INLINE) {
+            (void)ev_msg_dispose(&msg);
+            ev_demo_app_release_net_event_external_payload(event);
+            return EV_ERR_CONTRACT;
+        }
+        if ((event->topic_len > EV_NET_MAX_TOPIC_BYTES) ||
+            (event->payload_len > EV_NET_MAX_INLINE_PAYLOAD_BYTES)) {
+            (void)ev_msg_dispose(&msg);
+            return EV_ERR_CONTRACT;
+        }
+        memset(&inline_payload, 0, sizeof(inline_payload));
+        inline_payload.topic_len = event->topic_len;
+        inline_payload.payload_len = event->payload_len;
+        if (event->topic_len > 0U) {
+            memcpy(inline_payload.topic, event->topic, event->topic_len);
+        }
+        if (event->payload_len > 0U) {
+            memcpy(inline_payload.payload, event->payload, event->payload_len);
+        }
+        rc = ev_msg_set_inline_payload(&msg, &inline_payload, sizeof(inline_payload));
         if (rc != EV_OK) {
             (void)ev_msg_dispose(&msg);
+            return rc;
+        }
+    } else if (event_id == EV_NET_MQTT_MSG_RX_LEASE) {
+        if ((event->external_payload.data == NULL) ||
+            (event->external_payload.size != sizeof(ev_net_mqtt_rx_payload_t)) ||
+            (event->external_payload.retain_fn == NULL) ||
+            (event->external_payload.release_fn == NULL)) {
+            (void)ev_msg_dispose(&msg);
+            ev_demo_app_release_net_event_external_payload(event);
+            return EV_ERR_CONTRACT;
+        }
+        rc = ev_msg_set_external_payload(&msg,
+                                         event->external_payload.data,
+                                         event->external_payload.size,
+                                         event->external_payload.retain_fn,
+                                         event->external_payload.release_fn,
+                                         event->external_payload.lifecycle_ctx);
+        if (rc != EV_OK) {
+            (void)ev_msg_dispose(&msg);
+            ev_demo_app_release_net_event_external_payload(event);
             return rc;
         }
     }
     return ev_demo_app_publish_owned(app, &msg);
 }
+
 
 static ev_result_t ev_demo_app_process_timers(ev_demo_app_t *app,
                                               ev_poll_budget_t *budget,
@@ -1491,6 +1551,12 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
                          EV_ARRAY_LEN(app->network_storage));
     if (rc != EV_OK) return rc;
 
+    rc = ev_mailbox_init(&app->command_mailbox,
+                         EV_MAILBOX_FIFO_8,
+                         app->command_storage,
+                         EV_ARRAY_LEN(app->command_storage));
+    if (rc != EV_OK) return rc;
+
     /* Inicjalizacja Wątków Aktorów (Runtimes) */
     rc = ev_actor_runtime_init(&app->app_runtime, ACT_APP, &app->app_mailbox, ev_demo_app_actor_handler, &app->app_actor);
     if (rc != EV_OK) return rc;
@@ -1530,6 +1596,20 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_runtime_init(&app->runtime_actor, ACT_RUNTIME, &app->runtime_mailbox, ev_runtime_actor_handler, NULL);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_command_actor_init(&app->command_ctx,
+                               ev_demo_app_delivery,
+                               app,
+                               app->board_profile.remote_command_token,
+                               app->board_profile.remote_command_capabilities);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_runtime_init(&app->command_runtime,
+                               ACT_COMMAND,
+                               &app->command_mailbox,
+                               ev_command_actor_handle,
+                               &app->command_ctx);
     if (rc != EV_OK) return rc;
 
     if ((app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U) {
@@ -1647,6 +1727,9 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
 
     rc = ev_actor_registry_bind(&app->registry, &app->runtime_actor);
+    if (rc != EV_OK) return rc;
+
+    rc = ev_actor_registry_bind(&app->registry, &app->command_runtime);
     if (rc != EV_OK) return rc;
 
     if ((app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U) {
@@ -1868,4 +1951,9 @@ const ev_watchdog_actor_stats_t *ev_demo_app_watchdog_stats(const ev_demo_app_t 
 const ev_network_actor_stats_t *ev_demo_app_network_stats(const ev_demo_app_t *app)
 {
     return (app != NULL) ? ev_network_actor_stats(&app->network_ctx) : NULL;
+}
+
+const ev_command_actor_stats_t *ev_demo_app_command_stats(const ev_demo_app_t *app)
+{
+    return (app != NULL) ? ev_command_actor_stats(&app->command_ctx) : NULL;
 }

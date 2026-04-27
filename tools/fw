@@ -9,7 +9,8 @@ sdk_default_monitor_baud() {
     adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev|\
     adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard|\
     adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil|\
-    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil)
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil|\
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil)
       printf '%s\n' '115200'
       ;;
     *)
@@ -28,6 +29,8 @@ HIL_I2C_PROJECT_DIR_REL="${FW_HIL_I2C_PROJECT_DIR:-adapters/esp8266_rtos_sdk/tar
 HIL_I2C_MONITOR_TIMEOUT_S="${FW_HIL_I2C_TIMEOUT_S:-180}"
 HIL_ONEWIRE_PROJECT_DIR_REL="${FW_HIL_ONEWIRE_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil}"
 HIL_ONEWIRE_MONITOR_TIMEOUT_S="${FW_HIL_ONEWIRE_TIMEOUT_S:-240}"
+HIL_WIFI_PROJECT_DIR_REL="${FW_HIL_WIFI_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil}"
+HIL_WIFI_MONITOR_TIMEOUT_S="${FW_HIL_WIFI_TIMEOUT_S:-300}"
 SDK_SERIAL_PORT="${FW_ESPPORT:-${ESPPORT:-}}"
 SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-$(sdk_default_monitor_baud "$SDK_PROJECT_DIR_REL")}}"
 SDK_FLASH_BEFORE="${FW_FLASH_BEFORE:-default_reset}"
@@ -59,6 +62,9 @@ Usage:
   ./tools/fw sdk-defconfig
   ./tools/fw sdk-menuconfig
   ./tools/fw sdk-build
+  ./tools/fw sdk-memory-report
+  ./tools/fw sdk-build-report
+  ./tools/fw sdk-network-build-gate
   ./tools/fw sdk-clean-target
   ./tools/fw sdk-distclean
   ./tools/fw sdk-flash
@@ -76,12 +82,20 @@ Usage:
   ./tools/fw hil-onewire-monitor
   ./tools/fw hil-onewire-run
 
+  ./tools/fw hil-wifi-build
+  ./tools/fw hil-wifi-flash
+  ./tools/fw hil-wifi-monitor
+  ./tools/fw hil-wifi-run
+
 Notes:
   - All developer-facing validation runs inside Docker by default.
   - Containers write back to the bind mount using the caller UID:GID.
   - Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, FW_SDK_IMAGE, FW_RUN_USER,
     FW_SDK_PROJECT_DIR, FW_ESPPORT, FW_MONITOR_BAUD, FW_FLASH_BEFORE,
-    FW_FLASH_AFTER, FW_FLASH_RETRIES, or FW_FLASH_RETRY_DELAY_S to override defaults.
+    FW_FLASH_AFTER, FW_FLASH_RETRIES, FW_FLASH_RETRY_DELAY_S,
+    EV_ESP8266_NET_ENABLE_MQTT, EV_SDK_IRAM_LIMIT_BYTES,
+    EV_SDK_DRAM_LIMIT_BYTES, EV_SDK_MAX_BSS_BYTES, or
+    EV_SDK_MAX_DATA_BYTES to override defaults.
   - If FW_ESPPORT is unset and exactly one /dev/ttyUSB* or /dev/ttyACM* node is visible,
     the wrapper can resolve that serial device automatically.
 USAGE
@@ -298,6 +312,11 @@ run_in_sdk() {
     EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
     ESPPORT="$SDK_SERIAL_PORT" \
     MONITORBAUD="$SDK_MONITOR_BAUD" \
+    EV_ESP8266_NET_ENABLE_MQTT="${EV_ESP8266_NET_ENABLE_MQTT:-0}" \
+    EV_SDK_IRAM_LIMIT_BYTES="${EV_SDK_IRAM_LIMIT_BYTES:-}" \
+    EV_SDK_DRAM_LIMIT_BYTES="${EV_SDK_DRAM_LIMIT_BYTES:-}" \
+    EV_SDK_MAX_BSS_BYTES="${EV_SDK_MAX_BSS_BYTES:-}" \
+    EV_SDK_MAX_DATA_BYTES="${EV_SDK_MAX_DATA_BYTES:-}" \
     sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
 }
 
@@ -310,6 +329,11 @@ run_in_sdk_it() {
     EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
     ESPPORT="$SDK_SERIAL_PORT" \
     MONITORBAUD="$SDK_MONITOR_BAUD" \
+    EV_ESP8266_NET_ENABLE_MQTT="${EV_ESP8266_NET_ENABLE_MQTT:-0}" \
+    EV_SDK_IRAM_LIMIT_BYTES="${EV_SDK_IRAM_LIMIT_BYTES:-}" \
+    EV_SDK_DRAM_LIMIT_BYTES="${EV_SDK_DRAM_LIMIT_BYTES:-}" \
+    EV_SDK_MAX_BSS_BYTES="${EV_SDK_MAX_BSS_BYTES:-}" \
+    EV_SDK_MAX_DATA_BYTES="${EV_SDK_MAX_DATA_BYTES:-}" \
     sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
 }
 
@@ -494,6 +518,35 @@ sdk_build() {
       jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
       make -C "$EV_SDK_PROJECT" -j"$jobs"
     '
+}
+
+sdk_memory_report() {
+  run_in_sdk \
+    sh -lc '
+      set -eu
+      python3 /work/tools/sdk_memory_report.py --project-dir "$EV_SDK_PROJECT"
+    '
+}
+
+sdk_build_report() {
+  sdk_build
+  sdk_memory_report
+}
+
+sdk_network_build_gate() {
+  mqtt_enable="${EV_SDK_BUILD_ENABLE_MQTT:-${EV_ESP8266_NET_ENABLE_MQTT:-0}}"
+  case "$mqtt_enable" in
+    0|1)
+      ;;
+    *)
+      echo "error: EV_SDK_BUILD_ENABLE_MQTT/EV_ESP8266_NET_ENABLE_MQTT must be 0 or 1" >&2
+      exit 1
+      ;;
+  esac
+  export EV_ESP8266_NET_ENABLE_MQTT="$mqtt_enable"
+  echo "note: sdk-network-build-gate uses EV_ESP8266_NET_ENABLE_MQTT=$EV_ESP8266_NET_ENABLE_MQTT" >&2
+  sdk_build
+  sdk_memory_report
 }
 
 sdk_clean_target() {
@@ -722,6 +775,35 @@ hil_onewire_run() {
   hil_onewire_monitor
 }
 
+hil_wifi_select_project() {
+  SDK_PROJECT_DIR_REL="$HIL_WIFI_PROJECT_DIR_REL"
+  SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-115200}}"
+}
+
+hil_wifi_build() {
+  hil_wifi_select_project
+  sdk_build
+}
+
+hil_wifi_flash() {
+  hil_wifi_select_project
+  sdk_flash
+}
+
+hil_wifi_monitor() {
+  hil_wifi_select_project
+  require_serial_port
+  run_in_sdk_with_device_i \
+    python3 -u /work/tools/hil/wifi_reconnect_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" "$HIL_WIFI_MONITOR_TIMEOUT_S"
+}
+
+hil_wifi_run() {
+  hil_wifi_select_project
+  sdk_build
+  sdk_flash
+  hil_wifi_monitor
+}
+
 cmd="${1:-}"
 
 case "$cmd" in
@@ -784,6 +866,15 @@ case "$cmd" in
   sdk-build)
     sdk_build
     ;;
+  sdk-memory-report)
+    sdk_memory_report
+    ;;
+  sdk-build-report)
+    sdk_build_report
+    ;;
+  sdk-network-build-gate)
+    sdk_network_build_gate
+    ;;
   sdk-clean-target)
     sdk_clean_target
     ;;
@@ -825,6 +916,18 @@ case "$cmd" in
     ;;
   hil-onewire-run)
     hil_onewire_run
+    ;;
+  hil-wifi-build)
+    hil_wifi_build
+    ;;
+  hil-wifi-flash)
+    hil_wifi_flash
+    ;;
+  hil-wifi-monitor)
+    hil_wifi_monitor
+    ;;
+  hil-wifi-run)
+    hil_wifi_run
     ;;
   *)
     usage

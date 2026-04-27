@@ -10,6 +10,9 @@
 /adapters/esp8266_rtos_sdk/targets/*/sdkconfig
 /adapters/esp8266_rtos_sdk/targets/*/sdkconfig.old
 
+# Developer-local board secrets
+/bsp/*/board_secrets.local.h
+
 # Generated documentation
 /docs/generated/*
 !/docs/generated/.gitkeep
