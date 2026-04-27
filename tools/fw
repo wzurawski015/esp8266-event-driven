@@ -196,6 +196,76 @@ build_sdk_image() {
     -t "$SDK_IMAGE" \
     "$ROOT_DIR"
 }
+freertos_static_allocation_config_is_valid() {
+  freertos_config="$1"
+
+  static_count=$(grep -Ec '^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" || true)
+  dynamic_count=$(grep -Ec '^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" || true)
+
+  [ "$static_count" -eq 1 ] && [ "$dynamic_count" -eq 1 ]
+}
+
+sdk_static_config_wrapper_script() {
+  cat <<'SDK_STATIC_CONFIG_WRAPPER'
+set -eu
+freertos_static_allocation_config_is_valid() {
+  freertos_config="$1"
+  static_count=$(grep -Ec '^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" || true)
+  dynamic_count=$(grep -Ec '^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" || true)
+  [ "$static_count" -eq 1 ] && [ "$dynamic_count" -eq 1 ]
+}
+ensure_freertos_static_allocation_config() {
+  freertos_config="${IDF_PATH:?IDF_PATH is not set}/components/freertos/port/esp8266/include/freertos/FreeRTOSConfig.h"
+  if [ ! -f "$freertos_config" ]; then
+    echo "error: FreeRTOSConfig.h not found: $freertos_config" >&2
+    return 1
+  fi
+  if freertos_static_allocation_config_is_valid "$freertos_config"; then
+    return 0
+  fi
+  if [ ! -w "$freertos_config" ]; then
+    echo "error: FreeRTOSConfig.h requires static-allocation injection but is not writable: $freertos_config" >&2
+    echo "error: rebuild the SDK image or run sdk-check with permissions to update the SDK header" >&2
+    return 1
+  fi
+  tmp_file="${freertos_config}.ev-static.$$"
+  trap 'rm -f "$tmp_file"' HUP INT TERM EXIT
+  sed '/EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN/,/EV_FREERTOS_STATIC_ALLOC_CONFIG_END/d' "$freertos_config" \
+    | sed \
+        -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_STATIC_ALLOCATION[[:space:]]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]/d' \
+      > "$tmp_file"
+  cat "$tmp_file" > "$freertos_config"
+  cat >> "$freertos_config" <<'FREERTOS_STATIC_ALLOC_CONFIG'
+
+/* EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN
+ * Project environment hardening:
+ *   - configSUPPORT_STATIC_ALLOCATION enables application-provided
+ *     Idle/Timer task memory hooks.
+ *   - configSUPPORT_DYNAMIC_ALLOCATION remains enabled only as an ESP8266
+ *     vendor SDK bootstrap compatibility bridge.
+ *   - This block does not claim full vendor SDK heap elimination; runtime
+ *     actor/event/I2C/IRQ hot paths remain zero-heap by project policy.
+ */
+#ifndef configSUPPORT_STATIC_ALLOCATION
+#define configSUPPORT_STATIC_ALLOCATION 1
+#endif
+#ifndef configSUPPORT_DYNAMIC_ALLOCATION
+#define configSUPPORT_DYNAMIC_ALLOCATION 1
+#endif
+/* EV_FREERTOS_STATIC_ALLOC_CONFIG_END */
+FREERTOS_STATIC_ALLOC_CONFIG
+  rm -f "$tmp_file"
+  trap - HUP INT TERM EXIT
+  if ! freertos_static_allocation_config_is_valid "$freertos_config"; then
+    echo "error: failed to verify FreeRTOS static allocation config in $freertos_config" >&2
+    return 1
+  fi
+}
+ensure_freertos_static_allocation_config
+exec "$@"
+SDK_STATIC_CONFIG_WRAPPER
+}
 
 run_in_image() {
   image="$1"
@@ -228,7 +298,7 @@ run_in_sdk() {
     EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
     ESPPORT="$SDK_SERIAL_PORT" \
     MONITORBAUD="$SDK_MONITOR_BAUD" \
-    "$@"
+    sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
 }
 
 run_in_sdk_it() {
@@ -240,7 +310,7 @@ run_in_sdk_it() {
     EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
     ESPPORT="$SDK_SERIAL_PORT" \
     MONITORBAUD="$SDK_MONITOR_BAUD" \
-    "$@"
+    sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
 }
 
 run_in_sdk_with_device() {
@@ -266,7 +336,7 @@ run_in_sdk_with_device() {
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
       FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
-      "$@"
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
   else
     "$DOCKER_BIN" run --rm \
       --user "$RUN_USER" \
@@ -282,7 +352,7 @@ run_in_sdk_with_device() {
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
       FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
-      "$@"
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
   fi
 }
 
@@ -309,7 +379,7 @@ run_in_sdk_with_device_it() {
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
       FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
-      "$@"
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
   else
     "$DOCKER_BIN" run --rm -it \
       --user "$RUN_USER" \
@@ -325,7 +395,7 @@ run_in_sdk_with_device_it() {
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
       FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
-      "$@"
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
   fi
 }
 
@@ -352,7 +422,7 @@ run_in_sdk_with_device_i() {
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
       FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
-      "$@"
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
   else
     "$DOCKER_BIN" run --rm -i \
       --user "$RUN_USER" \
@@ -368,7 +438,7 @@ run_in_sdk_with_device_i() {
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
       FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
-      "$@"
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
   fi
 }
 
@@ -388,7 +458,7 @@ sdk_check() {
   build_sdk_image
   run_in_image \
     "$SDK_IMAGE" \
-    sh -lc '
+    sh -lc "$(sdk_static_config_wrapper_script)" sh sh -lc '
       set -eu
       xtensa-lx106-elf-gcc --version | head -n 1
       python3 --version
@@ -397,6 +467,11 @@ sdk_check() {
       printf "IDF_PATH=%s\n" "$IDF_PATH"
       test -f "$IDF_PATH/make/project.mk"
       test -f "$IDF_PATH/export.sh"
+      freertos_config="$IDF_PATH/components/freertos/port/esp8266/include/freertos/FreeRTOSConfig.h"
+      test -f "$freertos_config"
+      grep -Eq "^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)" "$freertos_config"
+      grep -Eq "^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)" "$freertos_config"
+      grep -q "ev_freertos_static_hooks.c" /work/adapters/esp8266_rtos_sdk/components/ev_platform/component.mk
       git -C "$IDF_PATH" rev-parse --is-inside-work-tree >/dev/null
     '
 }

@@ -10,8 +10,10 @@
 #include "ev/port_gpio_irq.h"
 #include "ev/port_onewire.h"
 #include "ev/port_log.h"
+#include "ev/port_net.h"
 #include "ev/port_reset.h"
 #include "ev/port_uart.h"
+#include "ev/port_wdt.h"
 #include "ev/system_port.h"
 
 #ifdef __cplusplus
@@ -196,6 +198,48 @@ ev_result_t ev_esp8266_log_port_init(ev_log_port_t *out_port);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_reset_port_init(ev_reset_port_t *out_port);
+
+
+/**
+ * @brief Immutable ESP8266 network adapter configuration built by the target BSP.
+ *
+ * The adapter consumes board-owned strings from board_profile.h through target
+ * composition code.  This keeps WiFi/MQTT credentials out of the portable core
+ * and avoids making ev_platform depend directly on any single BSP directory.
+ */
+typedef struct ev_esp8266_net_config {
+    const char *wifi_ssid;
+    const char *wifi_password;
+    uint32_t wifi_auth_mode;
+    const char *mqtt_broker_uri;
+    const char *mqtt_client_id;
+} ev_esp8266_net_config_t;
+
+/**
+ * @brief Initialize the ESP8266 WiFi/MQTT adapter behind the HSHA network airlock.
+ *
+ * SDK callbacks never call core, actors, mailboxes, or ev_publish().  They only
+ * push bounded network ingress samples into an internal static ring.  The app
+ * poll loop drains the ring through ev_net_port_t::poll_ingress.
+ *
+ * @param out_port Destination contract populated on success.
+ * @param cfg BSP-derived WiFi/MQTT configuration.
+ * @return EV_OK on successful binding or an error code.
+ */
+ev_result_t ev_esp8266_net_port_init(ev_net_port_t *out_port, const ev_esp8266_net_config_t *cfg);
+
+/**
+ * @brief Initialize the ESP8266-backed watchdog mechanism adapter.
+ *
+ * The current ESP8266 RTOS SDK headers bundled in this repository do not expose
+ * a verified hardware-watchdog feed API. The adapter therefore reports
+ * unsupported unless a future target enables a verified vendor implementation.
+ * The actor policy is still fully testable through the portable WDT contract.
+ *
+ * @param out_port Destination contract populated on success.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_esp8266_wdt_port_init(ev_wdt_port_t *out_port);
 
 /**
  * @brief Initialize the ESP8266-backed UART adapter.

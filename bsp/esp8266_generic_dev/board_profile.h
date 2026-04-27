@@ -11,6 +11,9 @@
 #define EV_BOARD_HAS_ONEWIRE0 0U
 #define EV_BOARD_HAS_GPIO_IRQ 0U
 #define EV_BOARD_HAS_DEEP_SLEEP_WAKE_GPIO16 0U
+#define EV_BOARD_HAS_WDT 0U
+#define EV_BOARD_HAS_NET 0U
+#define EV_BOARD_WDT_TIMEOUT_MS 3000U
 
 enum {
 #define EV_BSP_PIN(name, gpio, desc) EV_BOARD_##name = (gpio),

@@ -16,6 +16,8 @@
 #define EV_DEMO_APP_TURN_BUDGET 4U
 #define EV_APP_POLL_MAX_IRQ_SAMPLES 16U
 #define EV_APP_POLL_RESERVED_IRQ_SAMPLES 4U
+#define EV_APP_POLL_MAX_NET_SAMPLES 16U
+#define EV_APP_POLL_RESERVED_NET_SAMPLES 4U
 #define EV_APP_POLL_MAX_MESSAGES 32U
 #define EV_APP_POLL_MAX_PUMP_TURNS 10U
 #define EV_DEMO_APP_BUTTON_TOGGLE_SCREENSAVER 0U
@@ -29,6 +31,8 @@
 #define EV_DEMO_APP_OLED_BLOCK_WIDTH_PX ((uint8_t)((sizeof(EV_DEMO_APP_OLED_TITLE_TEXT) - 1U) * EV_DEMO_APP_OLED_TEXT_CELL_ADVANCE))
 #define EV_DEMO_APP_OLED_MAX_COLUMN_OFFSET ((uint8_t)(EV_OLED_WIDTH - EV_DEMO_APP_OLED_BLOCK_WIDTH_PX))
 #define EV_DEMO_APP_OLED_MAX_PAGE_OFFSET ((uint8_t)(EV_OLED_PAGE_COUNT - EV_DEMO_APP_OLED_TITLE_PAGES))
+#define EV_DEMO_APP_MIN_WDT_TIMEOUT_MS 1000U
+#define EV_DEMO_APP_MAX_WDT_TIMEOUT_MS 60000U
 
 EV_STATIC_ASSERT(EV_DEMO_APP_OLED_BLOCK_WIDTH_PX <= EV_OLED_WIDTH, "OLED block width must fit the panel");
 EV_STATIC_ASSERT(EV_DEMO_APP_OLED_TITLE_PAGES <= EV_OLED_PAGE_COUNT, "OLED block height must fit the panel");
@@ -44,6 +48,7 @@ static const ev_demo_app_board_profile_t k_ev_demo_app_default_board_profile = {
     .rtc_addr_7bit = 0U,
     .oled_addr_7bit = 0U,
     .oled_controller = EV_OLED_CONTROLLER_SSD1306,
+    .watchdog_timeout_ms = 0U,
 };
 
 const ev_demo_app_board_profile_t *ev_demo_app_default_board_profile(void)
@@ -105,6 +110,12 @@ static bool ev_demo_app_profile_is_valid(const ev_demo_app_board_profile_t *prof
         ((profile->oled_addr_7bit == 0U) || (profile->oled_addr_7bit > 0x7FU))) {
         return false;
     }
+    if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U) {
+        if ((profile->watchdog_timeout_ms < EV_DEMO_APP_MIN_WDT_TIMEOUT_MS) ||
+            (profile->watchdog_timeout_ms > EV_DEMO_APP_MAX_WDT_TIMEOUT_MS)) {
+            return false;
+        }
+    }
 
     return true;
 }
@@ -165,6 +176,7 @@ static ev_result_t ev_demo_app_now_ms(ev_demo_app_t *app, uint32_t *out_now_ms)
 }
 
 static ev_result_t ev_demo_app_delivery(ev_actor_id_t target_actor, const ev_msg_t *msg, void *context);
+static ev_result_t ev_demo_app_publish_net_event(ev_demo_app_t *app, const ev_net_ingress_event_t *event);
 
 static ev_result_t ev_demo_app_publish_owned(ev_demo_app_t *app, ev_msg_t *msg)
 {
@@ -739,6 +751,7 @@ static ev_result_t ev_demo_diag_actor_handler(void *actor_context, const ev_msg_
 
 typedef struct {
     size_t irq_samples;
+    size_t net_samples;
     size_t pump_calls;
     size_t turns;
     size_t messages;
@@ -749,6 +762,7 @@ typedef struct {
     size_t messages_used;
     size_t turns_used;
     size_t irq_samples_used;
+    size_t net_samples_used;
     bool exhausted;
 } ev_poll_budget_t;
 
@@ -778,6 +792,9 @@ static void ev_demo_app_record_poll_diag(ev_demo_app_t *app,
     }
     if (diag->irq_samples > app->stats.max_irq_samples_per_poll) {
         app->stats.max_irq_samples_per_poll = diag->irq_samples;
+    }
+    if (diag->net_samples > app->stats.max_net_samples_per_poll) {
+        app->stats.max_net_samples_per_poll = diag->net_samples;
     }
     if (diag->pump_calls > app->stats.max_pump_calls_per_poll) {
         app->stats.max_pump_calls_per_poll = diag->pump_calls;
@@ -814,6 +831,30 @@ static void ev_demo_app_record_irq_stats(ev_demo_app_t *app)
     }
 }
 
+static void ev_demo_app_record_net_stats(ev_demo_app_t *app)
+{
+    ev_net_stats_t stats;
+
+    if ((app == NULL) || (app->net_port == NULL) || (app->net_port->get_stats == NULL)) {
+        return;
+    }
+    if (app->net_port->get_stats(app->net_port->ctx, &stats) != EV_OK) {
+        return;
+    }
+    if (stats.dropped_events > app->stats.net_events_dropped_observed) {
+        app->stats.net_events_dropped_observed = stats.dropped_events;
+    }
+    if (stats.dropped_oversize > app->stats.net_payload_dropped_oversize) {
+        app->stats.net_payload_dropped_oversize = stats.dropped_oversize;
+    }
+    if (stats.dropped_no_payload_slot > app->stats.net_no_payload_slot_drops_observed) {
+        app->stats.net_no_payload_slot_drops_observed = stats.dropped_no_payload_slot;
+    }
+    if (stats.high_watermark > app->stats.net_ring_high_watermark_observed) {
+        app->stats.net_ring_high_watermark_observed = stats.high_watermark;
+    }
+}
+
 static bool ev_demo_app_profile_has_hardware(const ev_demo_app_t *app, uint32_t hw_mask)
 {
     return (app != NULL) && ((app->board_profile.hardware_present_mask & hw_mask) != 0U);
@@ -834,6 +875,10 @@ static bool ev_demo_app_actor_enabled(const ev_demo_app_t *app, ev_actor_id_t ac
         return ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_DS18B20);
     case ACT_OLED:
         return ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_OLED);
+    case ACT_WATCHDOG:
+        return (app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U;
+    case ACT_NETWORK:
+        return (app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_NET) != 0U;
     default:
         return true;
     }
@@ -848,6 +893,12 @@ static ev_result_t ev_demo_app_delivery(ev_actor_id_t target_actor, const ev_msg
     }
     if (!ev_demo_app_actor_enabled(app, target_actor)) {
         ++app->stats.disabled_route_deliveries;
+        if (target_actor == ACT_WATCHDOG) {
+            ++app->stats.watchdog_disabled_route_deliveries;
+        }
+        if (target_actor == ACT_NETWORK) {
+            ++app->stats.network_disabled_route_deliveries;
+        }
         return EV_OK;
     }
 
@@ -869,6 +920,17 @@ static bool ev_demo_app_onewire_port_valid(const ev_onewire_port_t *port)
 static bool ev_demo_app_irq_port_valid(const ev_irq_port_t *port)
 {
     return (port != NULL) && (port->pop != NULL) && (port->enable != NULL);
+}
+
+static bool ev_demo_app_wdt_port_valid(const ev_wdt_port_t *port)
+{
+    return (port != NULL) && (port->enable != NULL) && (port->feed != NULL);
+}
+
+static bool ev_demo_app_net_port_valid(const ev_net_port_t *port)
+{
+    return (port != NULL) && (port->poll_ingress != NULL) &&
+           (port->publish_mqtt != NULL) && (port->get_stats != NULL);
 }
 
 static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
@@ -905,6 +967,16 @@ static bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
         }
     } else if ((cfg->irq_port != NULL) && ((cfg->irq_port->pop == NULL) || (cfg->irq_port->enable == NULL))) {
         return false;
+    }
+    if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U) {
+        if (!ev_demo_app_wdt_port_valid(cfg->wdt_port)) {
+            return false;
+        }
+    }
+    if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_NET) != 0U) {
+        if (!ev_demo_app_net_port_valid(cfg->net_port)) {
+            return false;
+        }
     }
 
     return true;
@@ -1029,6 +1101,61 @@ static ev_result_t ev_demo_app_sleep_disarm(void *ctx)
     return EV_OK;
 }
 
+static void ev_demo_app_fill_watchdog_domain_snapshot(ev_domain_pump_t *domain_pump,
+                                                        ev_watchdog_domain_snapshot_t *out_snapshot)
+{
+    const ev_domain_pump_stats_t *stats;
+
+    if (out_snapshot == NULL) {
+        return;
+    }
+    memset(out_snapshot, 0, sizeof(*out_snapshot));
+    if (domain_pump == NULL) {
+        out_snapshot->domain = EV_DOMAIN_COUNT;
+        out_snapshot->last_result = EV_ERR_STATE;
+        return;
+    }
+
+    stats = ev_domain_pump_stats(domain_pump);
+    out_snapshot->domain = domain_pump->domain;
+    out_snapshot->bound = true;
+    out_snapshot->pending_messages = ev_domain_pump_pending(domain_pump);
+    if (stats != NULL) {
+        out_snapshot->pump_calls = stats->pump_calls;
+        out_snapshot->pump_empty_calls = stats->pump_empty_calls;
+        out_snapshot->pump_budget_hits = stats->pump_budget_hits;
+        out_snapshot->last_result = stats->last_result;
+    }
+}
+
+static ev_result_t ev_demo_app_watchdog_liveness(void *ctx, ev_watchdog_liveness_snapshot_t *out_snapshot)
+{
+    ev_demo_app_t *app = (ev_demo_app_t *)ctx;
+    const ev_system_pump_stats_t *system_stats;
+
+    if ((app == NULL) || (out_snapshot == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    memset(out_snapshot, 0, sizeof(*out_snapshot));
+    system_stats = ev_system_pump_stats(&app->system_pump);
+    if (system_stats == NULL) {
+        return EV_ERR_STATE;
+    }
+
+    out_snapshot->system_turn_counter = system_stats->turns_processed;
+    out_snapshot->system_messages_processed = system_stats->messages_processed;
+    out_snapshot->system_pending_messages = ev_system_pump_pending(&app->system_pump);
+    out_snapshot->sleep_arming = app->sleep_arming;
+    out_snapshot->permanent_stall = (system_stats->last_result != EV_OK) &&
+                                    (system_stats->last_result != EV_ERR_EMPTY) &&
+                                    (system_stats->last_result != EV_ERR_PARTIAL);
+    out_snapshot->domain_count = 2U;
+    ev_demo_app_fill_watchdog_domain_snapshot(&app->fast_domain, &out_snapshot->domains[0]);
+    ev_demo_app_fill_watchdog_domain_snapshot(&app->slow_domain, &out_snapshot->domains[1]);
+    return EV_OK;
+}
+
 static bool ev_demo_app_budget_exhausted(const ev_poll_budget_t *budget)
 {
     if (budget == NULL) {
@@ -1038,7 +1165,8 @@ static bool ev_demo_app_budget_exhausted(const ev_poll_budget_t *budget)
     return (budget->pump_calls_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
            (budget->messages_used >= EV_APP_POLL_MAX_MESSAGES) ||
            (budget->turns_used >= EV_APP_POLL_MAX_PUMP_TURNS) ||
-           (budget->irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES);
+           (budget->irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES) ||
+           (budget->net_samples_used >= EV_APP_POLL_MAX_NET_SAMPLES);
 }
 
 static ev_result_t ev_demo_app_drain_budgeted(ev_demo_app_t *app,
@@ -1100,39 +1228,123 @@ static ev_result_t ev_demo_app_collect_ingress(ev_demo_app_t *app,
     if ((app == NULL) || (budget == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
-    if (app->sleep_arming || (app->irq_port == NULL) || (app->irq_port->pop == NULL) || budget->exhausted) {
+    if (app->sleep_arming || budget->exhausted) {
         return EV_OK;
     }
 
-    while ((budget->irq_samples_used < EV_APP_POLL_MAX_IRQ_SAMPLES) &&
-           !budget->exhausted &&
-           (reserved_used < EV_APP_POLL_RESERVED_IRQ_SAMPLES)) {
-        rc = app->irq_port->pop(app->irq_port->ctx, &sample);
-        if (rc == EV_ERR_EMPTY) {
-            break;
-        }
-        if (rc != EV_OK) {
-            return rc;
+    if ((app->irq_port != NULL) && (app->irq_port->pop != NULL)) {
+        while ((budget->irq_samples_used < EV_APP_POLL_MAX_IRQ_SAMPLES) &&
+               !budget->exhausted &&
+               (reserved_used < EV_APP_POLL_RESERVED_IRQ_SAMPLES)) {
+            rc = app->irq_port->pop(app->irq_port->ctx, &sample);
+            if (rc == EV_ERR_EMPTY) {
+                break;
+            }
+            if (rc != EV_OK) {
+                return rc;
+            }
+
+            ++budget->irq_samples_used;
+            ++reserved_used;
+            if (diag != NULL) {
+                ++diag->irq_samples;
+            }
+
+            rc = ev_demo_app_publish_irq_sample(app, &sample);
+            if (rc != EV_OK) {
+                return rc;
+            }
+
+            budget->exhausted = ev_demo_app_budget_exhausted(budget);
         }
 
-        ++budget->irq_samples_used;
-        ++reserved_used;
-        if (diag != NULL) {
-            ++diag->irq_samples;
+        if (budget->irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES) {
+            budget->exhausted = true;
         }
-
-        rc = ev_demo_app_publish_irq_sample(app, &sample);
-        if (rc != EV_OK) {
-            return rc;
-        }
-
-        budget->exhausted = ev_demo_app_budget_exhausted(budget);
     }
 
-    if (budget->irq_samples_used >= EV_APP_POLL_MAX_IRQ_SAMPLES) {
+    if (!app->sleep_arming && (app->net_port != NULL) && (app->net_port->poll_ingress != NULL) &&
+        !budget->exhausted) {
+        ev_net_ingress_event_t net_event;
+        size_t net_reserved_used = 0U;
+
+        while ((budget->net_samples_used < EV_APP_POLL_MAX_NET_SAMPLES) &&
+               !budget->exhausted &&
+               (net_reserved_used < EV_APP_POLL_RESERVED_NET_SAMPLES)) {
+            memset(&net_event, 0, sizeof(net_event));
+            rc = app->net_port->poll_ingress(app->net_port->ctx, &net_event);
+            if (rc == EV_ERR_EMPTY) {
+                break;
+            }
+            if (rc != EV_OK) {
+                return rc;
+            }
+
+            ++budget->net_samples_used;
+            ++net_reserved_used;
+            ++app->stats.net_ingress_drained;
+            if (diag != NULL) {
+                ++diag->net_samples;
+            }
+
+            rc = ev_demo_app_publish_net_event(app, &net_event);
+            if (rc != EV_OK) {
+                return rc;
+            }
+
+            budget->exhausted = ev_demo_app_budget_exhausted(budget);
+        }
+    }
+
+    if (budget->net_samples_used >= EV_APP_POLL_MAX_NET_SAMPLES) {
         budget->exhausted = true;
     }
     return EV_OK;
+}
+
+
+static ev_result_t ev_demo_app_publish_net_event(ev_demo_app_t *app, const ev_net_ingress_event_t *event)
+{
+    ev_msg_t msg = {0};
+    ev_event_id_t event_id;
+    ev_result_t rc;
+
+    if ((app == NULL) || (event == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    switch (event->kind) {
+    case EV_NET_EVENT_WIFI_UP:
+        event_id = EV_NET_WIFI_UP;
+        break;
+    case EV_NET_EVENT_WIFI_DOWN:
+        event_id = EV_NET_WIFI_DOWN;
+        break;
+    case EV_NET_EVENT_MQTT_UP:
+        event_id = EV_NET_MQTT_UP;
+        break;
+    case EV_NET_EVENT_MQTT_DOWN:
+        event_id = EV_NET_MQTT_DOWN;
+        break;
+    case EV_NET_EVENT_MQTT_MSG_RX:
+        event_id = EV_NET_MQTT_MSG_RX;
+        break;
+    default:
+        return EV_ERR_CONTRACT;
+    }
+
+    rc = ev_msg_init_publish(&msg, event_id, ACT_RUNTIME);
+    if (rc != EV_OK) {
+        return rc;
+    }
+    if (event_id == EV_NET_MQTT_MSG_RX) {
+        rc = ev_msg_set_inline_payload(&msg, event, sizeof(*event));
+        if (rc != EV_OK) {
+            (void)ev_msg_dispose(&msg);
+            return rc;
+        }
+    }
+    return ev_demo_app_publish_owned(app, &msg);
 }
 
 static ev_result_t ev_demo_app_process_timers(ev_demo_app_t *app,
@@ -1200,6 +1412,8 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     app->log_port = cfg->log_port;
     app->irq_port = cfg->irq_port;
     app->system_port = cfg->system_port;
+    app->wdt_port = cfg->wdt_port;
+    app->net_port = cfg->net_port;
     app->app_tag = cfg->app_tag;
     app->board_name = cfg->board_name;
     app->tick_period_ms = (cfg->tick_period_ms == 0U) ? EV_DEMO_APP_DEFAULT_TICK_MS : cfg->tick_period_ms;
@@ -1265,6 +1479,18 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
                          EV_ARRAY_LEN(app->power_storage));
     if (rc != EV_OK) return rc;
 
+    rc = ev_mailbox_init(&app->watchdog_mailbox,
+                         EV_MAILBOX_FIFO_8,
+                         app->watchdog_storage,
+                         EV_ARRAY_LEN(app->watchdog_storage));
+    if (rc != EV_OK) return rc;
+
+    rc = ev_mailbox_init(&app->network_mailbox,
+                         EV_MAILBOX_FIFO_8,
+                         app->network_storage,
+                         EV_ARRAY_LEN(app->network_storage));
+    if (rc != EV_OK) return rc;
+
     /* Inicjalizacja Wątków Aktorów (Runtimes) */
     rc = ev_actor_runtime_init(&app->app_runtime, ACT_APP, &app->app_mailbox, ev_demo_app_actor_handler, &app->app_actor);
     if (rc != EV_OK) return rc;
@@ -1305,6 +1531,43 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_actor_runtime_init(&app->runtime_actor, ACT_RUNTIME, &app->runtime_mailbox, ev_runtime_actor_handler, NULL);
     if (rc != EV_OK) return rc;
+
+    if ((app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U) {
+        rc = ev_watchdog_actor_init(&app->watchdog_ctx,
+                                    app->wdt_port,
+                                    app->board_profile.watchdog_timeout_ms,
+                                    ev_demo_app_watchdog_liveness,
+                                    app);
+        if (rc != EV_OK) return rc;
+
+        rc = ev_actor_runtime_init(&app->watchdog_runtime,
+                                   ACT_WATCHDOG,
+                                   &app->watchdog_mailbox,
+                                   ev_watchdog_actor_handle,
+                                   &app->watchdog_ctx);
+        if (rc != EV_OK) return rc;
+    }
+
+    if ((app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_NET) != 0U) {
+        if ((app->net_port == NULL) || (app->net_port->init == NULL) ||
+            (app->net_port->start == NULL)) {
+            return EV_ERR_INVALID_ARG;
+        }
+        rc = app->net_port->init(app->net_port->ctx);
+        if (rc != EV_OK) return rc;
+        rc = app->net_port->start(app->net_port->ctx);
+        if (rc != EV_OK) return rc;
+
+        rc = ev_network_actor_init(&app->network_ctx, app->net_port);
+        if (rc != EV_OK) return rc;
+
+        rc = ev_actor_runtime_init(&app->network_runtime,
+                                   ACT_NETWORK,
+                                   &app->network_mailbox,
+                                   ev_network_actor_handle,
+                                   &app->network_ctx);
+        if (rc != EV_OK) return rc;
+    }
 
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_MCP23008)) {
         rc = ev_mcp23008_actor_init(&app->mcp23008_ctx,
@@ -1385,6 +1648,16 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_actor_registry_bind(&app->registry, &app->runtime_actor);
     if (rc != EV_OK) return rc;
+
+    if ((app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U) {
+        rc = ev_actor_registry_bind(&app->registry, &app->watchdog_runtime);
+        if (rc != EV_OK) return rc;
+    }
+
+    if ((app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_NET) != 0U) {
+        rc = ev_actor_registry_bind(&app->registry, &app->network_runtime);
+        if (rc != EV_OK) return rc;
+    }
 
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_MCP23008)) {
         rc = ev_actor_registry_bind(&app->registry, &app->mcp23008_runtime);
@@ -1490,6 +1763,7 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
 
     for (;;) {
         size_t before_irq_samples = budget.irq_samples_used;
+        size_t before_net_samples = budget.net_samples_used;
 
         rc = ev_demo_app_collect_ingress(app, &budget, &diag);
         if (rc != EV_OK) {
@@ -1501,7 +1775,8 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
             goto finalize;
         }
 
-        if (budget.exhausted || (budget.irq_samples_used == before_irq_samples)) {
+        if (budget.exhausted || ((budget.irq_samples_used == before_irq_samples) &&
+                                  (budget.net_samples_used == before_net_samples))) {
             break;
         }
     }
@@ -1541,8 +1816,10 @@ finalize:
     }
     ev_demo_app_record_poll_diag(app, &diag, pending_before, pending_after, elapsed_ms);
     ev_demo_app_record_irq_stats(app);
+    ev_demo_app_record_net_stats(app);
     if ((rc == EV_OK) && budget.exhausted) {
         bool irq_work_pending = false;
+        bool net_work_pending = false;
         uint32_t current_now_ms = end_ms;
         bool tick_100ms_due = false;
         bool tick_1s_due = false;
@@ -1550,12 +1827,18 @@ finalize:
         if ((app->irq_port != NULL) && (app->irq_port->wait != NULL)) {
             (void)app->irq_port->wait(app->irq_port->ctx, 0U, &irq_work_pending);
         }
+        if ((app->net_port != NULL) && (app->net_port->get_stats != NULL)) {
+            ev_net_stats_t net_stats;
+            if (app->net_port->get_stats(app->net_port->ctx, &net_stats) == EV_OK) {
+                net_work_pending = (net_stats.pending_events > 0U);
+            }
+        }
         if (!have_timing || (ev_demo_app_now_ms(app, &current_now_ms) != EV_OK)) {
             current_now_ms = end_ms;
         }
         tick_100ms_due = ((int32_t)(current_now_ms - app->next_tick_100ms_ms) >= 0);
         tick_1s_due = ((int32_t)(current_now_ms - app->next_tick_ms) >= 0);
-        if ((pending_after > 0U) || irq_work_pending || tick_100ms_due || tick_1s_due) {
+        if ((pending_after > 0U) || irq_work_pending || net_work_pending || tick_100ms_due || tick_1s_due) {
             rc = EV_ERR_PARTIAL;
         }
     }
@@ -1577,3 +1860,12 @@ const ev_system_pump_stats_t *ev_demo_app_system_pump_stats(const ev_demo_app_t 
     return (app != NULL) ? ev_system_pump_stats(&app->system_pump) : NULL;
 }
 
+const ev_watchdog_actor_stats_t *ev_demo_app_watchdog_stats(const ev_demo_app_t *app)
+{
+    return (app != NULL) ? ev_watchdog_actor_stats(&app->watchdog_ctx) : NULL;
+}
+
+const ev_network_actor_stats_t *ev_demo_app_network_stats(const ev_demo_app_t *app)
+{
+    return (app != NULL) ? ev_network_actor_stats(&app->network_ctx) : NULL;
+}

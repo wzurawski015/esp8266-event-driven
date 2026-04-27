@@ -10,6 +10,47 @@
 #define EV_BOARD_HAS_ONEWIRE0 1U
 #define EV_BOARD_HAS_GPIO_IRQ 1U
 #define EV_BOARD_HAS_DEEP_SLEEP_WAKE_GPIO16 0U
+#define EV_BOARD_HAS_WDT 0U
+#define EV_BOARD_HAS_NET 1U
+#define EV_BOARD_WDT_TIMEOUT_MS 3000U
+
+/*
+ * Network credentials for the physical ESP8266 WiFi/MQTT adapter.
+ *
+ * EV_BOARD_HAS_NET is enabled for the physical ESP8266 WiFi/MQTT adapter.
+ * The target app_main wires ev_net_port_t into the runtime before the portable
+ * app consumes this capability. MQTT remains disabled when the broker URI is
+ * empty, while WiFi station events still enter through the bounded airlock.
+ *
+ * Treat this board profile as a local lab configuration. Do not publish this
+ * file with production credentials.
+ */
+#ifndef EV_BOARD_NET_WIFI_SSID
+#define EV_BOARD_NET_WIFI_SSID "watwzwp"
+#endif
+
+#ifndef EV_BOARD_NET_WIFI_PASSWORD
+#define EV_BOARD_NET_WIFI_PASSWORD "@@@Alfa127@@@"
+#endif
+
+#define EV_BOARD_NET_WIFI_AUTH_OPEN 0U
+#define EV_BOARD_NET_WIFI_AUTH_WPA2_PSK 1U
+
+#ifndef EV_BOARD_NET_WIFI_AUTH_MODE
+#define EV_BOARD_NET_WIFI_AUTH_MODE EV_BOARD_NET_WIFI_AUTH_WPA2_PSK
+#endif
+
+#ifndef EV_BOARD_NET_WIFI_SECURITY_LABEL
+#define EV_BOARD_NET_WIFI_SECURITY_LABEL "WPA2-PSK"
+#endif
+
+#ifndef EV_BOARD_NET_MQTT_BROKER_URI
+#define EV_BOARD_NET_MQTT_BROKER_URI ""
+#endif
+
+#ifndef EV_BOARD_NET_MQTT_CLIENT_ID
+#define EV_BOARD_NET_MQTT_CLIENT_ID EV_BOARD_PROFILE_TAG
+#endif
 enum {
 #define EV_BSP_PIN(name, gpio, desc) EV_BOARD_##name = (gpio),
 #define EV_BSP_PIN_ANALOG(name, desc)

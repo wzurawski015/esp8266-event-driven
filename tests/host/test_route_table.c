@@ -12,10 +12,10 @@ int main(void)
     size_t j;
     ev_route_span_t span;
 
-    assert(ev_route_count() == 37U);
+    assert(ev_route_count() == 44U);
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 7U);
-    assert(ev_route_count_for_event(EV_TICK_1S) == 6U);
+    assert(ev_route_count_for_event(EV_TICK_1S) == 7U);
     assert(ev_route_count_for_event(EV_TICK_100MS) == 3U);
     assert(ev_route_count_for_event(EV_GPIO_IRQ) == 2U);
     assert(ev_route_count_for_event(EV_TIME_UPDATED) == 1U);
@@ -34,6 +34,12 @@ int main(void)
     assert(ev_route_count_for_event(EV_DS18B20_READY) == 1U);
     assert(ev_route_count_for_event(EV_SYSTEM_READY) == 1U);
     assert(ev_route_count_for_event(EV_SYS_GOTO_SLEEP_CMD) == 1U);
+    assert(ev_route_count_for_event(EV_NET_WIFI_UP) == 1U);
+    assert(ev_route_count_for_event(EV_NET_WIFI_DOWN) == 1U);
+    assert(ev_route_count_for_event(EV_NET_MQTT_UP) == 1U);
+    assert(ev_route_count_for_event(EV_NET_MQTT_DOWN) == 1U);
+    assert(ev_route_count_for_event(EV_NET_MQTT_MSG_RX) == 1U);
+    assert(ev_route_count_for_event(EV_NET_TX_CMD) == 1U);
 
     span = ev_route_span_for_event(EV_BOOT_COMPLETED);
     assert(span.count == 7U);
@@ -61,6 +67,7 @@ int main(void)
     assert(ev_route_exists(EV_TICK_1S, ACT_OLED));
     assert(ev_route_exists(EV_TICK_1S, ACT_RTC));
     assert(ev_route_exists(EV_TICK_1S, ACT_SUPERVISOR));
+    assert(ev_route_exists(EV_TICK_1S, ACT_WATCHDOG));
 
     assert(ev_route_exists(EV_TICK_100MS, ACT_DIAG));
     assert(ev_route_exists(EV_TICK_100MS, ACT_PANEL));
@@ -75,6 +82,12 @@ int main(void)
     assert(ev_route_exists(EV_DS18B20_READY, ACT_SUPERVISOR));
     assert(ev_route_exists(EV_SYSTEM_READY, ACT_APP));
     assert(ev_route_exists(EV_SYS_GOTO_SLEEP_CMD, ACT_POWER));
+    assert(ev_route_exists(EV_NET_WIFI_UP, ACT_NETWORK));
+    assert(ev_route_exists(EV_NET_WIFI_DOWN, ACT_NETWORK));
+    assert(ev_route_exists(EV_NET_MQTT_UP, ACT_NETWORK));
+    assert(ev_route_exists(EV_NET_MQTT_DOWN, ACT_NETWORK));
+    assert(ev_route_exists(EV_NET_MQTT_MSG_RX, ACT_NETWORK));
+    assert(ev_route_exists(EV_NET_TX_CMD, ACT_NETWORK));
     assert(ev_route_exists(EV_PANEL_LED_SET_CMD, ACT_MCP23008));
     assert(ev_route_exists(EV_TIME_UPDATED, ACT_APP));
     assert(ev_route_exists(EV_TEMP_UPDATED, ACT_APP));

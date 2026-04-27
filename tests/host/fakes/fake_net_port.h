@@ -1,0 +1,58 @@
+#ifndef TESTS_HOST_FAKES_FAKE_NET_PORT_H
+#define TESTS_HOST_FAKES_FAKE_NET_PORT_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "ev/port_net.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct fake_net_port {
+    ev_net_ingress_event_t ring[EV_NET_INGRESS_RING_CAPACITY];
+    uint32_t write_seq;
+    uint32_t read_seq;
+    uint32_t dropped_events;
+    uint32_t dropped_oversize;
+    uint32_t dropped_no_payload_slot;
+    uint32_t high_watermark;
+    uint32_t wifi_up_events;
+    uint32_t wifi_down_events;
+    uint32_t reconnect_attempts;
+    uint32_t mqtt_disabled;
+    uint32_t mqtt_connect_attempts;
+    uint32_t mqtt_up_events;
+    uint32_t mqtt_down_events;
+    uint32_t mqtt_rx_events;
+    uint32_t tx_rejected_state;
+    uint32_t tx_rejected_oversize;
+    uint32_t init_calls;
+    uint32_t start_calls;
+    uint32_t stop_calls;
+    uint32_t poll_calls;
+    uint32_t get_stats_calls;
+    uint32_t callback_push_calls;
+    uint32_t publish_mqtt_calls;
+    uint32_t publish_mqtt_ok;
+    uint32_t publish_mqtt_failed;
+    ev_result_t next_publish_result;
+} fake_net_port_t;
+
+void fake_net_port_init(fake_net_port_t *fake);
+void fake_net_port_bind(ev_net_port_t *out_port, fake_net_port_t *fake);
+ev_result_t fake_net_port_callback_push(fake_net_port_t *fake, const ev_net_ingress_event_t *event);
+ev_result_t fake_net_port_callback_push_mqtt(fake_net_port_t *fake,
+                                             const char *topic,
+                                             size_t topic_len,
+                                             const uint8_t *payload,
+                                             size_t payload_len);
+size_t fake_net_port_pending(const fake_net_port_t *fake);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* TESTS_HOST_FAKES_FAKE_NET_PORT_H */
