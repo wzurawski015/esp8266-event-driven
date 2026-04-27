@@ -80,6 +80,15 @@ typedef struct ev_net_ingress_event {
 
 typedef ev_net_mqtt_inline_payload_t ev_net_mqtt_publish_cmd_t;
 
+typedef struct ev_net_mqtt_publish_view {
+    const char *topic;
+    size_t topic_len;
+    const uint8_t *payload;
+    size_t payload_len;
+    uint8_t qos;
+    uint8_t retain;
+} ev_net_mqtt_publish_view_t;
+
 typedef struct ev_net_stats {
     uint32_t write_seq;
     uint32_t read_seq;
@@ -123,6 +132,7 @@ typedef ev_result_t (*ev_net_init_fn_t)(void *ctx);
 typedef ev_result_t (*ev_net_start_fn_t)(void *ctx);
 typedef ev_result_t (*ev_net_stop_fn_t)(void *ctx);
 typedef ev_result_t (*ev_net_publish_mqtt_fn_t)(void *ctx, const ev_net_mqtt_publish_cmd_t *cmd);
+typedef ev_result_t (*ev_net_publish_mqtt_view_fn_t)(void *ctx, const ev_net_mqtt_publish_view_t *view);
 typedef ev_result_t (*ev_net_poll_ingress_fn_t)(void *ctx, ev_net_ingress_event_t *out_event);
 typedef ev_result_t (*ev_net_get_stats_fn_t)(void *ctx, ev_net_stats_t *out_stats);
 
@@ -132,6 +142,7 @@ typedef struct ev_net_port {
     ev_net_start_fn_t start;
     ev_net_stop_fn_t stop;
     ev_net_publish_mqtt_fn_t publish_mqtt;
+    ev_net_publish_mqtt_view_fn_t publish_mqtt_view;
     ev_net_poll_ingress_fn_t poll_ingress;
     ev_net_get_stats_fn_t get_stats;
 } ev_net_port_t;

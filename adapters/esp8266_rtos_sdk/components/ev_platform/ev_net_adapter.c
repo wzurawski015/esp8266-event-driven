@@ -873,6 +873,78 @@ static ev_result_t ev_esp8266_net_publish_mqtt_fn(void *ctx, const ev_net_mqtt_p
 #endif
 }
 
+static ev_result_t ev_esp8266_net_publish_mqtt_view_fn(void *ctx, const ev_net_mqtt_publish_view_t *view)
+{
+    ev_esp8266_net_ctx_t *net = (ev_esp8266_net_ctx_t *)ctx;
+
+    if ((net == NULL) || (view == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    ev_esp8266_net_lock();
+    ++net->tx_attempts;
+    ev_esp8266_net_unlock();
+
+#if EV_ESP8266_NET_ENABLE_MQTT
+    {
+        ev_esp8266_net_state_snapshot_t snapshot;
+        char topic[EV_NET_MAX_TOPIC_STORAGE_BYTES + 1U];
+        int msg_id;
+
+        snapshot = ev_esp8266_net_snapshot_state(net);
+        if (!snapshot.mqtt_supported || (snapshot.mqtt_client == NULL)) {
+            ev_esp8266_net_lock();
+            ++net->mqtt_disabled;
+            ++net->tx_failed;
+            ++net->tx_rejected_state;
+            ev_esp8266_net_unlock();
+            return EV_ERR_UNSUPPORTED;
+        }
+        if (!snapshot.mqtt_connected) {
+            ev_esp8266_net_lock();
+            ++net->tx_failed;
+            ++net->tx_rejected_state;
+            ev_esp8266_net_unlock();
+            return EV_ERR_STATE;
+        }
+        if ((view->topic == NULL) || (view->topic_len == 0U) ||
+            (view->topic_len > EV_NET_MAX_TOPIC_STORAGE_BYTES) ||
+            ((view->payload_len > 0U) && (view->payload == NULL)) ||
+            (view->payload_len > EV_NET_MAX_PAYLOAD_STORAGE_BYTES)) {
+            ev_esp8266_net_lock();
+            ++net->tx_failed;
+            ++net->tx_rejected_oversize;
+            ev_esp8266_net_unlock();
+            return EV_ERR_INVALID_ARG;
+        }
+
+        memset(topic, 0, sizeof(topic));
+        memcpy(topic, view->topic, view->topic_len);
+        msg_id = esp_mqtt_client_publish(snapshot.mqtt_client,
+                                         topic,
+                                         (const char *)view->payload,
+                                         (int)view->payload_len,
+                                         (int)view->qos,
+                                         (int)view->retain);
+        if (msg_id < 0) {
+            ev_esp8266_net_increment_counter(&net->tx_failed);
+            return EV_ERR_STATE;
+        }
+
+        ev_esp8266_net_increment_counter(&net->tx_ok);
+        return EV_OK;
+    }
+#else
+    (void)view;
+    ev_esp8266_net_lock();
+    ++net->mqtt_disabled;
+    ++net->tx_failed;
+    ++net->tx_rejected_state;
+    ev_esp8266_net_unlock();
+    return EV_ERR_UNSUPPORTED;
+#endif
+}
+
 static ev_result_t ev_esp8266_net_poll_ingress_fn(void *ctx, ev_net_ingress_event_t *out_event)
 {
     ev_esp8266_net_ctx_t *net = (ev_esp8266_net_ctx_t *)ctx;
@@ -962,6 +1034,7 @@ ev_result_t ev_esp8266_net_port_init(ev_net_port_t *out_port, const ev_esp8266_n
     out_port->start = ev_esp8266_net_start_fn;
     out_port->stop = ev_esp8266_net_stop_fn;
     out_port->publish_mqtt = ev_esp8266_net_publish_mqtt_fn;
+    out_port->publish_mqtt_view = ev_esp8266_net_publish_mqtt_view_fn;
     out_port->poll_ingress = ev_esp8266_net_poll_ingress_fn;
     out_port->get_stats = ev_esp8266_net_get_stats_fn;
     return EV_OK;

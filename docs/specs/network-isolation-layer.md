@@ -107,3 +107,34 @@ Ownership is deterministic and zero-heap:
 
 This is still a foundation layer. It does not add telemetry routes, remote
 commands, subscriptions that execute local actions, or MQTT production HIL.
+
+## Outbound MQTT telemetry policy
+
+`ACT_NETWORK` may publish outbound telemetry for selected local domain events only:
+
+- `EV_TEMP_UPDATED` -> `telemetry/temp`
+- `EV_TIME_UPDATED` -> `telemetry/time`
+- `EV_MCP23008_INPUT_CHANGED` -> `telemetry/inputs`
+
+Telemetry is outbound-only. MQTT RX remains foundation-only and does not execute
+local actions. Telemetry uses QoS 0 and retain=false. If MQTT is disconnected,
+unsupported, disabled, rate-limited, or if bounded formatting would overflow the
+static buffers, the event is dropped with counters instead of blocking the actor
+or growing mailboxes.
+
+Telemetry topics and payloads are passed through `ev_net_mqtt_publish_view_t`, a
+synchronous port view consumed during the call. The adapter must not retain the
+view pointers after `publish_mqtt_view` returns. This keeps the inline
+`EV_NET_TX_CMD` contract small while allowing longer fixed telemetry topics.
+
+## Outbound telemetry policy
+
+`ACT_NETWORK` may publish outbound telemetry for selected local domain events:
+`EV_TEMP_UPDATED`, `EV_TIME_UPDATED`, and `EV_MCP23008_INPUT_CHANGED`. The
+additional routes preserve the local consumers and add `ACT_NETWORK` as a
+bounded telemetry policy actor.
+
+Telemetry is strictly outbound, QoS 0, retain=false, and rate-limited. MQTT RX
+remains foundation-only and cannot execute local commands. Larger telemetry
+topics use `ev_net_mqtt_publish_view_t`, which is consumed synchronously by the
+network port without retaining pointers.

@@ -173,6 +173,25 @@ static ev_result_t fake_net_stop_fn(void *ctx)
     return EV_OK;
 }
 
+static void fake_net_record_publish_view(fake_net_port_t *fake, const ev_net_mqtt_publish_view_t *view)
+{
+    if ((fake == NULL) || (view == NULL)) {
+        return;
+    }
+    memset(fake->last_publish_topic, 0, sizeof(fake->last_publish_topic));
+    memset(fake->last_publish_payload, 0, sizeof(fake->last_publish_payload));
+    fake->last_publish_topic_len = view->topic_len;
+    fake->last_publish_payload_len = view->payload_len;
+    fake->last_publish_qos = view->qos;
+    fake->last_publish_retain = view->retain;
+    if ((view->topic != NULL) && (view->topic_len <= sizeof(fake->last_publish_topic))) {
+        memcpy(fake->last_publish_topic, view->topic, view->topic_len);
+    }
+    if ((view->payload != NULL) && (view->payload_len <= sizeof(fake->last_publish_payload))) {
+        memcpy(fake->last_publish_payload, view->payload, view->payload_len);
+    }
+}
+
 static ev_result_t fake_net_publish_mqtt_fn(void *ctx, const ev_net_mqtt_publish_cmd_t *cmd)
 {
     fake_net_port_t *fake = (fake_net_port_t *)ctx;
@@ -180,6 +199,38 @@ static ev_result_t fake_net_publish_mqtt_fn(void *ctx, const ev_net_mqtt_publish
         return EV_ERR_INVALID_ARG;
     }
     ++fake->publish_mqtt_calls;
+    {
+        ev_net_mqtt_publish_view_t view;
+        memset(&view, 0, sizeof(view));
+        view.topic = cmd->topic;
+        view.topic_len = cmd->topic_len;
+        view.payload = cmd->payload;
+        view.payload_len = cmd->payload_len;
+        view.qos = cmd->qos;
+        view.retain = cmd->retain;
+        fake_net_record_publish_view(fake, &view);
+    }
+    if (fake->next_publish_result == EV_OK) {
+        ++fake->publish_mqtt_ok;
+    } else {
+        ++fake->publish_mqtt_failed;
+        if ((fake->next_publish_result == EV_ERR_STATE) ||
+            (fake->next_publish_result == EV_ERR_UNSUPPORTED)) {
+            ++fake->tx_rejected_state;
+        }
+    }
+    return fake->next_publish_result;
+}
+
+static ev_result_t fake_net_publish_mqtt_view_fn(void *ctx, const ev_net_mqtt_publish_view_t *view)
+{
+    fake_net_port_t *fake = (fake_net_port_t *)ctx;
+    if ((fake == NULL) || (view == NULL) || (view->topic == NULL) ||
+        ((view->payload_len > 0U) && (view->payload == NULL))) {
+        return EV_ERR_INVALID_ARG;
+    }
+    ++fake->publish_mqtt_view_calls;
+    fake_net_record_publish_view(fake, view);
     if (fake->next_publish_result == EV_OK) {
         ++fake->publish_mqtt_ok;
     } else {
@@ -252,7 +303,7 @@ static ev_result_t fake_net_get_stats_fn(void *ctx, ev_net_stats_t *out_stats)
     out_stats->payload_slot_acquire_ok = fake->payload_slot_acquire_ok;
     out_stats->payload_slot_acquire_failed = fake->payload_slot_acquire_failed;
     out_stats->payload_slot_release_count = fake->payload_slot_release_count;
-    out_stats->tx_attempts = fake->publish_mqtt_calls;
+    out_stats->tx_attempts = fake->publish_mqtt_calls + fake->publish_mqtt_view_calls;
     out_stats->tx_ok = fake->publish_mqtt_ok;
     out_stats->tx_failed = fake->publish_mqtt_failed;
     out_stats->tx_rejected_state = fake->tx_rejected_state;
@@ -281,6 +332,7 @@ void fake_net_port_bind(ev_net_port_t *out_port, fake_net_port_t *fake)
         out_port->start = fake_net_start_fn;
         out_port->stop = fake_net_stop_fn;
         out_port->publish_mqtt = fake_net_publish_mqtt_fn;
+        out_port->publish_mqtt_view = fake_net_publish_mqtt_view_fn;
         out_port->poll_ingress = fake_net_poll_ingress_fn;
         out_port->get_stats = fake_net_get_stats_fn;
     }

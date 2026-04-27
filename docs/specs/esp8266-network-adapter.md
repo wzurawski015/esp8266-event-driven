@@ -134,3 +134,28 @@ limits or the pool is exhausted, it is dropped with diagnostics.
 
 MQTT remains build-disabled by default. This payload pool does not enable
 telemetry or remote commands.
+
+## Outbound telemetry publish view
+
+The portable network port exposes `publish_mqtt_view` for bounded synchronous
+telemetry publishes. The view carries caller-owned topic and payload pointers
+only for the duration of the call; the ESP8266 adapter copies the topic into a
+bounded local buffer before invoking the SDK publish API and must not retain the
+view pointers.
+
+Telemetry remains outbound-only and uses QoS 0 with retain=false. The default
+ESP8266 build still keeps `EV_ESP8266_NET_ENABLE_MQTT=0`, so telemetry attempts
+are counted and dropped until MQTT is explicitly enabled, configured, connected,
+and physically qualified. Remote command parsing and MQTT subscriptions remain
+out of scope.
+
+## Telemetry publish view
+
+Outbound telemetry uses `ev_net_port_t::publish_mqtt_view` so topics longer than
+the original inline `EV_NET_TX_CMD` limit can be published without heap. The
+view points to bounded stack buffers owned by `ACT_NETWORK` for the duration of
+the synchronous call only. The ESP8266 adapter must copy or transmit the data
+before returning and must not retain those pointers.
+
+Telemetry remains disabled unless the actor reaches `EV_NETWORK_STATE_MQTT_CONNECTED`.
+The ESP8266 MQTT SDK path is still controlled by `EV_ESP8266_NET_ENABLE_MQTT`.

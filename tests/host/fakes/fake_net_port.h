@@ -62,8 +62,15 @@ typedef struct fake_net_port {
     uint32_t get_stats_calls;
     uint32_t callback_push_calls;
     uint32_t publish_mqtt_calls;
+    uint32_t publish_mqtt_view_calls;
     uint32_t publish_mqtt_ok;
     uint32_t publish_mqtt_failed;
+    char last_publish_topic[EV_NET_MAX_TOPIC_STORAGE_BYTES + 1U];
+    uint8_t last_publish_payload[EV_NET_MAX_PAYLOAD_STORAGE_BYTES];
+    size_t last_publish_topic_len;
+    size_t last_publish_payload_len;
+    uint8_t last_publish_qos;
+    uint8_t last_publish_retain;
     ev_result_t next_publish_result;
 } fake_net_port_t;
 

@@ -12,15 +12,15 @@ int main(void)
     size_t j;
     ev_route_span_t span;
 
-    assert(ev_route_count() == 45U);
+    assert(ev_route_count() == 49U);
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 7U);
-    assert(ev_route_count_for_event(EV_TICK_1S) == 7U);
+    assert(ev_route_count_for_event(EV_TICK_1S) == 8U);
     assert(ev_route_count_for_event(EV_TICK_100MS) == 3U);
     assert(ev_route_count_for_event(EV_GPIO_IRQ) == 2U);
-    assert(ev_route_count_for_event(EV_TIME_UPDATED) == 1U);
-    assert(ev_route_count_for_event(EV_TEMP_UPDATED) == 1U);
-    assert(ev_route_count_for_event(EV_MCP23008_INPUT_CHANGED) == 1U);
+    assert(ev_route_count_for_event(EV_TIME_UPDATED) == 2U);
+    assert(ev_route_count_for_event(EV_TEMP_UPDATED) == 2U);
+    assert(ev_route_count_for_event(EV_MCP23008_INPUT_CHANGED) == 2U);
     assert(ev_route_count_for_event(EV_BUTTON_EVENT) == 1U);
     assert(ev_route_count_for_event(EV_MCP23008_READY) == 3U);
     assert(ev_route_count_for_event(EV_PANEL_LED_SET_CMD) == 1U);
@@ -69,6 +69,7 @@ int main(void)
     assert(ev_route_exists(EV_TICK_1S, ACT_RTC));
     assert(ev_route_exists(EV_TICK_1S, ACT_SUPERVISOR));
     assert(ev_route_exists(EV_TICK_1S, ACT_WATCHDOG));
+    assert(ev_route_exists(EV_TICK_1S, ACT_NETWORK));
 
     assert(ev_route_exists(EV_TICK_100MS, ACT_DIAG));
     assert(ev_route_exists(EV_TICK_100MS, ACT_PANEL));
@@ -92,8 +93,11 @@ int main(void)
     assert(ev_route_exists(EV_NET_TX_CMD, ACT_NETWORK));
     assert(ev_route_exists(EV_PANEL_LED_SET_CMD, ACT_MCP23008));
     assert(ev_route_exists(EV_TIME_UPDATED, ACT_APP));
+    assert(ev_route_exists(EV_TIME_UPDATED, ACT_NETWORK));
     assert(ev_route_exists(EV_TEMP_UPDATED, ACT_APP));
+    assert(ev_route_exists(EV_TEMP_UPDATED, ACT_NETWORK));
     assert(ev_route_exists(EV_MCP23008_INPUT_CHANGED, ACT_PANEL));
+    assert(ev_route_exists(EV_MCP23008_INPUT_CHANGED, ACT_NETWORK));
     assert(ev_route_exists(EV_BUTTON_EVENT, ACT_APP));
     assert(ev_route_exists(EV_DIAG_SNAPSHOT_RSP, ACT_APP));
     assert(ev_route_exists(EV_OLED_DISPLAY_TEXT_CMD, ACT_OLED));

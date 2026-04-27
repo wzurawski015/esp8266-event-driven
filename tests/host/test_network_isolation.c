@@ -44,6 +44,7 @@ static ev_result_t fake_delay_ms(void *ctx, uint32_t delay_ms)
     return EV_OK;
 }
 
+
 static void bind_clock(ev_clock_port_t *out_port, fake_clock_t *clock)
 {
     memset(out_port, 0, sizeof(*out_port));
@@ -311,6 +312,117 @@ static void test_network_actor_state_machine_and_tx_policy(void)
     assert(ev_msg_dispose(&msg) == EV_OK);
 }
 
+
+static void test_network_actor_telemetry_policy(void)
+{
+    fake_net_port_t fake;
+    ev_net_port_t port;
+    ev_network_actor_ctx_t actor;
+    ev_msg_t msg = {0};
+    ev_temp_payload_t temp;
+    ev_time_payload_t time_payload;
+    ev_mcp23008_input_payload_t inputs;
+
+    fake_net_port_init(&fake);
+    fake_net_port_bind(&port, &fake);
+    assert(ev_network_actor_init(&actor, &port) == EV_OK);
+
+    memset(&temp, 0, sizeof(temp));
+    temp.centi_celsius = 2345;
+    assert(ev_msg_init_publish(&msg, EV_TEMP_UPDATED, ACT_DS18B20) == EV_OK);
+    assert(ev_msg_set_inline_payload(&msg, &temp, sizeof(temp)) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(actor.stats.telemetry_temp_seen == 1U);
+    assert(actor.stats.telemetry_dropped_disconnected == 1U);
+    assert(fake.publish_mqtt_view_calls == 0U);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    memset(&time_payload, 0, sizeof(time_payload));
+    time_payload.unix_time = 123456U;
+    assert(ev_msg_init_publish(&msg, EV_TIME_UPDATED, ACT_RTC) == EV_OK);
+    assert(ev_msg_set_inline_payload(&msg, &time_payload, sizeof(time_payload)) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(actor.stats.telemetry_time_seen == 1U);
+    assert(actor.stats.telemetry_dropped_disconnected == 2U);
+    assert(fake.publish_mqtt_view_calls == 0U);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    memset(&inputs, 0, sizeof(inputs));
+    inputs.pressed_mask = 3U;
+    inputs.changed_mask = 1U;
+    assert(ev_msg_init_publish(&msg, EV_MCP23008_INPUT_CHANGED, ACT_MCP23008) == EV_OK);
+    assert(ev_msg_set_inline_payload(&msg, &inputs, sizeof(inputs)) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(actor.stats.telemetry_inputs_seen == 1U);
+    assert(actor.stats.telemetry_dropped_disconnected == 3U);
+    assert(fake.publish_mqtt_view_calls == 0U);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    assert(ev_msg_init_publish(&msg, EV_NET_WIFI_UP, ACT_RUNTIME) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+    assert(ev_msg_init_publish(&msg, EV_NET_MQTT_UP, ACT_RUNTIME) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(actor.state == EV_NETWORK_STATE_MQTT_CONNECTED);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    assert(ev_msg_init_publish(&msg, EV_TEMP_UPDATED, ACT_DS18B20) == EV_OK);
+    assert(ev_msg_set_inline_payload(&msg, &temp, sizeof(temp)) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(fake.publish_mqtt_view_calls == 1U);
+    assert(actor.stats.telemetry_sent == 1U);
+    assert(fake.last_publish_qos == 0U);
+    assert(fake.last_publish_retain == 0U);
+    assert(fake.last_publish_topic_len == (sizeof("telemetry/temp") - 1U));
+    assert(memcmp(fake.last_publish_topic, "telemetry/temp", sizeof("telemetry/temp") - 1U) == 0);
+    assert(memcmp(fake.last_publish_payload, "{\"cC\":2345}", sizeof("{\"cC\":2345}") - 1U) == 0);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    assert(ev_msg_init_publish(&msg, EV_TEMP_UPDATED, ACT_DS18B20) == EV_OK);
+    assert(ev_msg_set_inline_payload(&msg, &temp, sizeof(temp)) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(fake.publish_mqtt_view_calls == 1U);
+    assert(actor.stats.telemetry_dropped_rate_limit == 1U);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    assert(ev_msg_init_publish(&msg, EV_TICK_1S, ACT_RUNTIME) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    assert(ev_msg_init_publish(&msg, EV_TIME_UPDATED, ACT_RTC) == EV_OK);
+    assert(ev_msg_set_inline_payload(&msg, &time_payload, sizeof(time_payload)) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(fake.publish_mqtt_view_calls == 2U);
+    assert(fake.last_publish_topic_len == (sizeof("telemetry/time") - 1U));
+    assert(memcmp(fake.last_publish_topic, "telemetry/time", sizeof("telemetry/time") - 1U) == 0);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    assert(ev_msg_init_publish(&msg, EV_MCP23008_INPUT_CHANGED, ACT_MCP23008) == EV_OK);
+    assert(ev_msg_set_inline_payload(&msg, &inputs, sizeof(inputs)) == EV_OK);
+    assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+    assert(fake.publish_mqtt_view_calls == 3U);
+    assert(fake.last_publish_topic_len == (sizeof("telemetry/inputs") - 1U));
+    assert(memcmp(fake.last_publish_topic, "telemetry/inputs", sizeof("telemetry/inputs") - 1U) == 0);
+    assert(actor.stats.telemetry_sent == 3U);
+    assert(ev_msg_dispose(&msg) == EV_OK);
+
+    {
+        ev_net_mqtt_inline_payload_t rx_event;
+        memset(&rx_event, 0, sizeof(rx_event));
+        rx_event.topic_len = 5U;
+        memcpy(rx_event.topic, "cmd/x", 5U);
+        rx_event.payload_len = 1U;
+        rx_event.payload[0] = 1U;
+        assert(ev_msg_init_publish(&msg, EV_NET_MQTT_MSG_RX, ACT_RUNTIME) == EV_OK);
+        assert(ev_msg_set_inline_payload(&msg, &rx_event, sizeof(rx_event)) == EV_OK);
+        assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
+        assert(actor.stats.mqtt_rx_ignored_foundation > 0U);
+        assert(fake.publish_mqtt_view_calls == 3U);
+        assert(ev_msg_dispose(&msg) == EV_OK);
+    }
+}
+
+
 static void test_demo_app_network_ingress_and_irq_budget(void)
 {
     static const ev_demo_app_board_profile_t profile = {
@@ -433,6 +545,7 @@ int main(void)
     test_fake_net_ring_backpressure_and_oversize();
     test_fake_net_reconnect_storm_suppression();
     test_network_actor_state_machine_and_tx_policy();
+    test_network_actor_telemetry_policy();
     test_demo_app_network_ingress_and_irq_budget();
     test_network_capability_required_for_port();
     puts("network isolation tests passed");
