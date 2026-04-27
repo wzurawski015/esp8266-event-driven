@@ -60,3 +60,23 @@ If IP/RSSI APIs are not available in the current SDK context, the firmware logs
 ```
 
 The `ap-loss` and `recovery` phases require an operator-controlled AP/router.
+
+## Local credentials for HIL
+
+The WiFi HIL target requires credentials but tracked BSP files do not store
+private secrets.  Copy the ATNEL example file:
+
+```text
+bsp/atnel_air_esp_motherboard/board_secrets.example.h
+```
+
+to:
+
+```text
+bsp/atnel_air_esp_motherboard/board_secrets.local.h
+```
+
+then build with `EV_BOARD_INCLUDE_LOCAL_SECRETS` defined, or pass equivalent
+compile-time `-D` overrides from the lab build environment.  The local secrets
+file is ignored by git.  Leave `EV_BOARD_NET_MQTT_BROKER_URI` empty for WiFi-only
+HIL.

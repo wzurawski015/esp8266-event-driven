@@ -11,30 +11,32 @@
 #define EV_BOARD_HAS_GPIO_IRQ 1U
 #define EV_BOARD_HAS_DEEP_SLEEP_WAKE_GPIO16 0U
 #define EV_BOARD_HAS_WDT 0U
-#define EV_BOARD_HAS_NET 1U
 #define EV_BOARD_WDT_TIMEOUT_MS 3000U
-
-/*
- * Network credentials for the physical ESP8266 WiFi/MQTT adapter.
- *
- * EV_BOARD_HAS_NET is enabled for the physical ESP8266 WiFi/MQTT adapter.
- * The target app_main wires ev_net_port_t into the runtime before the portable
- * app consumes this capability. MQTT remains disabled when the broker URI is
- * empty, while WiFi station events still enter through the bounded airlock.
- *
- * Treat this board profile as a local lab configuration. Do not publish this
- * file with production credentials.
- */
-#ifndef EV_BOARD_NET_WIFI_SSID
-#define EV_BOARD_NET_WIFI_SSID "watwzwp"
-#endif
-
-#ifndef EV_BOARD_NET_WIFI_PASSWORD
-#define EV_BOARD_NET_WIFI_PASSWORD "@@@Alfa127@@@"
-#endif
 
 #define EV_BOARD_NET_WIFI_AUTH_OPEN 0U
 #define EV_BOARD_NET_WIFI_AUTH_WPA2_PSK 1U
+
+/*
+ * Optional private network credentials.  Tracked BSP files intentionally keep
+ * WiFi/MQTT credentials empty.  Define EV_BOARD_INCLUDE_LOCAL_SECRETS and place
+ * a developer-local board_secrets.local.h next to this file, or provide -D
+ * overrides from the build environment.  The local header is ignored by git.
+ */
+#if defined(EV_BOARD_INCLUDE_LOCAL_SECRETS)
+#include "board_secrets.local.h"
+#endif
+
+#ifndef EV_BOARD_HAS_NET
+#define EV_BOARD_HAS_NET 0U
+#endif
+
+#ifndef EV_BOARD_NET_WIFI_SSID
+#define EV_BOARD_NET_WIFI_SSID ""
+#endif
+
+#ifndef EV_BOARD_NET_WIFI_PASSWORD
+#define EV_BOARD_NET_WIFI_PASSWORD ""
+#endif
 
 #ifndef EV_BOARD_NET_WIFI_AUTH_MODE
 #define EV_BOARD_NET_WIFI_AUTH_MODE EV_BOARD_NET_WIFI_AUTH_WPA2_PSK

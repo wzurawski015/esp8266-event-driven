@@ -65,3 +65,17 @@ heap stability through UART markers parsed by `tools/hil/wifi_reconnect_monitor.
 
 This HIL does not validate MQTT connectivity, telemetry, or remote commands.
 Those require later acceptance suites.
+
+## Private network credentials
+
+Tracked board profiles intentionally keep WiFi/MQTT credentials empty.  The
+ATNEL profile may include a developer-local `board_secrets.local.h` only when
+`EV_BOARD_INCLUDE_LOCAL_SECRETS` is defined by the build.  The local secrets file
+is ignored by git and should be created from
+`bsp/atnel_air_esp_motherboard/board_secrets.example.h`.
+
+Without local secrets or compile-time overrides, `EV_BOARD_HAS_NET` defaults to
+`0U`, so normal host/CI builds do not require private WiFi credentials.  To run
+physical WiFi tests, provide local definitions for `EV_BOARD_HAS_NET`,
+`EV_BOARD_NET_WIFI_SSID`, and `EV_BOARD_NET_WIFI_PASSWORD`.  MQTT may remain
+disabled by leaving `EV_BOARD_NET_MQTT_BROKER_URI` empty.
