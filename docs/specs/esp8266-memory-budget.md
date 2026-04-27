@@ -68,3 +68,16 @@ map/ELF data without guessing.
 The memory report never prints compiler command lines or build flags.  Local
 network credentials from `board_secrets.local.h` or compile-time overrides must
 not appear in the report.
+
+## Static MQTT payload pool impact
+
+The static MQTT payload foundation adds a bounded `.bss` cost when compiled:
+
+```text
+EV_NET_PAYLOAD_SLOT_COUNT * sizeof(ev_net_mqtt_rx_payload_t)
+```
+
+With default values this is four slots of 64-byte topic storage plus 128-byte
+payload storage, plus small metadata. The SDK memory report gate should be run
+after enabling MQTT to record the actual ELF section impact. Do not raise memory
+thresholds without inspecting `EV_MEM_*` output.

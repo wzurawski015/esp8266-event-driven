@@ -38,14 +38,30 @@
  * function is called while that critical section is held.
  */
 
+typedef struct ev_esp8266_net_payload_slot {
+    bool in_use;
+    uint32_t refcount;
+    uint32_t generation;
+    ev_net_mqtt_rx_payload_t payload;
+} ev_esp8266_net_payload_slot_t;
+
 typedef struct ev_esp8266_net_ctx {
     ev_net_ingress_event_t ring[EV_NET_INGRESS_RING_CAPACITY];
+    ev_esp8266_net_payload_slot_t payload_slots[EV_NET_PAYLOAD_SLOT_COUNT];
     uint32_t write_seq;
     uint32_t read_seq;
     uint32_t high_watermark;
     uint32_t dropped_events;
     uint32_t dropped_oversize;
     uint32_t dropped_no_payload_slot;
+    uint32_t payload_slots_in_use;
+    uint32_t payload_slots_high_watermark;
+    uint32_t payload_slot_acquire_ok;
+    uint32_t payload_slot_acquire_failed;
+    uint32_t payload_slot_release_count;
+    uint32_t mqtt_rx_bytes;
+    uint32_t mqtt_rx_inline_events;
+    uint32_t mqtt_rx_slot_events;
     uint32_t wifi_up_events;
     uint32_t wifi_down_events;
     uint32_t reconnect_attempts;
@@ -140,6 +156,104 @@ static void ev_esp8266_net_increment_counter(uint32_t *counter)
     ++(*counter);
     ev_esp8266_net_unlock();
 }
+
+static ev_result_t ev_esp8266_net_payload_retain(void *ctx, const void *payload, size_t payload_size)
+{
+    ev_esp8266_net_payload_slot_t *slot = (ev_esp8266_net_payload_slot_t *)ctx;
+
+    if ((slot == NULL) || (payload != (const void *)&slot->payload) ||
+        (payload_size != sizeof(slot->payload))) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    ev_esp8266_net_lock();
+    if (!slot->in_use || (slot->refcount == 0U)) {
+        ev_esp8266_net_unlock();
+        return EV_ERR_STATE;
+    }
+    ++slot->refcount;
+    ev_esp8266_net_unlock();
+    return EV_OK;
+}
+
+static void ev_esp8266_net_payload_release(void *ctx, const void *payload, size_t payload_size)
+{
+    ev_esp8266_net_payload_slot_t *slot = (ev_esp8266_net_payload_slot_t *)ctx;
+
+    if ((slot == NULL) || (payload != (const void *)&slot->payload) ||
+        (payload_size != sizeof(slot->payload))) {
+        return;
+    }
+
+    ev_esp8266_net_lock();
+    if (slot->in_use && (slot->refcount > 0U)) {
+        --slot->refcount;
+        if (slot->refcount == 0U) {
+            memset(&slot->payload, 0, sizeof(slot->payload));
+            slot->in_use = false;
+            if (g_ev_esp8266_net_ctx.payload_slots_in_use > 0U) {
+                --g_ev_esp8266_net_ctx.payload_slots_in_use;
+            }
+        }
+        ++g_ev_esp8266_net_ctx.payload_slot_release_count;
+    }
+    ev_esp8266_net_unlock();
+}
+
+static ev_esp8266_net_payload_slot_t *ev_esp8266_net_payload_acquire(ev_esp8266_net_ctx_t *net)
+{
+    size_t i;
+    ev_esp8266_net_payload_slot_t *slot = NULL;
+
+    if (net == NULL) {
+        return NULL;
+    }
+
+    ev_esp8266_net_lock();
+    for (i = 0U; i < EV_NET_PAYLOAD_SLOT_COUNT; ++i) {
+        if (!net->payload_slots[i].in_use) {
+            slot = &net->payload_slots[i];
+            memset(&slot->payload, 0, sizeof(slot->payload));
+            slot->in_use = true;
+            slot->refcount = 1U;
+            ++slot->generation;
+            if (slot->generation == 0U) {
+                slot->generation = 1U;
+            }
+            ++net->payload_slot_acquire_ok;
+            ++net->payload_slots_in_use;
+            if (net->payload_slots_in_use > net->payload_slots_high_watermark) {
+                net->payload_slots_high_watermark = net->payload_slots_in_use;
+            }
+            break;
+        }
+    }
+    if (slot == NULL) {
+        ++net->payload_slot_acquire_failed;
+        ++net->dropped_no_payload_slot;
+    }
+    ev_esp8266_net_unlock();
+    return slot;
+}
+
+static void ev_esp8266_net_payload_make_lease(ev_esp8266_net_payload_slot_t *slot,
+                                              ev_net_payload_lease_t *out_lease)
+{
+    if (out_lease == NULL) {
+        return;
+    }
+    memset(out_lease, 0, sizeof(*out_lease));
+    if (slot == NULL) {
+        return;
+    }
+
+    out_lease->data = &slot->payload;
+    out_lease->size = sizeof(slot->payload);
+    out_lease->retain_fn = ev_esp8266_net_payload_retain;
+    out_lease->release_fn = ev_esp8266_net_payload_release;
+    out_lease->lifecycle_ctx = slot;
+}
+
 
 static ev_esp8266_net_state_snapshot_t ev_esp8266_net_snapshot_state(ev_esp8266_net_ctx_t *net)
 {
@@ -341,19 +455,19 @@ static bool ev_esp8266_net_note_mqtt_down(ev_esp8266_net_ctx_t *net)
 
 #endif
 
-static void ev_esp8266_net_push_event(ev_esp8266_net_ctx_t *net, const ev_net_ingress_event_t *event)
+static ev_result_t ev_esp8266_net_push_event(ev_esp8266_net_ctx_t *net, const ev_net_ingress_event_t *event)
 {
     uint32_t index;
 
     if ((net == NULL) || (event == NULL)) {
-        return;
+        return EV_ERR_INVALID_ARG;
     }
 
     ev_esp8266_net_lock();
     if (ev_esp8266_net_pending_unsafe(net) >= EV_NET_INGRESS_RING_CAPACITY) {
         ++net->dropped_events;
         ev_esp8266_net_unlock();
-        return;
+        return EV_ERR_FULL;
     }
 
     index = net->write_seq & EV_NET_INGRESS_RING_MASK;
@@ -361,6 +475,7 @@ static void ev_esp8266_net_push_event(ev_esp8266_net_ctx_t *net, const ev_net_in
     ++net->write_seq;
     ev_esp8266_net_record_high_watermark_unsafe(net);
     ev_esp8266_net_unlock();
+    return EV_OK;
 }
 
 static void ev_esp8266_net_push_kind(ev_esp8266_net_ctx_t *net, ev_net_event_kind_t kind)
@@ -369,10 +484,29 @@ static void ev_esp8266_net_push_kind(ev_esp8266_net_ctx_t *net, ev_net_event_kin
 
     memset(&event, 0, sizeof(event));
     event.kind = kind;
-    ev_esp8266_net_push_event(net, &event);
+    (void)ev_esp8266_net_push_event(net, &event);
 }
 
 #if EV_ESP8266_NET_ENABLE_MQTT
+static void ev_esp8266_net_record_mqtt_rx_success(ev_esp8266_net_ctx_t *net,
+                                                  uint32_t payload_len,
+                                                  bool leased)
+{
+    if (net == NULL) {
+        return;
+    }
+
+    ev_esp8266_net_lock();
+    ++net->mqtt_rx_events;
+    net->mqtt_rx_bytes += payload_len;
+    if (leased) {
+        ++net->mqtt_rx_slot_events;
+    } else {
+        ++net->mqtt_rx_inline_events;
+    }
+    ev_esp8266_net_unlock();
+}
+
 static void ev_esp8266_net_push_mqtt_data(ev_esp8266_net_ctx_t *net,
                                           const char *topic,
                                           int topic_len,
@@ -380,31 +514,68 @@ static void ev_esp8266_net_push_mqtt_data(ev_esp8266_net_ctx_t *net,
                                           int payload_len)
 {
     ev_net_ingress_event_t event;
+    ev_esp8266_net_payload_slot_t *slot;
+    ev_result_t rc;
 
     if ((net == NULL) || (topic == NULL) || (topic_len < 0) || (payload_len < 0) ||
         ((payload_len > 0) && (payload == NULL))) {
         return;
     }
 
-    if (((size_t)topic_len > EV_NET_MAX_TOPIC_BYTES) ||
-        ((size_t)payload_len > EV_NET_MAX_INLINE_PAYLOAD_BYTES)) {
+    if (((size_t)topic_len <= EV_NET_MAX_TOPIC_BYTES) &&
+        ((size_t)payload_len <= EV_NET_MAX_INLINE_PAYLOAD_BYTES)) {
+        memset(&event, 0, sizeof(event));
+        event.kind = EV_NET_EVENT_MQTT_MSG_RX;
+        event.payload_storage = EV_NET_PAYLOAD_INLINE;
+        event.topic_len = (uint8_t)topic_len;
+        event.payload_len = (uint8_t)payload_len;
+        if (topic_len > 0) {
+            memcpy(event.topic, topic, (size_t)topic_len);
+        }
+        if (payload_len > 0) {
+            memcpy(event.payload, payload, (size_t)payload_len);
+        }
+        rc = ev_esp8266_net_push_event(net, &event);
+        if (rc == EV_OK) {
+            ev_esp8266_net_record_mqtt_rx_success(net, (uint32_t)payload_len, false);
+        }
+        return;
+    }
+
+    if (((size_t)topic_len > EV_NET_MAX_TOPIC_STORAGE_BYTES) ||
+        ((size_t)payload_len > EV_NET_MAX_PAYLOAD_STORAGE_BYTES)) {
         ev_esp8266_net_increment_counter(&net->dropped_oversize);
         return;
     }
 
-    memset(&event, 0, sizeof(event));
-    event.kind = EV_NET_EVENT_MQTT_MSG_RX;
-    event.topic_len = (uint8_t)topic_len;
-    event.payload_len = (uint8_t)payload_len;
-    if (topic_len > 0) {
-        memcpy(event.topic, topic, (size_t)topic_len);
-    }
-    if (payload_len > 0) {
-        memcpy(event.payload, payload, (size_t)payload_len);
+    slot = ev_esp8266_net_payload_acquire(net);
+    if (slot == NULL) {
+        return;
     }
 
-    ev_esp8266_net_increment_counter(&net->mqtt_rx_events);
-    ev_esp8266_net_push_event(net, &event);
+    slot->payload.topic_len = (uint8_t)topic_len;
+    slot->payload.payload_len = (uint8_t)payload_len;
+    if (topic_len > 0) {
+        memcpy(slot->payload.topic, topic, (size_t)topic_len);
+    }
+    if (payload_len > 0) {
+        memcpy(slot->payload.payload, payload, (size_t)payload_len);
+    }
+
+    memset(&event, 0, sizeof(event));
+    event.kind = EV_NET_EVENT_MQTT_MSG_RX;
+    event.payload_storage = EV_NET_PAYLOAD_LEASE;
+    event.topic_len = slot->payload.topic_len;
+    event.payload_len = slot->payload.payload_len;
+    ev_esp8266_net_payload_make_lease(slot, &event.external_payload);
+
+    rc = ev_esp8266_net_push_event(net, &event);
+    if (rc != EV_OK) {
+        ev_esp8266_net_payload_release(slot, &slot->payload, sizeof(slot->payload));
+        return;
+    }
+
+    ev_esp8266_net_record_mqtt_rx_success(net, (uint32_t)payload_len, true);
 }
 
 #endif
@@ -740,6 +911,12 @@ static ev_result_t ev_esp8266_net_get_stats_fn(void *ctx, ev_net_stats_t *out_st
     out_stats->dropped_events = net->dropped_events;
     out_stats->dropped_oversize = net->dropped_oversize;
     out_stats->dropped_no_payload_slot = net->dropped_no_payload_slot;
+    out_stats->payload_slots_total = EV_NET_PAYLOAD_SLOT_COUNT;
+    out_stats->payload_slots_in_use = net->payload_slots_in_use;
+    out_stats->payload_slots_high_watermark = net->payload_slots_high_watermark;
+    out_stats->payload_slot_acquire_ok = net->payload_slot_acquire_ok;
+    out_stats->payload_slot_acquire_failed = net->payload_slot_acquire_failed;
+    out_stats->payload_slot_release_count = net->payload_slot_release_count;
     out_stats->high_watermark = net->high_watermark;
     out_stats->wifi_up_events = net->wifi_up_events;
     out_stats->wifi_down_events = net->wifi_down_events;
@@ -756,6 +933,9 @@ static ev_result_t ev_esp8266_net_get_stats_fn(void *ctx, ev_net_stats_t *out_st
     out_stats->mqtt_up_events = net->mqtt_up_events;
     out_stats->mqtt_down_events = net->mqtt_down_events;
     out_stats->mqtt_rx_events = net->mqtt_rx_events;
+    out_stats->mqtt_rx_bytes = net->mqtt_rx_bytes;
+    out_stats->mqtt_rx_inline_events = net->mqtt_rx_inline_events;
+    out_stats->mqtt_rx_slot_events = net->mqtt_rx_slot_events;
     out_stats->tx_attempts = net->tx_attempts;
     out_stats->tx_ok = net->tx_ok;
     out_stats->tx_failed = net->tx_failed;

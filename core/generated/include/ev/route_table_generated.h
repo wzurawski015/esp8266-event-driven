@@ -7,7 +7,7 @@
 
 #include "ev/route_table.h"
 
-#define EV_ROUTE_TABLE_GENERATED_COUNT 44U
+#define EV_ROUTE_TABLE_GENERATED_COUNT 45U
 
 enum {
     EV_ROUTE_UNIQUE__EV_BOOT_STARTED__ACT_DIAG = 1,
@@ -53,6 +53,7 @@ enum {
     EV_ROUTE_UNIQUE__EV_NET_MQTT_UP__ACT_NETWORK = 1,
     EV_ROUTE_UNIQUE__EV_NET_MQTT_DOWN__ACT_NETWORK = 1,
     EV_ROUTE_UNIQUE__EV_NET_MQTT_MSG_RX__ACT_NETWORK = 1,
+    EV_ROUTE_UNIQUE__EV_NET_MQTT_MSG_RX_LEASE__ACT_NETWORK = 1,
     EV_ROUTE_UNIQUE__EV_NET_TX_CMD__ACT_NETWORK = 1,
     EV_ROUTE_UNIQUE__SENTINEL = 0
 };
@@ -101,6 +102,7 @@ static const ev_route_t k_ev_route_table_generated[] = {
     { EV_NET_MQTT_UP, ACT_NETWORK },
     { EV_NET_MQTT_DOWN, ACT_NETWORK },
     { EV_NET_MQTT_MSG_RX, ACT_NETWORK },
+    { EV_NET_MQTT_MSG_RX_LEASE, ACT_NETWORK },
     { EV_NET_TX_CMD, ACT_NETWORK },
 };
 
@@ -131,7 +133,8 @@ static const ev_route_span_t k_ev_route_spans_generated[EV_EVENT_COUNT] = {
     [EV_NET_MQTT_UP] = { 40U, 1U },
     [EV_NET_MQTT_DOWN] = { 41U, 1U },
     [EV_NET_MQTT_MSG_RX] = { 42U, 1U },
-    [EV_NET_TX_CMD] = { 43U, 1U },
+    [EV_NET_MQTT_MSG_RX_LEASE] = { 43U, 1U },
+    [EV_NET_TX_CMD] = { 44U, 1U },
 };
 
 #endif /* EV_ROUTE_TABLE_GENERATED_H */

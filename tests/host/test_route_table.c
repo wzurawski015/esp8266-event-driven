@@ -12,7 +12,7 @@ int main(void)
     size_t j;
     ev_route_span_t span;
 
-    assert(ev_route_count() == 44U);
+    assert(ev_route_count() == 45U);
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
     assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 7U);
     assert(ev_route_count_for_event(EV_TICK_1S) == 7U);
@@ -39,6 +39,7 @@ int main(void)
     assert(ev_route_count_for_event(EV_NET_MQTT_UP) == 1U);
     assert(ev_route_count_for_event(EV_NET_MQTT_DOWN) == 1U);
     assert(ev_route_count_for_event(EV_NET_MQTT_MSG_RX) == 1U);
+    assert(ev_route_count_for_event(EV_NET_MQTT_MSG_RX_LEASE) == 1U);
     assert(ev_route_count_for_event(EV_NET_TX_CMD) == 1U);
 
     span = ev_route_span_for_event(EV_BOOT_COMPLETED);
@@ -87,6 +88,7 @@ int main(void)
     assert(ev_route_exists(EV_NET_MQTT_UP, ACT_NETWORK));
     assert(ev_route_exists(EV_NET_MQTT_DOWN, ACT_NETWORK));
     assert(ev_route_exists(EV_NET_MQTT_MSG_RX, ACT_NETWORK));
+    assert(ev_route_exists(EV_NET_MQTT_MSG_RX_LEASE, ACT_NETWORK));
     assert(ev_route_exists(EV_NET_TX_CMD, ACT_NETWORK));
     assert(ev_route_exists(EV_PANEL_LED_SET_CMD, ACT_MCP23008));
     assert(ev_route_exists(EV_TIME_UPDATED, ACT_APP));

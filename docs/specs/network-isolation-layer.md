@@ -83,3 +83,27 @@ A production adapter must prove:
 - WDT health does not remain true under network-induced stalls,
 - no heap is used in callback or actor hot paths,
 - WiFi/MQTT HIL stress passes with stored logs.
+
+## Static MQTT payload lease pool
+
+The Network Airlock now supports two MQTT RX payload forms:
+
+- **Inline payloads** remain bounded by `EV_NET_MAX_TOPIC_BYTES` and
+  `EV_NET_MAX_INLINE_PAYLOAD_BYTES` and are carried as inline message payloads.
+- **Static-slot payloads** use a fixed-size pool controlled by
+  `EV_NET_PAYLOAD_SLOT_COUNT`, `EV_NET_MAX_TOPIC_STORAGE_BYTES`, and
+  `EV_NET_MAX_PAYLOAD_STORAGE_BYTES`.
+
+Ownership is deterministic and zero-heap:
+
+1. the adapter/fake callback acquires one static slot before committing an event
+   to the ingress ring;
+2. if the ring push fails, the slot is released immediately;
+3. after app ingress publishes the event, normal message disposal releases the
+   slot through the payload release callback;
+4. oversize topics or payloads are dropped and counted through
+   `dropped_oversize`;
+5. pool exhaustion is dropped and counted through `dropped_no_payload_slot`.
+
+This is still a foundation layer. It does not add telemetry routes, remote
+commands, subscriptions that execute local actions, or MQTT production HIL.

@@ -27,6 +27,9 @@ typedef struct ev_network_actor_stats {
     uint32_t mqtt_down_events;
     uint32_t mqtt_rx_events;
     uint32_t mqtt_rx_ignored_foundation;
+    uint32_t mqtt_rx_bytes;
+    uint32_t mqtt_rx_inline_events;
+    uint32_t mqtt_rx_slot_events;
     uint32_t tx_commands_seen;
     uint32_t tx_attempts;
     uint32_t tx_ok;
@@ -42,8 +45,8 @@ typedef struct ev_network_actor_ctx {
     ev_network_actor_stats_t stats;
 } ev_network_actor_ctx_t;
 
-EV_STATIC_ASSERT(sizeof(ev_net_ingress_event_t) <= EV_MSG_INLINE_CAPACITY,
-                 "network ingress event must fit inline message payload");
+EV_STATIC_ASSERT(sizeof(ev_net_mqtt_inline_payload_t) <= EV_MSG_INLINE_CAPACITY,
+                 "inline network MQTT RX payload must fit message payload");
 EV_STATIC_ASSERT(sizeof(ev_net_mqtt_publish_cmd_t) <= EV_MSG_INLINE_CAPACITY,
                  "network tx command must fit inline message payload");
 EV_STATIC_ASSERT((EV_NET_INGRESS_RING_CAPACITY & (EV_NET_INGRESS_RING_CAPACITY - 1U)) == 0U,

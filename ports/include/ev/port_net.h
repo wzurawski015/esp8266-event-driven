@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "ev/msg.h"
 #include "ev/result.h"
 
 #ifdef __cplusplus
@@ -15,6 +16,16 @@ extern "C" {
 #define EV_NET_MAX_TOPIC_BYTES 8U
 #define EV_NET_MAX_INLINE_PAYLOAD_BYTES 8U
 
+#ifndef EV_NET_MAX_TOPIC_STORAGE_BYTES
+#define EV_NET_MAX_TOPIC_STORAGE_BYTES 64U
+#endif
+#ifndef EV_NET_MAX_PAYLOAD_STORAGE_BYTES
+#define EV_NET_MAX_PAYLOAD_STORAGE_BYTES 128U
+#endif
+#ifndef EV_NET_PAYLOAD_SLOT_COUNT
+#define EV_NET_PAYLOAD_SLOT_COUNT 4U
+#endif
+
 typedef enum ev_net_event_kind {
     EV_NET_EVENT_NONE = 0,
     EV_NET_EVENT_WIFI_UP = 1,
@@ -24,23 +35,50 @@ typedef enum ev_net_event_kind {
     EV_NET_EVENT_MQTT_MSG_RX = 5
 } ev_net_event_kind_t;
 
-typedef struct ev_net_ingress_event {
-    ev_net_event_kind_t kind;
-    uint8_t topic_len;
-    uint8_t payload_len;
-    uint8_t reserved;
-    char topic[EV_NET_MAX_TOPIC_BYTES];
-    uint8_t payload[EV_NET_MAX_INLINE_PAYLOAD_BYTES];
-} ev_net_ingress_event_t;
+typedef enum ev_net_payload_storage {
+    EV_NET_PAYLOAD_NONE = 0,
+    EV_NET_PAYLOAD_INLINE = 1,
+    EV_NET_PAYLOAD_LEASE = 2
+} ev_net_payload_storage_t;
 
-typedef struct ev_net_mqtt_publish_cmd {
+typedef struct ev_net_mqtt_inline_payload {
     uint8_t topic_len;
     uint8_t payload_len;
     uint8_t qos;
     uint8_t retain;
     char topic[EV_NET_MAX_TOPIC_BYTES];
     uint8_t payload[EV_NET_MAX_INLINE_PAYLOAD_BYTES];
-} ev_net_mqtt_publish_cmd_t;
+} ev_net_mqtt_inline_payload_t;
+
+typedef struct ev_net_mqtt_rx_payload {
+    uint8_t topic_len;
+    uint8_t payload_len;
+    uint8_t qos;
+    uint8_t retain;
+    char topic[EV_NET_MAX_TOPIC_STORAGE_BYTES];
+    uint8_t payload[EV_NET_MAX_PAYLOAD_STORAGE_BYTES];
+} ev_net_mqtt_rx_payload_t;
+
+typedef struct ev_net_payload_lease {
+    const void *data;
+    size_t size;
+    ev_msg_retain_fn_t retain_fn;
+    ev_msg_release_fn_t release_fn;
+    void *lifecycle_ctx;
+} ev_net_payload_lease_t;
+
+typedef struct ev_net_ingress_event {
+    ev_net_event_kind_t kind;
+    uint8_t topic_len;
+    uint8_t payload_len;
+    uint8_t payload_storage;
+    uint8_t reserved;
+    char topic[EV_NET_MAX_TOPIC_BYTES];
+    uint8_t payload[EV_NET_MAX_INLINE_PAYLOAD_BYTES];
+    ev_net_payload_lease_t external_payload;
+} ev_net_ingress_event_t;
+
+typedef ev_net_mqtt_inline_payload_t ev_net_mqtt_publish_cmd_t;
 
 typedef struct ev_net_stats {
     uint32_t write_seq;
@@ -65,6 +103,15 @@ typedef struct ev_net_stats {
     uint32_t mqtt_up_events;
     uint32_t mqtt_down_events;
     uint32_t mqtt_rx_events;
+    uint32_t mqtt_rx_bytes;
+    uint32_t mqtt_rx_inline_events;
+    uint32_t mqtt_rx_slot_events;
+    uint32_t payload_slots_total;
+    uint32_t payload_slots_in_use;
+    uint32_t payload_slots_high_watermark;
+    uint32_t payload_slot_acquire_ok;
+    uint32_t payload_slot_acquire_failed;
+    uint32_t payload_slot_release_count;
     uint32_t tx_attempts;
     uint32_t tx_ok;
     uint32_t tx_failed;

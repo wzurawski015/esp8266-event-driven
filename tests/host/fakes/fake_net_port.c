@@ -18,13 +18,101 @@ static void fake_net_record_high_watermark(fake_net_port_t *fake)
     }
 }
 
-static void fake_net_record_event_kind(fake_net_port_t *fake, ev_net_event_kind_t kind)
+static ev_result_t fake_net_payload_retain(void *ctx, const void *payload, size_t payload_size)
 {
+    fake_net_payload_slot_t *slot = (fake_net_payload_slot_t *)ctx;
+    if ((slot == NULL) || (payload != (const void *)&slot->payload) ||
+        (payload_size != sizeof(slot->payload)) || !slot->in_use || (slot->refcount == 0U)) {
+        return EV_ERR_STATE;
+    }
+    ++slot->refcount;
+    return EV_OK;
+}
+
+static void fake_net_payload_release(void *ctx, const void *payload, size_t payload_size)
+{
+    fake_net_payload_slot_t *slot = (fake_net_payload_slot_t *)ctx;
+    fake_net_port_t *fake;
+
+    if ((slot == NULL) || (payload != (const void *)&slot->payload) ||
+        (payload_size != sizeof(slot->payload)) || !slot->in_use || (slot->refcount == 0U)) {
+        return;
+    }
+    fake = (fake_net_port_t *)slot->owner;
+    --slot->refcount;
+    if (slot->refcount == 0U) {
+        memset(&slot->payload, 0, sizeof(slot->payload));
+        slot->in_use = false;
+        if ((fake != NULL) && (fake->payload_slots_in_use > 0U)) {
+            --fake->payload_slots_in_use;
+        }
+    }
+    if (fake != NULL) {
+        ++fake->payload_slot_release_count;
+    }
+}
+
+static fake_net_payload_slot_t *fake_net_payload_acquire(fake_net_port_t *fake)
+{
+    size_t i;
+
     if (fake == NULL) {
+        return NULL;
+    }
+    for (i = 0U; i < EV_NET_PAYLOAD_SLOT_COUNT; ++i) {
+        fake_net_payload_slot_t *slot = &fake->payload_slots[i];
+        if (!slot->in_use) {
+            memset(&slot->payload, 0, sizeof(slot->payload));
+            slot->owner = fake;
+            slot->in_use = true;
+            slot->refcount = 1U;
+            ++slot->generation;
+            if (slot->generation == 0U) {
+                slot->generation = 1U;
+            }
+            ++fake->payload_slot_acquire_ok;
+            ++fake->payload_slots_in_use;
+            if (fake->payload_slots_in_use > fake->payload_slots_high_watermark) {
+                fake->payload_slots_high_watermark = fake->payload_slots_in_use;
+            }
+            return slot;
+        }
+    }
+    ++fake->payload_slot_acquire_failed;
+    ++fake->dropped_no_payload_slot;
+    return NULL;
+}
+
+static void fake_net_payload_make_lease(fake_net_payload_slot_t *slot, ev_net_payload_lease_t *out_lease)
+{
+    if (out_lease == NULL) {
+        return;
+    }
+    memset(out_lease, 0, sizeof(*out_lease));
+    if (slot == NULL) {
+        return;
+    }
+    out_lease->data = &slot->payload;
+    out_lease->size = sizeof(slot->payload);
+    out_lease->retain_fn = fake_net_payload_retain;
+    out_lease->release_fn = fake_net_payload_release;
+    out_lease->lifecycle_ctx = slot;
+}
+
+static void fake_net_release_external_payload(const ev_net_payload_lease_t *payload)
+{
+    if ((payload != NULL) && (payload->release_fn != NULL) && (payload->data != NULL) && (payload->size > 0U)) {
+        payload->release_fn(payload->lifecycle_ctx, payload->data, payload->size);
+    }
+}
+
+static void fake_net_record_event_kind(fake_net_port_t *fake, const ev_net_ingress_event_t *event)
+{
+    if ((fake == NULL) || (event == NULL)) {
         return;
     }
 
-    switch (kind) {
+    switch (event->kind) {
     case EV_NET_EVENT_WIFI_UP:
         ++fake->wifi_up_events;
         break;
@@ -39,6 +127,16 @@ static void fake_net_record_event_kind(fake_net_port_t *fake, ev_net_event_kind_
         break;
     case EV_NET_EVENT_MQTT_MSG_RX:
         ++fake->mqtt_rx_events;
+        if (event->payload_storage == EV_NET_PAYLOAD_LEASE) {
+            const ev_net_mqtt_rx_payload_t *rx = (const ev_net_mqtt_rx_payload_t *)event->external_payload.data;
+            ++fake->mqtt_rx_slot_events;
+            if (rx != NULL) {
+                fake->mqtt_rx_bytes += rx->payload_len;
+            }
+        } else {
+            ++fake->mqtt_rx_inline_events;
+            fake->mqtt_rx_bytes += event->payload_len;
+        }
         break;
     default:
         break;
@@ -145,6 +243,15 @@ static ev_result_t fake_net_get_stats_fn(void *ctx, ev_net_stats_t *out_stats)
     out_stats->mqtt_up_events = fake->mqtt_up_events;
     out_stats->mqtt_down_events = fake->mqtt_down_events;
     out_stats->mqtt_rx_events = fake->mqtt_rx_events;
+    out_stats->mqtt_rx_bytes = fake->mqtt_rx_bytes;
+    out_stats->mqtt_rx_inline_events = fake->mqtt_rx_inline_events;
+    out_stats->mqtt_rx_slot_events = fake->mqtt_rx_slot_events;
+    out_stats->payload_slots_total = EV_NET_PAYLOAD_SLOT_COUNT;
+    out_stats->payload_slots_in_use = fake->payload_slots_in_use;
+    out_stats->payload_slots_high_watermark = fake->payload_slots_high_watermark;
+    out_stats->payload_slot_acquire_ok = fake->payload_slot_acquire_ok;
+    out_stats->payload_slot_acquire_failed = fake->payload_slot_acquire_failed;
+    out_stats->payload_slot_release_count = fake->payload_slot_release_count;
     out_stats->tx_attempts = fake->publish_mqtt_calls;
     out_stats->tx_ok = fake->publish_mqtt_ok;
     out_stats->tx_failed = fake->publish_mqtt_failed;
@@ -155,8 +262,12 @@ static ev_result_t fake_net_get_stats_fn(void *ctx, ev_net_stats_t *out_stats)
 
 void fake_net_port_init(fake_net_port_t *fake)
 {
+    size_t i;
     if (fake != NULL) {
         memset(fake, 0, sizeof(*fake));
+        for (i = 0U; i < EV_NET_PAYLOAD_SLOT_COUNT; ++i) {
+            fake->payload_slots[i].owner = fake;
+        }
         fake->next_publish_result = EV_OK;
     }
 }
@@ -191,11 +302,10 @@ ev_result_t fake_net_port_callback_push(fake_net_port_t *fake, const ev_net_ingr
     index = fake->write_seq & EV_NET_INGRESS_RING_MASK;
     fake->ring[index] = *event;
     ++fake->write_seq;
-    fake_net_record_event_kind(fake, event->kind);
+    fake_net_record_event_kind(fake, event);
     fake_net_record_high_watermark(fake);
     return EV_OK;
 }
-
 
 ev_result_t fake_net_port_callback_wifi_up(fake_net_port_t *fake)
 {
@@ -247,26 +357,55 @@ ev_result_t fake_net_port_callback_push_mqtt(fake_net_port_t *fake,
                                              size_t payload_len)
 {
     ev_net_ingress_event_t event;
+    fake_net_payload_slot_t *slot;
 
     if ((fake == NULL) || (topic == NULL) || ((payload_len > 0U) && (payload == NULL))) {
         return EV_ERR_INVALID_ARG;
     }
-    if ((topic_len > EV_NET_MAX_TOPIC_BYTES) || (payload_len > EV_NET_MAX_INLINE_PAYLOAD_BYTES)) {
+    if ((topic_len > EV_NET_MAX_TOPIC_STORAGE_BYTES) || (payload_len > EV_NET_MAX_PAYLOAD_STORAGE_BYTES)) {
         ++fake->dropped_oversize;
         return EV_ERR_OUT_OF_RANGE;
     }
 
     memset(&event, 0, sizeof(event));
     event.kind = EV_NET_EVENT_MQTT_MSG_RX;
-    event.topic_len = (uint8_t)topic_len;
-    event.payload_len = (uint8_t)payload_len;
+    if ((topic_len <= EV_NET_MAX_TOPIC_BYTES) && (payload_len <= EV_NET_MAX_INLINE_PAYLOAD_BYTES)) {
+        event.payload_storage = EV_NET_PAYLOAD_INLINE;
+        event.topic_len = (uint8_t)topic_len;
+        event.payload_len = (uint8_t)payload_len;
+        if (topic_len > 0U) {
+            memcpy(event.topic, topic, topic_len);
+        }
+        if (payload_len > 0U) {
+            memcpy(event.payload, payload, payload_len);
+        }
+        return fake_net_port_callback_push(fake, &event);
+    }
+
+    slot = fake_net_payload_acquire(fake);
+    if (slot == NULL) {
+        return EV_ERR_FULL;
+    }
+    slot->payload.topic_len = (uint8_t)topic_len;
+    slot->payload.payload_len = (uint8_t)payload_len;
+    slot->payload.qos = 0U;
+    slot->payload.retain = 0U;
     if (topic_len > 0U) {
-        memcpy(event.topic, topic, topic_len);
+        memcpy(slot->payload.topic, topic, topic_len);
     }
     if (payload_len > 0U) {
-        memcpy(event.payload, payload, payload_len);
+        memcpy(slot->payload.payload, payload, payload_len);
     }
-    return fake_net_port_callback_push(fake, &event);
+
+    event.payload_storage = EV_NET_PAYLOAD_LEASE;
+    event.topic_len = slot->payload.topic_len;
+    event.payload_len = slot->payload.payload_len;
+    fake_net_payload_make_lease(slot, &event.external_payload);
+    if (fake_net_port_callback_push(fake, &event) != EV_OK) {
+        fake_net_release_external_payload(&event.external_payload);
+        return EV_ERR_FULL;
+    }
+    return EV_OK;
 }
 
 size_t fake_net_port_pending(const fake_net_port_t *fake)

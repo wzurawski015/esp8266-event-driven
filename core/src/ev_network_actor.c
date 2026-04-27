@@ -50,14 +50,41 @@ static ev_result_t ev_network_actor_handle_mqtt_down(ev_network_actor_ctx_t *ctx
     return EV_OK;
 }
 
-static ev_result_t ev_network_actor_handle_mqtt_rx(ev_network_actor_ctx_t *ctx, const ev_msg_t *msg)
+static ev_result_t ev_network_actor_handle_mqtt_rx_inline(ev_network_actor_ctx_t *ctx, const ev_msg_t *msg)
 {
-    if (!ev_network_message_has_exact_payload(msg, sizeof(ev_net_ingress_event_t))) {
+    const ev_net_mqtt_inline_payload_t *rx;
+
+    if (!ev_network_message_has_exact_payload(msg, sizeof(ev_net_mqtt_inline_payload_t))) {
         ++ctx->stats.bad_payloads;
         return EV_ERR_CONTRACT;
     }
+
+    rx = (const ev_net_mqtt_inline_payload_t *)ev_msg_payload_data(msg);
     ++ctx->stats.mqtt_rx_events;
+    ++ctx->stats.mqtt_rx_inline_events;
     ++ctx->stats.mqtt_rx_ignored_foundation;
+    if (rx != NULL) {
+        ctx->stats.mqtt_rx_bytes += rx->payload_len;
+    }
+    return EV_OK;
+}
+
+static ev_result_t ev_network_actor_handle_mqtt_rx_lease(ev_network_actor_ctx_t *ctx, const ev_msg_t *msg)
+{
+    const ev_net_mqtt_rx_payload_t *rx;
+
+    if (!ev_network_message_has_exact_payload(msg, sizeof(ev_net_mqtt_rx_payload_t))) {
+        ++ctx->stats.bad_payloads;
+        return EV_ERR_CONTRACT;
+    }
+
+    rx = (const ev_net_mqtt_rx_payload_t *)ev_msg_payload_data(msg);
+    ++ctx->stats.mqtt_rx_events;
+    ++ctx->stats.mqtt_rx_slot_events;
+    ++ctx->stats.mqtt_rx_ignored_foundation;
+    if (rx != NULL) {
+        ctx->stats.mqtt_rx_bytes += rx->payload_len;
+    }
     return EV_OK;
 }
 
@@ -110,7 +137,9 @@ ev_result_t ev_network_actor_handle(void *actor_context, const ev_msg_t *msg)
     case EV_NET_MQTT_DOWN:
         return ev_network_actor_handle_mqtt_down(ctx);
     case EV_NET_MQTT_MSG_RX:
-        return ev_network_actor_handle_mqtt_rx(ctx, msg);
+        return ev_network_actor_handle_mqtt_rx_inline(ctx, msg);
+    case EV_NET_MQTT_MSG_RX_LEASE:
+        return ev_network_actor_handle_mqtt_rx_lease(ctx, msg);
     case EV_NET_TX_CMD:
         return ev_network_actor_handle_tx(ctx, msg);
     default:

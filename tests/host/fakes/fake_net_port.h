@@ -11,14 +11,28 @@
 extern "C" {
 #endif
 
+typedef struct fake_net_payload_slot {
+    void *owner;
+    bool in_use;
+    uint32_t refcount;
+    uint32_t generation;
+    ev_net_mqtt_rx_payload_t payload;
+} fake_net_payload_slot_t;
+
 typedef struct fake_net_port {
     ev_net_ingress_event_t ring[EV_NET_INGRESS_RING_CAPACITY];
+    fake_net_payload_slot_t payload_slots[EV_NET_PAYLOAD_SLOT_COUNT];
     uint32_t write_seq;
     uint32_t read_seq;
     uint32_t dropped_events;
     uint32_t dropped_oversize;
     uint32_t dropped_no_payload_slot;
     uint32_t high_watermark;
+    uint32_t payload_slots_in_use;
+    uint32_t payload_slots_high_watermark;
+    uint32_t payload_slot_acquire_ok;
+    uint32_t payload_slot_acquire_failed;
+    uint32_t payload_slot_release_count;
     uint32_t wifi_up_events;
     uint32_t wifi_down_events;
     uint32_t reconnect_attempts;
@@ -36,6 +50,9 @@ typedef struct fake_net_port {
     uint32_t mqtt_up_events;
     uint32_t mqtt_down_events;
     uint32_t mqtt_rx_events;
+    uint32_t mqtt_rx_bytes;
+    uint32_t mqtt_rx_inline_events;
+    uint32_t mqtt_rx_slot_events;
     uint32_t tx_rejected_state;
     uint32_t tx_rejected_oversize;
     uint32_t init_calls;

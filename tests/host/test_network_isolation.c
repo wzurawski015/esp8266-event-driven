@@ -95,6 +95,18 @@ static void fill_event(ev_net_ingress_event_t *event, ev_net_event_kind_t kind)
     event->kind = kind;
 }
 
+static void release_polled_net_event(const ev_net_ingress_event_t *event)
+{
+    if ((event != NULL) && (event->payload_storage == EV_NET_PAYLOAD_LEASE) &&
+        (event->external_payload.release_fn != NULL) && (event->external_payload.data != NULL) &&
+        (event->external_payload.size > 0U)) {
+        event->external_payload.release_fn(
+            event->external_payload.lifecycle_ctx,
+            event->external_payload.data,
+            event->external_payload.size);
+    }
+}
+
 static void test_fake_net_ring_backpressure_and_oversize(void)
 {
     fake_net_port_t fake;
@@ -102,8 +114,14 @@ static void test_fake_net_ring_backpressure_and_oversize(void)
     ev_net_ingress_event_t event;
     ev_net_ingress_event_t out_event;
     size_t i;
-    const uint8_t payload[EV_NET_MAX_INLINE_PAYLOAD_BYTES + 1U] = {0};
+    const uint8_t small_payload[EV_NET_MAX_INLINE_PAYLOAD_BYTES] = {0};
+    const uint8_t medium_payload[EV_NET_MAX_INLINE_PAYLOAD_BYTES + 1U] = {0};
+    const uint8_t oversize_payload[EV_NET_MAX_PAYLOAD_STORAGE_BYTES + 1U] = {0};
+    char medium_topic[EV_NET_MAX_TOPIC_BYTES + 1U];
+    char oversize_topic[EV_NET_MAX_TOPIC_STORAGE_BYTES + 1U];
 
+    memset(medium_topic, 'm', sizeof(medium_topic));
+    memset(oversize_topic, 'o', sizeof(oversize_topic));
     fake_net_port_init(&fake);
     fake_net_port_bind(&port, &fake);
     fill_event(&event, EV_NET_EVENT_WIFI_UP);
@@ -125,14 +143,63 @@ static void test_fake_net_ring_backpressure_and_oversize(void)
         assert(stats.high_watermark == EV_NET_INGRESS_RING_CAPACITY);
     }
 
-    assert(port.poll_ingress(port.ctx, &out_event) == EV_OK);
-    assert(fake_net_port_pending(&fake) == (EV_NET_INGRESS_RING_CAPACITY - 1U));
+    while (port.poll_ingress(port.ctx, &out_event) == EV_OK) {
+        release_polled_net_event(&out_event);
+    }
+    assert(fake_net_port_pending(&fake) == 0U);
+
     assert(fake_net_port_callback_push_mqtt(&fake,
-                                            "oversize!",
-                                            EV_NET_MAX_TOPIC_BYTES + 1U,
-                                            payload,
-                                            sizeof(payload)) == EV_ERR_OUT_OF_RANGE);
-    assert(fake.dropped_oversize == 1U);
+                                            "small",
+                                            5U,
+                                            small_payload,
+                                            sizeof(small_payload)) == EV_OK);
+    assert(port.poll_ingress(port.ctx, &out_event) == EV_OK);
+    assert(out_event.payload_storage == EV_NET_PAYLOAD_INLINE);
+    assert(out_event.payload_len == sizeof(small_payload));
+    release_polled_net_event(&out_event);
+
+    assert(fake_net_port_callback_push_mqtt(&fake,
+                                            medium_topic,
+                                            sizeof(medium_topic),
+                                            medium_payload,
+                                            sizeof(medium_payload)) == EV_OK);
+    assert(port.poll_ingress(port.ctx, &out_event) == EV_OK);
+    assert(out_event.payload_storage == EV_NET_PAYLOAD_LEASE);
+    assert(out_event.external_payload.data != NULL);
+    release_polled_net_event(&out_event);
+    assert(fake.payload_slots_in_use == 0U);
+    assert(fake.payload_slot_release_count == 1U);
+
+    for (i = 0U; i < EV_NET_PAYLOAD_SLOT_COUNT; ++i) {
+        assert(fake_net_port_callback_push_mqtt(&fake,
+                                                medium_topic,
+                                                sizeof(medium_topic),
+                                                medium_payload,
+                                                sizeof(medium_payload)) == EV_OK);
+    }
+    assert(fake.payload_slots_in_use == EV_NET_PAYLOAD_SLOT_COUNT);
+    assert(fake_net_port_callback_push_mqtt(&fake,
+                                            medium_topic,
+                                            sizeof(medium_topic),
+                                            medium_payload,
+                                            sizeof(medium_payload)) == EV_ERR_FULL);
+    assert(fake.dropped_no_payload_slot == 1U);
+    while (port.poll_ingress(port.ctx, &out_event) == EV_OK) {
+        release_polled_net_event(&out_event);
+    }
+    assert(fake.payload_slots_in_use == 0U);
+
+    assert(fake_net_port_callback_push_mqtt(&fake,
+                                            oversize_topic,
+                                            sizeof(oversize_topic),
+                                            medium_payload,
+                                            sizeof(medium_payload)) == EV_ERR_OUT_OF_RANGE);
+    assert(fake_net_port_callback_push_mqtt(&fake,
+                                            medium_topic,
+                                            sizeof(medium_topic),
+                                            oversize_payload,
+                                            sizeof(oversize_payload)) == EV_ERR_OUT_OF_RANGE);
+    assert(fake.dropped_oversize == 2U);
 }
 
 
@@ -218,9 +285,8 @@ static void test_network_actor_state_machine_and_tx_policy(void)
     assert(ev_msg_dispose(&msg) == EV_OK);
 
     {
-        ev_net_ingress_event_t rx_event;
+        ev_net_mqtt_inline_payload_t rx_event;
         memset(&rx_event, 0, sizeof(rx_event));
-        rx_event.kind = EV_NET_EVENT_MQTT_MSG_RX;
         rx_event.topic_len = 5U;
         memcpy(rx_event.topic, "cmd/x", 5U);
         rx_event.payload_len = 1U;
@@ -229,10 +295,12 @@ static void test_network_actor_state_machine_and_tx_policy(void)
         assert(ev_msg_set_inline_payload(&msg, &rx_event, sizeof(rx_event)) == EV_OK);
         assert(ev_network_actor_handle(&actor, &msg) == EV_OK);
         assert(actor.stats.mqtt_rx_events == 1U);
+        assert(actor.stats.mqtt_rx_inline_events == 1U);
         assert(actor.stats.mqtt_rx_ignored_foundation == 1U);
         assert(fake.publish_mqtt_calls == 1U);
         assert(ev_msg_dispose(&msg) == EV_OK);
     }
+
 
     fake.next_publish_result = EV_ERR_UNSUPPORTED;
     assert(ev_msg_init_publish(&msg, EV_NET_TX_CMD, ACT_APP) == EV_OK);
@@ -313,6 +381,22 @@ static void test_demo_app_network_ingress_and_irq_budget(void)
     assert(stats->max_net_samples_per_poll <= 16U);
     drain_app(&app);
     assert(net_stats->wifi_up_events > 0U);
+
+    {
+        uint8_t medium_payload[EV_NET_MAX_INLINE_PAYLOAD_BYTES + 1U] = {0};
+        char medium_topic[EV_NET_MAX_TOPIC_BYTES + 1U];
+
+        memset(medium_topic, 'm', sizeof(medium_topic));
+        assert(fake_net_port_callback_push_mqtt(&fake_net,
+                                                medium_topic,
+                                                sizeof(medium_topic),
+                                                medium_payload,
+                                                sizeof(medium_payload)) == EV_OK);
+        drain_app(&app);
+        assert(fake_net.payload_slots_in_use == 0U);
+        assert(fake_net.payload_slot_release_count > 0U);
+        assert(net_stats->mqtt_rx_slot_events > 0U);
+    }
 }
 
 static void test_network_capability_required_for_port(void)

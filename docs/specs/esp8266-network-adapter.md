@@ -116,3 +116,21 @@ The default remains WiFi-only and keeps `EV_ESP8266_NET_ENABLE_MQTT=0`.  A
 future MQTT compile check can be requested explicitly by setting the build flag,
 but that is not a physical MQTT HIL result.  The gate emits `EV_MEM_*` markers
 and does not print WiFi secrets or compiler command lines.
+
+## MQTT payload storage foundation
+
+When `EV_ESP8266_NET_ENABLE_MQTT=1`, MQTT DATA callbacks may receive topics or
+payloads that exceed the tiny inline limits used by the first airlock commit.
+The adapter therefore uses a static MQTT payload slot pool:
+
+- `EV_NET_MAX_TOPIC_STORAGE_BYTES` defaults to 64 bytes;
+- `EV_NET_MAX_PAYLOAD_STORAGE_BYTES` defaults to 128 bytes;
+- `EV_NET_PAYLOAD_SLOT_COUNT` defaults to 4 slots.
+
+Callbacks never allocate heap. If a message fits the inline limits, it remains
+inline. If it fits the static slot limits, it is copied into a slot and passed
+through the ingress ring as a lease-backed payload. If it exceeds the slot
+limits or the pool is exhausted, it is dropped with diagnostics.
+
+MQTT remains build-disabled by default. This payload pool does not enable
+telemetry or remote commands.
