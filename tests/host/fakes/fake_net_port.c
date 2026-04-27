@@ -121,6 +121,7 @@ static ev_result_t fake_net_get_stats_fn(void *ctx, ev_net_stats_t *out_stats)
         return EV_ERR_INVALID_ARG;
     }
     ++fake->get_stats_calls;
+    ++fake->state_snapshots;
     memset(out_stats, 0, sizeof(*out_stats));
     out_stats->write_seq = fake->write_seq;
     out_stats->read_seq = fake->read_seq;
@@ -132,6 +133,13 @@ static ev_result_t fake_net_get_stats_fn(void *ctx, ev_net_stats_t *out_stats)
     out_stats->wifi_up_events = fake->wifi_up_events;
     out_stats->wifi_down_events = fake->wifi_down_events;
     out_stats->reconnect_attempts = fake->reconnect_attempts;
+    out_stats->reconnect_suppressed = fake->reconnect_suppressed;
+    out_stats->duplicate_wifi_down_suppressed = fake->duplicate_wifi_down_suppressed;
+    out_stats->duplicate_wifi_up_suppressed = fake->duplicate_wifi_up_suppressed;
+    out_stats->event_loop_init_failures = fake->event_loop_init_failures;
+    out_stats->event_loop_already_initialized = fake->event_loop_already_initialized;
+    out_stats->state_snapshots = fake->state_snapshots;
+    out_stats->callback_state_updates = fake->callback_state_updates;
     out_stats->mqtt_disabled = fake->mqtt_disabled;
     out_stats->mqtt_connect_attempts = fake->mqtt_connect_attempts;
     out_stats->mqtt_up_events = fake->mqtt_up_events;
@@ -186,6 +194,50 @@ ev_result_t fake_net_port_callback_push(fake_net_port_t *fake, const ev_net_ingr
     fake_net_record_event_kind(fake, event->kind);
     fake_net_record_high_watermark(fake);
     return EV_OK;
+}
+
+
+ev_result_t fake_net_port_callback_wifi_up(fake_net_port_t *fake)
+{
+    ev_net_ingress_event_t event;
+
+    if (fake == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (fake->wifi_connected) {
+        ++fake->duplicate_wifi_up_suppressed;
+        return EV_ERR_STATE;
+    }
+
+    fake->wifi_connected = true;
+    ++fake->callback_state_updates;
+    memset(&event, 0, sizeof(event));
+    event.kind = EV_NET_EVENT_WIFI_UP;
+    return fake_net_port_callback_push(fake, &event);
+}
+
+ev_result_t fake_net_port_callback_wifi_down(fake_net_port_t *fake)
+{
+    ev_net_ingress_event_t event;
+
+    if (fake == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!fake->wifi_connected) {
+        ++fake->duplicate_wifi_down_suppressed;
+        ++fake->reconnect_suppressed;
+        return EV_ERR_STATE;
+    }
+
+    fake->wifi_connected = false;
+    if (fake->mqtt_connected) {
+        fake->mqtt_connected = false;
+    }
+    ++fake->callback_state_updates;
+    ++fake->reconnect_attempts;
+    memset(&event, 0, sizeof(event));
+    event.kind = EV_NET_EVENT_WIFI_DOWN;
+    return fake_net_port_callback_push(fake, &event);
 }
 
 ev_result_t fake_net_port_callback_push_mqtt(fake_net_port_t *fake,

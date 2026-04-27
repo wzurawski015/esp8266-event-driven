@@ -22,6 +22,15 @@ typedef struct fake_net_port {
     uint32_t wifi_up_events;
     uint32_t wifi_down_events;
     uint32_t reconnect_attempts;
+    uint32_t reconnect_suppressed;
+    uint32_t duplicate_wifi_down_suppressed;
+    uint32_t duplicate_wifi_up_suppressed;
+    uint32_t event_loop_init_failures;
+    uint32_t event_loop_already_initialized;
+    uint32_t state_snapshots;
+    uint32_t callback_state_updates;
+    bool wifi_connected;
+    bool mqtt_connected;
     uint32_t mqtt_disabled;
     uint32_t mqtt_connect_attempts;
     uint32_t mqtt_up_events;
@@ -44,6 +53,8 @@ typedef struct fake_net_port {
 void fake_net_port_init(fake_net_port_t *fake);
 void fake_net_port_bind(ev_net_port_t *out_port, fake_net_port_t *fake);
 ev_result_t fake_net_port_callback_push(fake_net_port_t *fake, const ev_net_ingress_event_t *event);
+ev_result_t fake_net_port_callback_wifi_up(fake_net_port_t *fake);
+ev_result_t fake_net_port_callback_wifi_down(fake_net_port_t *fake);
 ev_result_t fake_net_port_callback_push_mqtt(fake_net_port_t *fake,
                                              const char *topic,
                                              size_t topic_len,

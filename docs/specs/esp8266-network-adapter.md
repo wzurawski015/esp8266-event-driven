@@ -28,3 +28,30 @@ counted.
 ## Verification status
 
 This document describes code-level integration only. ESP8266 SDK build, WiFi association, MQTT broker connection, and physical network HIL must be run on hardware before production network readiness is claimed.
+
+## Callback/poll shared-state hardening
+
+The ESP8266 adapter protects callback-updated connection state and app-polled
+statistics with short critical sections.  SDK callbacks may update local adapter
+state and push bounded ingress events, but they must not call `ev_publish()`,
+actor handlers, mailbox APIs, or application logic.  The adapter must never hold
+its internal critical section while calling SDK functions such as
+`esp_wifi_connect()`, `esp_wifi_start()`, `esp_mqtt_client_start()`, or
+`esp_mqtt_client_publish()`.
+
+## Reconnect storm policy
+
+WiFi disconnect callbacks are treated as state transitions.  A duplicate
+`WIFI_DOWN` event while the adapter is already disconnected is suppressed and
+counted in `duplicate_wifi_down_suppressed`.  Reconnect attempts are rate-limited
+by `EV_ESP8266_NET_RECONNECT_MIN_INTERVAL_MS`; disconnect callbacks inside that
+window increment `reconnect_suppressed` instead of calling `esp_wifi_connect()`.
+This bounds reconnect storms and prevents unbounded ingress ring pressure.
+
+## Event-loop ownership
+
+The current ESP8266 adapter owns `esp_event_loop_init()` for this target.  Unknown
+event-loop initialization failures are not silently ignored; they increment
+`event_loop_init_failures` and fail initialization.  If a future SDK exposes a
+verified "already initialized" error code, ownership sharing may be handled in a
+separate reviewed commit.

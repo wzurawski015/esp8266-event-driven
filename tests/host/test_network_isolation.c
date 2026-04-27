@@ -135,6 +135,47 @@ static void test_fake_net_ring_backpressure_and_oversize(void)
     assert(fake.dropped_oversize == 1U);
 }
 
+
+static void test_fake_net_reconnect_storm_suppression(void)
+{
+    fake_net_port_t fake;
+    ev_net_port_t port;
+    ev_net_stats_t stats;
+    ev_net_ingress_event_t event;
+    unsigned i;
+
+    fake_net_port_init(&fake);
+    fake_net_port_bind(&port, &fake);
+
+    assert(fake_net_port_callback_wifi_up(&fake) == EV_OK);
+    assert(fake_net_port_callback_wifi_up(&fake) == EV_ERR_STATE);
+    assert(fake_net_port_callback_wifi_down(&fake) == EV_OK);
+
+    for (i = 0U; i < 8U; ++i) {
+        assert(fake_net_port_callback_wifi_down(&fake) == EV_ERR_STATE);
+    }
+
+    assert(fake_net_port_pending(&fake) == 2U);
+    assert(port.get_stats(port.ctx, &stats) == EV_OK);
+    assert(stats.wifi_up_events == 1U);
+    assert(stats.wifi_down_events == 1U);
+    assert(stats.reconnect_attempts == 1U);
+    assert(stats.reconnect_suppressed == 8U);
+    assert(stats.duplicate_wifi_up_suppressed == 1U);
+    assert(stats.duplicate_wifi_down_suppressed == 8U);
+    assert(stats.callback_state_updates == 2U);
+
+    assert(port.poll_ingress(port.ctx, &event) == EV_OK);
+    assert(event.kind == EV_NET_EVENT_WIFI_UP);
+    assert(port.poll_ingress(port.ctx, &event) == EV_OK);
+    assert(event.kind == EV_NET_EVENT_WIFI_DOWN);
+    assert(port.poll_ingress(port.ctx, &event) == EV_ERR_EMPTY);
+
+    assert(fake_net_port_callback_wifi_up(&fake) == EV_OK);
+    assert(port.poll_ingress(port.ctx, &event) == EV_OK);
+    assert(event.kind == EV_NET_EVENT_WIFI_UP);
+}
+
 static void test_network_actor_state_machine_and_tx_policy(void)
 {
     fake_net_port_t fake;
@@ -306,6 +347,7 @@ static void test_network_capability_required_for_port(void)
 int main(void)
 {
     test_fake_net_ring_backpressure_and_oversize();
+    test_fake_net_reconnect_storm_suppression();
     test_network_actor_state_machine_and_tx_policy();
     test_demo_app_network_ingress_and_irq_budget();
     test_network_capability_required_for_port();
