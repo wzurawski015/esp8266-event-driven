@@ -10,8 +10,15 @@
 #include "esp_event_loop.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
-#include "mqtt_client.h"
 #include "tcpip_adapter.h"
+
+#ifndef EV_ESP8266_NET_ENABLE_MQTT
+#define EV_ESP8266_NET_ENABLE_MQTT 0
+#endif
+
+#if EV_ESP8266_NET_ENABLE_MQTT
+#include "mqtt_client.h"
+#endif
 
 #define EV_ESP8266_NET_WIFI_AUTH_OPEN 0U
 #define EV_ESP8266_NET_WIFI_AUTH_WPA2_PSK 1U
@@ -69,7 +76,9 @@ typedef struct ev_esp8266_net_ctx {
     bool event_loop_initialized;
     bool event_loop_owned;
     ev_esp8266_net_config_t cfg;
+#if EV_ESP8266_NET_ENABLE_MQTT
     esp_mqtt_client_handle_t mqtt_client;
+#endif
 } ev_esp8266_net_ctx_t;
 
 typedef struct ev_esp8266_net_state_snapshot {
@@ -79,7 +88,9 @@ typedef struct ev_esp8266_net_state_snapshot {
     bool mqtt_supported;
     bool mqtt_started;
     bool mqtt_connected;
+#if EV_ESP8266_NET_ENABLE_MQTT
     esp_mqtt_client_handle_t mqtt_client;
+#endif
 } ev_esp8266_net_state_snapshot_t;
 
 typedef struct ev_esp8266_net_wifi_down_actions {
@@ -146,7 +157,9 @@ static ev_esp8266_net_state_snapshot_t ev_esp8266_net_snapshot_state(ev_esp8266_
     snapshot.mqtt_supported = net->mqtt_supported;
     snapshot.mqtt_started = net->mqtt_started;
     snapshot.mqtt_connected = net->mqtt_connected;
+#if EV_ESP8266_NET_ENABLE_MQTT
     snapshot.mqtt_client = net->mqtt_client;
+#endif
     ++net->state_snapshots;
     ev_esp8266_net_unlock();
     return snapshot;
@@ -176,6 +189,7 @@ static void ev_esp8266_net_set_wifi_started(ev_esp8266_net_ctx_t *net, bool star
     ev_esp8266_net_unlock();
 }
 
+#if EV_ESP8266_NET_ENABLE_MQTT
 static void ev_esp8266_net_set_mqtt_started(ev_esp8266_net_ctx_t *net, bool started)
 {
     if (net == NULL) {
@@ -187,6 +201,8 @@ static void ev_esp8266_net_set_mqtt_started(ev_esp8266_net_ctx_t *net, bool star
     ++net->callback_state_updates;
     ev_esp8266_net_unlock();
 }
+
+#endif
 
 static void ev_esp8266_net_set_mqtt_supported(ev_esp8266_net_ctx_t *net, bool supported)
 {
@@ -284,6 +300,7 @@ static ev_esp8266_net_wifi_down_actions_t ev_esp8266_net_note_wifi_down(ev_esp82
     return actions;
 }
 
+#if EV_ESP8266_NET_ENABLE_MQTT
 static bool ev_esp8266_net_note_mqtt_up(ev_esp8266_net_ctx_t *net)
 {
     bool should_push = false;
@@ -322,6 +339,8 @@ static bool ev_esp8266_net_note_mqtt_down(ev_esp8266_net_ctx_t *net)
     return should_push;
 }
 
+#endif
+
 static void ev_esp8266_net_push_event(ev_esp8266_net_ctx_t *net, const ev_net_ingress_event_t *event)
 {
     uint32_t index;
@@ -353,6 +372,7 @@ static void ev_esp8266_net_push_kind(ev_esp8266_net_ctx_t *net, ev_net_event_kin
     ev_esp8266_net_push_event(net, &event);
 }
 
+#if EV_ESP8266_NET_ENABLE_MQTT
 static void ev_esp8266_net_push_mqtt_data(ev_esp8266_net_ctx_t *net,
                                           const char *topic,
                                           int topic_len,
@@ -386,6 +406,8 @@ static void ev_esp8266_net_push_mqtt_data(ev_esp8266_net_ctx_t *net,
     ev_esp8266_net_increment_counter(&net->mqtt_rx_events);
     ev_esp8266_net_push_event(net, &event);
 }
+
+#endif
 
 static wifi_auth_mode_t ev_esp8266_net_auth_mode(uint32_t auth_mode)
 {
@@ -430,6 +452,7 @@ static esp_err_t ev_esp8266_wifi_event_handler(void *ctx, system_event_t *event)
     return ESP_OK;
 }
 
+#if EV_ESP8266_NET_ENABLE_MQTT
 static esp_err_t ev_esp8266_mqtt_event_handler(esp_mqtt_event_handle_t event)
 {
     ev_esp8266_net_ctx_t *net;
@@ -469,6 +492,8 @@ static esp_err_t ev_esp8266_mqtt_event_handler(esp_mqtt_event_handle_t event)
     return ESP_OK;
 }
 
+#endif
+
 static ev_result_t ev_esp8266_net_config_is_valid(const ev_esp8266_net_config_t *cfg)
 {
     if ((cfg == NULL) || ev_esp8266_net_string_is_empty(cfg->wifi_ssid) || (cfg->wifi_password == NULL)) {
@@ -482,8 +507,10 @@ static ev_result_t ev_esp8266_net_init_fn(void *ctx)
     ev_esp8266_net_ctx_t *net = (ev_esp8266_net_ctx_t *)ctx;
     wifi_init_config_t wifi_init_cfg = WIFI_INIT_CONFIG_DEFAULT();
     wifi_config_t wifi_cfg;
-    esp_mqtt_client_config_t mqtt_cfg;
     ev_esp8266_net_state_snapshot_t snapshot;
+#if EV_ESP8266_NET_ENABLE_MQTT
+    esp_mqtt_client_config_t mqtt_cfg;
+#endif
     esp_err_t err;
 
     if (net == NULL) {
@@ -522,6 +549,7 @@ static ev_result_t ev_esp8266_net_init_fn(void *ctx)
         return EV_ERR_STATE;
     }
 
+#if EV_ESP8266_NET_ENABLE_MQTT
     ev_esp8266_net_set_mqtt_supported(net, !ev_esp8266_net_string_is_empty(net->cfg.mqtt_broker_uri));
     snapshot = ev_esp8266_net_snapshot_state(net);
     if (snapshot.mqtt_supported) {
@@ -541,6 +569,10 @@ static ev_result_t ev_esp8266_net_init_fn(void *ctx)
     } else {
         ev_esp8266_net_increment_counter(&net->mqtt_disabled);
     }
+#else
+    ev_esp8266_net_set_mqtt_supported(net, false);
+    ev_esp8266_net_increment_counter(&net->mqtt_disabled);
+#endif
 
     ev_esp8266_net_set_initialized(net, true);
     return EV_OK;
@@ -579,11 +611,13 @@ static ev_result_t ev_esp8266_net_stop_fn(void *ctx)
         return EV_ERR_INVALID_ARG;
     }
     snapshot = ev_esp8266_net_snapshot_state(net);
+#if EV_ESP8266_NET_ENABLE_MQTT
     if ((snapshot.mqtt_client != NULL) && snapshot.mqtt_started) {
         (void)esp_mqtt_client_stop(snapshot.mqtt_client);
         ev_esp8266_net_set_mqtt_started(net, false);
         (void)ev_esp8266_net_note_mqtt_down(net);
     }
+#endif
     snapshot = ev_esp8266_net_snapshot_state(net);
     if (snapshot.wifi_started) {
         (void)esp_wifi_disconnect();
@@ -600,9 +634,6 @@ static ev_result_t ev_esp8266_net_stop_fn(void *ctx)
 static ev_result_t ev_esp8266_net_publish_mqtt_fn(void *ctx, const ev_net_mqtt_publish_cmd_t *cmd)
 {
     ev_esp8266_net_ctx_t *net = (ev_esp8266_net_ctx_t *)ctx;
-    ev_esp8266_net_state_snapshot_t snapshot;
-    char topic[EV_NET_MAX_TOPIC_BYTES + 1U];
-    int msg_id;
 
     if ((net == NULL) || (cmd == NULL)) {
         return EV_ERR_INVALID_ARG;
@@ -612,47 +643,63 @@ static ev_result_t ev_esp8266_net_publish_mqtt_fn(void *ctx, const ev_net_mqtt_p
     ++net->tx_attempts;
     ev_esp8266_net_unlock();
 
-    snapshot = ev_esp8266_net_snapshot_state(net);
-    if (!snapshot.mqtt_supported || (snapshot.mqtt_client == NULL)) {
-        ev_esp8266_net_lock();
-        ++net->mqtt_disabled;
-        ++net->tx_failed;
-        ++net->tx_rejected_state;
-        ev_esp8266_net_unlock();
-        return EV_ERR_UNSUPPORTED;
-    }
-    if (!snapshot.mqtt_connected) {
-        ev_esp8266_net_lock();
-        ++net->tx_failed;
-        ++net->tx_rejected_state;
-        ev_esp8266_net_unlock();
-        return EV_ERR_STATE;
-    }
-    if ((cmd->topic_len > EV_NET_MAX_TOPIC_BYTES) ||
-        (cmd->payload_len > EV_NET_MAX_INLINE_PAYLOAD_BYTES) ||
-        (cmd->topic_len == 0U)) {
-        ev_esp8266_net_lock();
-        ++net->tx_failed;
-        ++net->tx_rejected_oversize;
-        ev_esp8266_net_unlock();
-        return EV_ERR_INVALID_ARG;
-    }
+#if EV_ESP8266_NET_ENABLE_MQTT
+    {
+        ev_esp8266_net_state_snapshot_t snapshot;
+        char topic[EV_NET_MAX_TOPIC_BYTES + 1U];
+        int msg_id;
 
-    memset(topic, 0, sizeof(topic));
-    memcpy(topic, cmd->topic, cmd->topic_len);
-    msg_id = esp_mqtt_client_publish(snapshot.mqtt_client,
-                                     topic,
-                                     (const char *)cmd->payload,
-                                     (int)cmd->payload_len,
-                                     (int)cmd->qos,
-                                     (int)cmd->retain);
-    if (msg_id < 0) {
-        ev_esp8266_net_increment_counter(&net->tx_failed);
-        return EV_ERR_STATE;
-    }
+        snapshot = ev_esp8266_net_snapshot_state(net);
+        if (!snapshot.mqtt_supported || (snapshot.mqtt_client == NULL)) {
+            ev_esp8266_net_lock();
+            ++net->mqtt_disabled;
+            ++net->tx_failed;
+            ++net->tx_rejected_state;
+            ev_esp8266_net_unlock();
+            return EV_ERR_UNSUPPORTED;
+        }
+        if (!snapshot.mqtt_connected) {
+            ev_esp8266_net_lock();
+            ++net->tx_failed;
+            ++net->tx_rejected_state;
+            ev_esp8266_net_unlock();
+            return EV_ERR_STATE;
+        }
+        if ((cmd->topic_len > EV_NET_MAX_TOPIC_BYTES) ||
+            (cmd->payload_len > EV_NET_MAX_INLINE_PAYLOAD_BYTES) ||
+            (cmd->topic_len == 0U)) {
+            ev_esp8266_net_lock();
+            ++net->tx_failed;
+            ++net->tx_rejected_oversize;
+            ev_esp8266_net_unlock();
+            return EV_ERR_INVALID_ARG;
+        }
 
-    ev_esp8266_net_increment_counter(&net->tx_ok);
-    return EV_OK;
+        memset(topic, 0, sizeof(topic));
+        memcpy(topic, cmd->topic, cmd->topic_len);
+        msg_id = esp_mqtt_client_publish(snapshot.mqtt_client,
+                                         topic,
+                                         (const char *)cmd->payload,
+                                         (int)cmd->payload_len,
+                                         (int)cmd->qos,
+                                         (int)cmd->retain);
+        if (msg_id < 0) {
+            ev_esp8266_net_increment_counter(&net->tx_failed);
+            return EV_ERR_STATE;
+        }
+
+        ev_esp8266_net_increment_counter(&net->tx_ok);
+        return EV_OK;
+    }
+#else
+    (void)cmd;
+    ev_esp8266_net_lock();
+    ++net->mqtt_disabled;
+    ++net->tx_failed;
+    ++net->tx_rejected_state;
+    ev_esp8266_net_unlock();
+    return EV_ERR_UNSUPPORTED;
+#endif
 }
 
 static ev_result_t ev_esp8266_net_poll_ingress_fn(void *ctx, ev_net_ingress_event_t *out_event)

@@ -16,6 +16,26 @@ The ATNEL target passes WiFi/MQTT configuration from `bsp/atnel_air_esp_motherbo
 
 If `EV_BOARD_NET_MQTT_BROKER_URI` is empty, WiFi may still be started but the MQTT client remains disabled and `publish_mqtt` returns unsupported/state errors.
 
+
+## MQTT build gate
+
+`EV_ESP8266_NET_ENABLE_MQTT` defaults to `0`, so the ESP8266 adapter is
+WiFi-only safe and does not require `mqtt_client.h` in the default build.  This
+keeps future targets from failing merely because the MQTT SDK component is
+absent or disabled.
+
+To enable the MQTT foundation path for an ESP8266 SDK build, define:
+
+```text
+-DEV_ESP8266_NET_ENABLE_MQTT=1
+```
+
+and ensure the ESP8266 MQTT component/header is available to the SDK build.
+MQTT remains inactive unless `EV_BOARD_NET_MQTT_BROKER_URI` is also non-empty.
+When the build flag is `0` or the broker URI is empty, `publish_mqtt` rejects TX
+with diagnostics and no MQTT SDK APIs are referenced.  This commit still does
+not implement telemetry, subscriptions, retained state, or remote commands.
+
 ## MQTT foundation policy
 
 This adapter does not route sensor telemetry and does not execute remote

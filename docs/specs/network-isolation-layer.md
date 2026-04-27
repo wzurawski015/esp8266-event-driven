@@ -48,6 +48,19 @@ DISCONNECTED -> WIFI_UP -> MQTT_CONNECTED
 Reconnect loops, TLS, broker sessions, and production SDK integration are out of
 scope for this commit.
 
+
+## ESP8266 MQTT build gate
+
+The ESP8266 physical adapter is intentionally WiFi-only by default.
+`EV_ESP8266_NET_ENABLE_MQTT` defaults to `0`; in that mode the adapter must not
+include or call the SDK MQTT client API.  Host/fake tests may still exercise
+portable MQTT-like events through `ev_net_port_t`, because the airlock contract is
+independent of the ESP8266 MQTT component.
+
+A later MQTT qualification step may compile with `EV_ESP8266_NET_ENABLE_MQTT=1`
+after verifying SDK component availability and broker configuration.  Telemetry
+routes and remote command parsing remain out of scope.
+
 ## ESP8266 adapter status
 
 The ESP8266 adapter is a bounded WiFi/MQTT foundation behind this airlock.

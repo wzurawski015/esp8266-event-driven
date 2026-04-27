@@ -10,4 +10,6 @@ COMPONENT_ADD_INCLUDEDIRS := include \
     ../../../../core/generated/include \
     ../../../../app/include \
     ../../../../config
-# ev_net_adapter.c is compiled from the local ev_platform source directory as the unsupported network airlock scaffold.
+# ev_net_adapter.c is compiled from the local ev_platform source directory.
+# It defaults to WiFi-only mode; define EV_ESP8266_NET_ENABLE_MQTT=1 in a
+# target-specific build only after verifying the ESP8266 MQTT SDK component.
