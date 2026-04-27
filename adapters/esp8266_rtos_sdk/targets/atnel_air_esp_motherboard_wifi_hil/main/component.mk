@@ -1,4 +1,11 @@
 COMPONENT_SRCDIRS := .
-COMPONENT_ADD_INCLUDEDIRS := . ../../../../../bsp/atnel_air_esp_motherboard
+EV_BOARD_PROFILE_DIR := $(COMPONENT_PATH)/../../../../../bsp/atnel_air_esp_motherboard
+COMPONENT_ADD_INCLUDEDIRS := . $(EV_BOARD_PROFILE_DIR)
 COMPONENT_REQUIRES := ev_platform
 CFLAGS += -DEV_HIL_WIFI_RECONNECT=1
+
+# WiFi HIL needs private lab credentials, but they must remain untracked.
+# Auto-enable the local secrets include only when the ignored file exists.
+ifneq ($(wildcard $(EV_BOARD_PROFILE_DIR)/board_secrets.local.h),)
+CFLAGS += -DEV_BOARD_INCLUDE_LOCAL_SECRETS=1
+endif

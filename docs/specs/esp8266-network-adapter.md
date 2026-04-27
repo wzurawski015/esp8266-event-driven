@@ -79,3 +79,5 @@ Without local secrets or compile-time overrides, `EV_BOARD_HAS_NET` defaults to
 physical WiFi tests, provide local definitions for `EV_BOARD_HAS_NET`,
 `EV_BOARD_NET_WIFI_SSID`, and `EV_BOARD_NET_WIFI_PASSWORD`.  MQTT may remain
 disabled by leaving `EV_BOARD_NET_MQTT_BROKER_URI` empty.
+
+For the ATNEL ESP8266 SDK target, `main/component.mk` checks for the ignored `board_secrets.local.h` file and auto-defines `EV_BOARD_INCLUDE_LOCAL_SECRETS` only for that local build. This avoids committing credentials while preventing lab builds from silently compiling with `EV_BOARD_HAS_NET=0U` after the secrets file is created.

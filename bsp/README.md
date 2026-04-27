@@ -53,3 +53,5 @@ ignored by git.  Equivalent compile-time `-D` overrides may also be used, for
 example for CI or a lab-specific build wrapper.  `EV_BOARD_HAS_NET` defaults to
 `0U` unless local secrets or build flags explicitly enable the network
 capability.
+
+For ESP8266 SDK target builds, the ATNEL target component automatically defines `EV_BOARD_INCLUDE_LOCAL_SECRETS` when the ignored file `bsp/atnel_air_esp_motherboard/board_secrets.local.h` exists. This keeps CI and default builds secret-free while making local WiFi/HIL builds reproducible without editing tracked headers. Without that local file, `EV_BOARD_HAS_NET` remains at its safe default of `0U`.

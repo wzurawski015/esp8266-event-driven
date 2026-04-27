@@ -80,3 +80,5 @@ then build with `EV_BOARD_INCLUDE_LOCAL_SECRETS` defined, or pass equivalent
 compile-time `-D` overrides from the lab build environment.  The local secrets
 file is ignored by git.  Leave `EV_BOARD_NET_MQTT_BROKER_URI` empty for WiFi-only
 HIL.
+
+The ATNEL WiFi HIL target build auto-defines `EV_BOARD_INCLUDE_LOCAL_SECRETS` when the ignored local header exists. A missing local header is treated as a secret-free build, so `EV_BOARD_HAS_NET` remains disabled and WiFi HIL cannot be qualified until credentials are supplied.
