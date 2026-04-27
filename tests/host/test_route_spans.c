@@ -92,7 +92,7 @@ int main(void)
     ev_event_id_t event_id;
     ev_route_span_t span;
 
-    assert(ev_route_count() == 38U);
+    assert(ev_route_count() == 44U);
 
     for (event_id = (ev_event_id_t)0; event_id < EV_EVENT_COUNT; event_id = (ev_event_id_t)(event_id + 1)) {
         assert_span_routes_match_event(event_id);
@@ -106,6 +106,8 @@ int main(void)
     span = ev_route_span_for_event(EV_SYS_GOTO_SLEEP_CMD);
     assert(span.count == 1U);
     assert(ev_route_exists(EV_SYS_GOTO_SLEEP_CMD, ACT_POWER));
+    assert(ev_route_exists(EV_NET_WIFI_UP, ACT_NETWORK));
+    assert(ev_route_exists(EV_NET_TX_CMD, ACT_NETWORK));
 
     span = ev_route_span_for_event((ev_event_id_t)EV_EVENT_COUNT);
     assert(span.start_index == 0U);

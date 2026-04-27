@@ -28,7 +28,8 @@ CORE_SRCS := \
     core/src/ev_oled_actor.c \
     core/src/ev_supervisor_actor.c \
     core/src/ev_power_actor.c \
-    core/src/ev_watchdog_actor.c
+    core/src/ev_watchdog_actor.c \
+    core/src/ev_network_actor.c
 
 APP_SRCS := \
     app/ev_demo_app.c
@@ -39,7 +40,8 @@ TEST_SUPPORT_SRCS := \
     tests/host/fakes/fake_onewire_port.c \
     tests/host/fakes/fake_system_port.c \
     tests/host/fakes/fake_log_port.c \
-    tests/host/fakes/fake_wdt_port.c
+    tests/host/fakes/fake_wdt_port.c \
+    tests/host/fakes/fake_net_port.c
 
 COMMON_SRCS := $(CORE_SRCS) $(APP_SRCS) $(TEST_SUPPORT_SRCS)
 COMMON_OBJS := $(patsubst %.c,$(BUILD_DIR)/obj/%.o,$(COMMON_SRCS))
@@ -66,7 +68,8 @@ HOST_TESTS := \
     test_demo_app_contract \
     test_demo_app_fault_contract \
     test_app_starvation \
-    test_app_fairness
+    test_app_fairness \
+    test_network_isolation
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
 

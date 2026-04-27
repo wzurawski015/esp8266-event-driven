@@ -47,7 +47,8 @@ static const ev_demo_app_board_profile_t k_board_runtime_profile = {
                          (EV_BOARD_HAS_ONEWIRE0 ? EV_DEMO_APP_BOARD_CAP_ONEWIRE0 : 0U) |
                          (EV_BOARD_HAS_GPIO_IRQ ? EV_DEMO_APP_BOARD_CAP_GPIO_IRQ : 0U) |
                          (EV_BOARD_HAS_DEEP_SLEEP_WAKE_GPIO16 ? EV_DEMO_APP_BOARD_CAP_DEEP_SLEEP_WAKE_GPIO16 : 0U) |
-                         (EV_BOARD_HAS_WDT ? EV_DEMO_APP_BOARD_CAP_WDT : 0U),
+                         (EV_BOARD_HAS_WDT ? EV_DEMO_APP_BOARD_CAP_WDT : 0U) |
+                         (EV_BOARD_HAS_NET ? EV_DEMO_APP_BOARD_CAP_NET : 0U),
     .hardware_present_mask = EV_BOARD_RUNTIME_HARDWARE_PRESENT_MASK,
     .supervisor_required_mask = EV_BOARD_SUPERVISOR_REQUIRED_MASK,
     .supervisor_optional_mask = EV_BOARD_SUPERVISOR_OPTIONAL_MASK,

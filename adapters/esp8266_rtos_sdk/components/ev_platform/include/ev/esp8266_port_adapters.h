@@ -10,6 +10,7 @@
 #include "ev/port_gpio_irq.h"
 #include "ev/port_onewire.h"
 #include "ev/port_log.h"
+#include "ev/port_net.h"
 #include "ev/port_reset.h"
 #include "ev/port_uart.h"
 #include "ev/port_wdt.h"
@@ -198,6 +199,18 @@ ev_result_t ev_esp8266_log_port_init(ev_log_port_t *out_port);
  */
 ev_result_t ev_esp8266_reset_port_init(ev_reset_port_t *out_port);
 
+
+/**
+ * @brief Initialize the ESP8266 network adapter scaffold.
+ *
+ * The current repository does not contain verified ESP8266 WiFi/MQTT SDK
+ * headers. The returned port is therefore unsupported but non-blocking until
+ * a future commit wires a verified SDK adapter into this HSHA airlock.
+ *
+ * @param out_port Destination contract populated on success.
+ * @return EV_OK on successful scaffold binding or an argument error.
+ */
+ev_result_t ev_esp8266_net_port_init(ev_net_port_t *out_port);
 
 /**
  * @brief Initialize the ESP8266-backed watchdog mechanism adapter.

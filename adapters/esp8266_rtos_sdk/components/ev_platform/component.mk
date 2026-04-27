@@ -10,3 +10,4 @@ COMPONENT_ADD_INCLUDEDIRS := include \
     ../../../../core/generated/include \
     ../../../../app/include \
     ../../../../config
+# ev_net_adapter.c is compiled from the local ev_platform source directory as the unsupported network airlock scaffold.

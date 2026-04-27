@@ -7,7 +7,7 @@
 
 #include "ev/route_table.h"
 
-#define EV_ROUTE_TABLE_GENERATED_COUNT 38U
+#define EV_ROUTE_TABLE_GENERATED_COUNT 44U
 
 enum {
     EV_ROUTE_UNIQUE__EV_BOOT_STARTED__ACT_DIAG = 1,
@@ -48,6 +48,12 @@ enum {
     EV_ROUTE_UNIQUE__EV_DS18B20_READY__ACT_SUPERVISOR = 1,
     EV_ROUTE_UNIQUE__EV_SYSTEM_READY__ACT_APP = 1,
     EV_ROUTE_UNIQUE__EV_SYS_GOTO_SLEEP_CMD__ACT_POWER = 1,
+    EV_ROUTE_UNIQUE__EV_NET_WIFI_UP__ACT_NETWORK = 1,
+    EV_ROUTE_UNIQUE__EV_NET_WIFI_DOWN__ACT_NETWORK = 1,
+    EV_ROUTE_UNIQUE__EV_NET_MQTT_UP__ACT_NETWORK = 1,
+    EV_ROUTE_UNIQUE__EV_NET_MQTT_DOWN__ACT_NETWORK = 1,
+    EV_ROUTE_UNIQUE__EV_NET_MQTT_MSG_RX__ACT_NETWORK = 1,
+    EV_ROUTE_UNIQUE__EV_NET_TX_CMD__ACT_NETWORK = 1,
     EV_ROUTE_UNIQUE__SENTINEL = 0
 };
 
@@ -90,6 +96,12 @@ static const ev_route_t k_ev_route_table_generated[] = {
     { EV_DS18B20_READY, ACT_SUPERVISOR },
     { EV_SYSTEM_READY, ACT_APP },
     { EV_SYS_GOTO_SLEEP_CMD, ACT_POWER },
+    { EV_NET_WIFI_UP, ACT_NETWORK },
+    { EV_NET_WIFI_DOWN, ACT_NETWORK },
+    { EV_NET_MQTT_UP, ACT_NETWORK },
+    { EV_NET_MQTT_DOWN, ACT_NETWORK },
+    { EV_NET_MQTT_MSG_RX, ACT_NETWORK },
+    { EV_NET_TX_CMD, ACT_NETWORK },
 };
 
 static const ev_route_span_t k_ev_route_spans_generated[EV_EVENT_COUNT] = {
@@ -114,6 +126,12 @@ static const ev_route_span_t k_ev_route_spans_generated[EV_EVENT_COUNT] = {
     [EV_DS18B20_READY] = { 35U, 1U },
     [EV_SYSTEM_READY] = { 36U, 1U },
     [EV_SYS_GOTO_SLEEP_CMD] = { 37U, 1U },
+    [EV_NET_WIFI_UP] = { 38U, 1U },
+    [EV_NET_WIFI_DOWN] = { 39U, 1U },
+    [EV_NET_MQTT_UP] = { 40U, 1U },
+    [EV_NET_MQTT_DOWN] = { 41U, 1U },
+    [EV_NET_MQTT_MSG_RX] = { 42U, 1U },
+    [EV_NET_TX_CMD] = { 43U, 1U },
 };
 
 #endif /* EV_ROUTE_TABLE_GENERATED_H */
