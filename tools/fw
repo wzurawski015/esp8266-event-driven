@@ -9,7 +9,8 @@ sdk_default_monitor_baud() {
     adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev|\
     adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard|\
     adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil|\
-    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil)
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil|\
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil)
       printf '%s\n' '115200'
       ;;
     *)
@@ -28,6 +29,8 @@ HIL_I2C_PROJECT_DIR_REL="${FW_HIL_I2C_PROJECT_DIR:-adapters/esp8266_rtos_sdk/tar
 HIL_I2C_MONITOR_TIMEOUT_S="${FW_HIL_I2C_TIMEOUT_S:-180}"
 HIL_ONEWIRE_PROJECT_DIR_REL="${FW_HIL_ONEWIRE_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil}"
 HIL_ONEWIRE_MONITOR_TIMEOUT_S="${FW_HIL_ONEWIRE_TIMEOUT_S:-240}"
+HIL_WIFI_PROJECT_DIR_REL="${FW_HIL_WIFI_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil}"
+HIL_WIFI_MONITOR_TIMEOUT_S="${FW_HIL_WIFI_TIMEOUT_S:-300}"
 SDK_SERIAL_PORT="${FW_ESPPORT:-${ESPPORT:-}}"
 SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-$(sdk_default_monitor_baud "$SDK_PROJECT_DIR_REL")}}"
 SDK_FLASH_BEFORE="${FW_FLASH_BEFORE:-default_reset}"
@@ -75,6 +78,11 @@ Usage:
   ./tools/fw hil-onewire-flash
   ./tools/fw hil-onewire-monitor
   ./tools/fw hil-onewire-run
+
+  ./tools/fw hil-wifi-build
+  ./tools/fw hil-wifi-flash
+  ./tools/fw hil-wifi-monitor
+  ./tools/fw hil-wifi-run
 
 Notes:
   - All developer-facing validation runs inside Docker by default.
@@ -722,6 +730,35 @@ hil_onewire_run() {
   hil_onewire_monitor
 }
 
+hil_wifi_select_project() {
+  SDK_PROJECT_DIR_REL="$HIL_WIFI_PROJECT_DIR_REL"
+  SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-115200}}"
+}
+
+hil_wifi_build() {
+  hil_wifi_select_project
+  sdk_build
+}
+
+hil_wifi_flash() {
+  hil_wifi_select_project
+  sdk_flash
+}
+
+hil_wifi_monitor() {
+  hil_wifi_select_project
+  require_serial_port
+  run_in_sdk_with_device_i \
+    python3 -u /work/tools/hil/wifi_reconnect_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" "$HIL_WIFI_MONITOR_TIMEOUT_S"
+}
+
+hil_wifi_run() {
+  hil_wifi_select_project
+  sdk_build
+  sdk_flash
+  hil_wifi_monitor
+}
+
 cmd="${1:-}"
 
 case "$cmd" in
@@ -825,6 +862,18 @@ case "$cmd" in
     ;;
   hil-onewire-run)
     hil_onewire_run
+    ;;
+  hil-wifi-build)
+    hil_wifi_build
+    ;;
+  hil-wifi-flash)
+    hil_wifi_flash
+    ;;
+  hil-wifi-monitor)
+    hil_wifi_monitor
+    ;;
+  hil-wifi-run)
+    hil_wifi_run
     ;;
   *)
     usage

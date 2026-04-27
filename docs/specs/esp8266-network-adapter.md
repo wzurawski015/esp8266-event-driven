@@ -55,3 +55,13 @@ event-loop initialization failures are not silently ignored; they increment
 `event_loop_init_failures` and fail initialization.  If a future SDK exposes a
 verified "already initialized" error code, ownership sharing may be handled in a
 separate reviewed commit.
+
+## WiFi reconnect HIL
+
+The physical WiFi adapter is qualified by the dedicated ATNEL HIL target
+`atnel_air_esp_motherboard_wifi_hil`. It validates association, AP loss,
+recovery, reconnect diagnostics, WDT diagnostic visibility, and callback/poll
+heap stability through UART markers parsed by `tools/hil/wifi_reconnect_monitor.py`.
+
+This HIL does not validate MQTT connectivity, telemetry, or remote commands.
+Those require later acceptance suites.
