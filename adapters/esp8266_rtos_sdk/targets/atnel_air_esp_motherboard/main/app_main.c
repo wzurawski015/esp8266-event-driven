@@ -26,7 +26,9 @@ static ev_i2c_port_t s_board_i2c_port;
 static ev_irq_port_t s_board_irq_port;
 static ev_onewire_port_t s_board_onewire_port;
 static ev_wdt_port_t s_board_wdt_port;
+#if EV_BOARD_HAS_NET
 static ev_net_port_t s_board_net_port;
+#endif
 
 static const ev_gpio_irq_line_config_t k_board_irq_lines[] = {
     {
@@ -43,6 +45,7 @@ static const ev_gpio_irq_line_config_t k_board_irq_lines[] = {
     },
 };
 
+#if EV_BOARD_HAS_NET
 static const ev_esp8266_net_config_t k_board_net_cfg = {
     .wifi_ssid = EV_BOARD_NET_WIFI_SSID,
     .wifi_password = EV_BOARD_NET_WIFI_PASSWORD,
@@ -50,6 +53,7 @@ static const ev_esp8266_net_config_t k_board_net_cfg = {
     .mqtt_broker_uri = EV_BOARD_NET_MQTT_BROKER_URI,
     .mqtt_client_id = EV_BOARD_NET_MQTT_CLIENT_ID,
 };
+#endif
 
 static const ev_demo_app_board_profile_t k_board_runtime_profile = {
     .capabilities_mask = (EV_BOARD_HAS_I2C0 ? EV_DEMO_APP_BOARD_CAP_I2C0 : 0U) |
