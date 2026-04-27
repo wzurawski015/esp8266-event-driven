@@ -101,3 +101,18 @@ physical WiFi tests, provide local definitions for `EV_BOARD_HAS_NET`,
 disabled by leaving `EV_BOARD_NET_MQTT_BROKER_URI` empty.
 
 For the ATNEL ESP8266 SDK target, `main/component.mk` checks for the ignored `board_secrets.local.h` file and auto-defines `EV_BOARD_INCLUDE_LOCAL_SECRETS` only for that local build. This avoids committing credentials while preventing lab builds from silently compiling with `EV_BOARD_HAS_NET=0U` after the secrets file is created.
+
+## SDK build and memory gate
+
+Before enabling MQTT payload pools, telemetry, or remote commands, run the SDK
+network build gate:
+
+```sh
+export FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
+./tools/fw sdk-network-build-gate
+```
+
+The default remains WiFi-only and keeps `EV_ESP8266_NET_ENABLE_MQTT=0`.  A
+future MQTT compile check can be requested explicitly by setting the build flag,
+but that is not a physical MQTT HIL result.  The gate emits `EV_MEM_*` markers
+and does not print WiFi secrets or compiler command lines.
