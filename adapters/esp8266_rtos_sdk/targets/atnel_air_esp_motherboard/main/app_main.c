@@ -26,6 +26,7 @@ static ev_i2c_port_t s_board_i2c_port;
 static ev_irq_port_t s_board_irq_port;
 static ev_onewire_port_t s_board_onewire_port;
 static ev_wdt_port_t s_board_wdt_port;
+static ev_net_port_t s_board_net_port;
 
 static const ev_gpio_irq_line_config_t k_board_irq_lines[] = {
     {
@@ -40,6 +41,14 @@ static const ev_gpio_irq_line_config_t k_board_irq_lines[] = {
         .trigger = EV_GPIO_IRQ_TRIGGER_ANYEDGE,
         .pull_mode = EV_GPIO_IRQ_PULL_UP,
     },
+};
+
+static const ev_esp8266_net_config_t k_board_net_cfg = {
+    .wifi_ssid = EV_BOARD_NET_WIFI_SSID,
+    .wifi_password = EV_BOARD_NET_WIFI_PASSWORD,
+    .wifi_auth_mode = EV_BOARD_NET_WIFI_AUTH_MODE,
+    .mqtt_broker_uri = EV_BOARD_NET_MQTT_BROKER_URI,
+    .mqtt_client_id = EV_BOARD_NET_MQTT_CLIENT_ID,
 };
 
 static const ev_demo_app_board_profile_t k_board_runtime_profile = {
@@ -74,6 +83,7 @@ void app_main(void)
     ev_irq_port_t *runtime_irq_port = NULL;
     ev_onewire_port_t *runtime_onewire_port = NULL;
     ev_wdt_port_t *runtime_wdt_port = NULL;
+    ev_net_port_t *runtime_net_port = NULL;
     ev_result_t rc;
 
     (void)uart_set_baudrate(UART_NUM_0, 115200U);
@@ -108,10 +118,20 @@ void app_main(void)
         runtime_wdt_port = &s_board_wdt_port;
     }
 
+#if EV_BOARD_HAS_NET
+    rc = ev_esp8266_net_port_init(&s_board_net_port, &k_board_net_cfg);
+    if (rc != EV_OK) {
+        ESP_LOGE(EV_BOARD_TAG, "net adapter init failed rc=%d", (int)rc);
+    } else {
+        runtime_net_port = &s_board_net_port;
+    }
+#endif
+
     ev_esp8266_runtime_app_run(&k_boot_diag,
                                runtime_i2c_port,
                                runtime_irq_port,
                                runtime_onewire_port,
                                runtime_wdt_port,
+                               runtime_net_port,
                                &k_board_runtime_profile);
 }

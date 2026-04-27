@@ -169,6 +169,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
                                 ev_irq_port_t *irq_port,
                                 ev_onewire_port_t *onewire_port,
                                 ev_wdt_port_t *wdt_port,
+                                ev_net_port_t *net_port,
                                 const ev_demo_app_board_profile_t *board_profile)
 {
     ev_clock_port_t clock_port;
@@ -240,6 +241,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
     app_cfg.onewire_port = onewire_port;
     app_cfg.system_port = &system_port;
     app_cfg.wdt_port = wdt_port;
+    app_cfg.net_port = net_port;
     app_cfg.board_profile = board_profile;
 
     rc = ev_demo_app_init(&s_app, &app_cfg);

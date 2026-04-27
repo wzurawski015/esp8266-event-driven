@@ -1549,6 +1549,15 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     }
 
     if ((app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_NET) != 0U) {
+        if ((app->net_port == NULL) || (app->net_port->init == NULL) ||
+            (app->net_port->start == NULL)) {
+            return EV_ERR_INVALID_ARG;
+        }
+        rc = app->net_port->init(app->net_port->ctx);
+        if (rc != EV_OK) return rc;
+        rc = app->net_port->start(app->net_port->ctx);
+        if (rc != EV_OK) return rc;
+
         rc = ev_network_actor_init(&app->network_ctx, app->net_port);
         if (rc != EV_OK) return rc;
 
