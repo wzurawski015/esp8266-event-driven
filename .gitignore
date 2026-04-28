@@ -83,3 +83,6 @@ Desktop.ini
 *.patch
 *.diff
 *:Zone.Identifier
+
+# Developer-local USB-UART profile overrides
+/adapters/esp8266_rtos_sdk/targets/*/target_usb_uart.local.profile

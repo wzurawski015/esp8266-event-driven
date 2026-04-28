@@ -41,3 +41,10 @@ If `sdk-monitor` is unstable under Docker or WSL2, use `sdk-simple-monitor` as t
 If `sdk-flash` fails with a DTR/RTS I/O error, handshake timeout, or `Invalid head of packet (...)` under Docker or WSL2, use `sdk-flash-manual` after putting the board into ROM bootloader mode manually. That path now skips esptool-managed pre-flash auto-reset and post-flash reset, so press **RESET** once flashing finishes. If manual flash times out, treat it as a board-state problem: the target never entered ROM bootloader mode cleanly.
 If you need the log from the first application line, start `sdk-simple-monitor` first and then press **RESET** on the board.
 The frozen operator acceptance bar for this target lives in `docs/specs/stage2-foundation-quality-gate.md`.
+
+## USB-UART profile
+
+Host-side USB-UART metadata lives in `target_usb_uart.profile`. The ATNEL AIR ESP
+Motherboard profile uses the FT231X / FTDI-class bridge hint. `FW_ESPPORT` always
+wins over auto-detection, and `target_usb_uart.local.profile` may be used for
+fixture-specific serial numbers.

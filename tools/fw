@@ -57,6 +57,8 @@ Usage:
 
   ./tools/fw sdk-ports
   ./tools/fw sdk-port-resolve
+  ./tools/fw target-usb-profile-check
+  ./tools/fw sdk-port-resolve-test
 
   ./tools/fw sdk-check
   ./tools/fw sdk-defconfig
@@ -96,8 +98,9 @@ Notes:
     EV_ESP8266_NET_ENABLE_MQTT, EV_SDK_IRAM_LIMIT_BYTES,
     EV_SDK_DRAM_LIMIT_BYTES, EV_SDK_MAX_BSS_BYTES, or
     EV_SDK_MAX_DATA_BYTES to override defaults.
-  - If FW_ESPPORT is unset and exactly one /dev/ttyUSB* or /dev/ttyACM* node is visible,
-    the wrapper can resolve that serial device automatically.
+  - FW_ESPPORT/ESPPORT manual overrides always win. If unset, the wrapper
+    resolves the serial port from the selected target USB-UART profile, preferring
+    /dev/serial/by-id and VID/PID matches. Ambiguous matches fail safely.
 USAGE
 }
 
@@ -136,39 +139,250 @@ serial_port_candidates() {
   [ "$found" -eq 1 ]
 }
 
+serial_by_id_candidates() {
+  found=0
+  for path in /dev/serial/by-id/*; do
+    if [ -e "$path" ]; then
+      printf '%s\n' "$path"
+      found=1
+    fi
+  done
+  [ "$found" -eq 1 ]
+}
+
+candidate_count() {
+  printf '%s\n' "$1" | sed '/^$/d' | wc -l | tr -d '[:space:]'
+}
+
+candidate_first() {
+  printf '%s\n' "$1" | sed '/^$/d' | sed -n '1p'
+}
+
+resolve_serial_symlink() {
+  if command -v readlink >/dev/null 2>&1; then
+    readlink -f "$1" 2>/dev/null || printf '%s\n' "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+sdk_target_name_from_project_dir() {
+  basename "$SDK_PROJECT_DIR_REL"
+}
+
+sdk_target_profile_path() {
+  printf '%s/%s/target_usb_uart.profile\n' "$ROOT_DIR" "$SDK_PROJECT_DIR_REL"
+}
+
+sdk_target_local_profile_path() {
+  printf '%s/%s/target_usb_uart.local.profile\n' "$ROOT_DIR" "$SDK_PROJECT_DIR_REL"
+}
+
+sdk_clear_target_usb_uart_profile() {
+  EV_TARGET_NAME="$(sdk_target_name_from_project_dir)"
+  EV_TARGET_USB_UART_BRIDGE="unknown"
+  EV_TARGET_USB_VID=""
+  EV_TARGET_USB_PID=""
+  EV_TARGET_USB_SERIAL=""
+  EV_TARGET_SERIAL_BY_ID_PATTERN=""
+  EV_TARGET_FLASH_BAUD=""
+  EV_TARGET_MONITOR_BAUD=""
+  EV_TARGET_RESET_MODE=""
+  EV_TARGET_FLASH_BEFORE=""
+  EV_TARGET_FLASH_AFTER=""
+  EV_TARGET_PORT_HINT=""
+}
+
+sdk_load_target_usb_uart_profile() {
+  sdk_clear_target_usb_uart_profile
+  profile_path=$(sdk_target_profile_path)
+  local_profile_path=$(sdk_target_local_profile_path)
+
+  if [ -f "$profile_path" ]; then
+    . "$profile_path"
+  fi
+
+  if [ -f "$local_profile_path" ]; then
+    . "$local_profile_path"
+  fi
+}
+
+sdk_apply_target_usb_uart_profile_defaults() {
+  sdk_load_target_usb_uart_profile
+
+  if [ -n "${EV_TARGET_MONITOR_BAUD:-}" ] && [ -z "${FW_MONITOR_BAUD+x}" ] && [ -z "${MONITORBAUD+x}" ]; then
+    SDK_MONITOR_BAUD="$EV_TARGET_MONITOR_BAUD"
+  fi
+  if [ -n "${EV_TARGET_FLASH_BEFORE:-}" ] && [ -z "${FW_FLASH_BEFORE+x}" ]; then
+    SDK_FLASH_BEFORE="$EV_TARGET_FLASH_BEFORE"
+  fi
+  if [ -n "${EV_TARGET_FLASH_AFTER:-}" ] && [ -z "${FW_FLASH_AFTER+x}" ]; then
+    SDK_FLASH_AFTER="$EV_TARGET_FLASH_AFTER"
+  fi
+}
+
+sdk_select_single_serial_candidate() {
+  reason="$1"
+  candidates="$2"
+  count=$(candidate_count "$candidates")
+  case "$count" in
+    0)
+      return 1
+      ;;
+    1)
+      SDK_SERIAL_PORT=$(resolve_serial_symlink "$(candidate_first "$candidates")")
+      return 0
+      ;;
+    *)
+      echo "error: multiple serial devices matched $reason for target $EV_TARGET_NAME" >&2
+      printf '%s\n' "$candidates" | sed '/^$/d' >&2
+      echo "set FW_ESPPORT explicitly or add target_usb_uart.local.profile with EV_TARGET_USB_SERIAL, EV_TARGET_SERIAL_BY_ID_PATTERN, or EV_TARGET_PORT_HINT" >&2
+      return 2
+      ;;
+  esac
+}
+
+sdk_match_serial_by_port_hint() {
+  if [ -n "${EV_TARGET_PORT_HINT:-}" ] && [ -e "$EV_TARGET_PORT_HINT" ]; then
+    SDK_SERIAL_PORT=$(resolve_serial_symlink "$EV_TARGET_PORT_HINT")
+    return 0
+  fi
+  return 1
+}
+
+sdk_match_serial_by_id() {
+  by_id=$(serial_by_id_candidates || true)
+  matches=""
+
+  if [ -n "${EV_TARGET_USB_SERIAL:-}" ]; then
+    for path in $by_id; do
+      base=$(basename "$path")
+      if printf '%s\n' "$base" | grep -F "$EV_TARGET_USB_SERIAL" >/dev/null 2>&1; then
+        matches="${matches}${path}
+"
+      fi
+    done
+    if sdk_select_single_serial_candidate "USB serial $EV_TARGET_USB_SERIAL" "$matches"; then
+      return 0
+    else
+      rc=$?
+      [ "$rc" -eq 2 ] && return 2
+    fi
+  fi
+
+  matches=""
+  if [ -n "${EV_TARGET_SERIAL_BY_ID_PATTERN:-}" ]; then
+    for path in $by_id; do
+      case "$path" in
+        $EV_TARGET_SERIAL_BY_ID_PATTERN)
+          matches="${matches}${path}
+"
+          ;;
+      esac
+    done
+    if sdk_select_single_serial_candidate "by-id pattern $EV_TARGET_SERIAL_BY_ID_PATTERN" "$matches"; then
+      return 0
+    else
+      rc=$?
+      [ "$rc" -eq 2 ] && return 2
+    fi
+  fi
+
+  return 1
+}
+
+sdk_match_serial_by_vid_pid() {
+  if [ -z "${EV_TARGET_USB_VID:-}" ] || [ -z "${EV_TARGET_USB_PID:-}" ]; then
+    return 1
+  fi
+  if ! command -v udevadm >/dev/null 2>&1; then
+    return 1
+  fi
+
+  want_vid=$(printf '%s\n' "$EV_TARGET_USB_VID" | tr '[:upper:]' '[:lower:]')
+  want_pid=$(printf '%s\n' "$EV_TARGET_USB_PID" | tr '[:upper:]' '[:lower:]')
+  matches=""
+  for path in $(serial_port_candidates || true); do
+    props=$(udevadm info -q property -n "$path" 2>/dev/null || true)
+    got_vid=$(printf '%s\n' "$props" | sed -n 's/^ID_VENDOR_ID=//p' | head -n 1 | tr '[:upper:]' '[:lower:]')
+    got_pid=$(printf '%s\n' "$props" | sed -n 's/^ID_MODEL_ID=//p' | head -n 1 | tr '[:upper:]' '[:lower:]')
+    if [ "$got_vid" = "$want_vid" ] && [ "$got_pid" = "$want_pid" ]; then
+      matches="${matches}${path}
+"
+    fi
+  done
+
+  if sdk_select_single_serial_candidate "VID:PID ${EV_TARGET_USB_VID}:${EV_TARGET_USB_PID}" "$matches"; then
+    return 0
+  else
+    rc=$?
+    [ "$rc" -eq 2 ] && return 2
+  fi
+
+  return 1
+}
+
 resolve_serial_port() {
   if [ -n "$SDK_SERIAL_PORT" ]; then
     return 0
   fi
 
+  sdk_apply_target_usb_uart_profile_defaults
+
+  if sdk_match_serial_by_port_hint; then
+    return 0
+  fi
+  if sdk_match_serial_by_id; then
+    return 0
+  else
+    rc=$?
+    [ "$rc" -eq 2 ] && return 1
+  fi
+  if sdk_match_serial_by_vid_pid; then
+    return 0
+  else
+    rc=$?
+    [ "$rc" -eq 2 ] && return 1
+  fi
+
   candidates=$(serial_port_candidates || true)
-  count=$(printf '%s\n' "$candidates" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+  count=$(candidate_count "$candidates")
 
   case "$count" in
     1)
-      SDK_SERIAL_PORT=$(printf '%s\n' "$candidates" | sed -n '1p')
+      SDK_SERIAL_PORT=$(candidate_first "$candidates")
+      echo "note: target profile did not produce a unique match; using the only visible serial device: $SDK_SERIAL_PORT" >&2
       return 0
       ;;
     0)
-      echo "error: no serial device found under /dev/ttyUSB* or /dev/ttyACM*" >&2
+      echo "error: no serial device found for target $EV_TARGET_NAME under /dev/serial/by-id, /dev/ttyUSB*, or /dev/ttyACM*" >&2
+      echo "target profile: $(sdk_target_profile_path)" >&2
       echo "use ./tools/fw sdk-ports to inspect visible serial devices" >&2
       echo "or set FW_ESPPORT explicitly" >&2
       return 1
       ;;
     *)
-      echo "error: multiple serial devices found and FW_ESPPORT is not set" >&2
+      echo "error: multiple serial devices are visible and target profile did not resolve one unique port" >&2
       printf '%s\n' "$candidates" >&2
-      echo "use ./tools/fw sdk-port-resolve only when exactly one candidate should exist" >&2
-      echo "or set FW_ESPPORT explicitly" >&2
+      echo "target profile: $(sdk_target_profile_path)" >&2
+      echo "use /dev/serial/by-id, set FW_ESPPORT, or add target_usb_uart.local.profile" >&2
       return 1
       ;;
   esac
 }
 
 sdk_ports() {
-  if ! serial_port_candidates; then
-    echo "error: no serial device found under /dev/ttyUSB* or /dev/ttyACM*" >&2
-    exit 1
+  echo "serial device nodes:" >&2
+  if serial_port_candidates; then
+    :
+  else
+    echo "  (none under /dev/ttyUSB* or /dev/ttyACM*)" >&2
+  fi
+  echo "serial by-id links:" >&2
+  if serial_by_id_candidates; then
+    :
+  else
+    echo "  (none under /dev/serial/by-id)" >&2
   fi
 }
 
@@ -185,6 +399,59 @@ require_serial_port() {
     echo "or set FW_ESPPORT explicitly" >&2
     exit 1
   fi
+}
+
+target_usb_profile_check() {
+  failures=0
+  for target_dir in "$ROOT_DIR"/adapters/esp8266_rtos_sdk/targets/*; do
+    [ -d "$target_dir" ] || continue
+    target_name=$(basename "$target_dir")
+    profile="$target_dir/target_usb_uart.profile"
+    if [ ! -f "$profile" ]; then
+      echo "error: missing USB-UART profile for target: $target_name" >&2
+      failures=$((failures + 1))
+      continue
+    fi
+    (
+      EV_TARGET_NAME=
+      EV_TARGET_USB_UART_BRIDGE=
+      EV_TARGET_FLASH_BAUD=
+      EV_TARGET_MONITOR_BAUD=
+      . "$profile"
+      test -n "$EV_TARGET_NAME"
+      test -n "$EV_TARGET_USB_UART_BRIDGE"
+      test -n "$EV_TARGET_FLASH_BAUD"
+      test -n "$EV_TARGET_MONITOR_BAUD"
+    ) || {
+      echo "error: invalid USB-UART profile: $profile" >&2
+      failures=$((failures + 1))
+    }
+  done
+
+  tracked_local=$(git -C "$ROOT_DIR" ls-files 'adapters/esp8266_rtos_sdk/targets/*/target_usb_uart.local.profile' 2>/dev/null || true)
+  if [ -n "$tracked_local" ]; then
+    echo "error: local USB-UART override profile is tracked by Git:" >&2
+    printf '%s\n' "$tracked_local" >&2
+    failures=$((failures + 1))
+  fi
+
+  if FW_ESPPORT=/dev/null ESPPORT= FW_SDK_PROJECT_DIR="$SDK_PROJECT_DIR_REL" "$0" sdk-port-resolve 2>/dev/null | grep -qx '/dev/null'; then
+    :
+  else
+    echo "error: FW_ESPPORT override did not win in sdk-port-resolve" >&2
+    failures=$((failures + 1))
+  fi
+
+  if [ "$failures" -ne 0 ]; then
+    echo "EV_TARGET_USB_PROFILE_CHECK FAIL failures=$failures" >&2
+    return 1
+  fi
+  echo "EV_TARGET_USB_PROFILE_CHECK PASS failures=0"
+}
+
+sdk_port_resolve_test() {
+  FW_ESPPORT=/dev/null ESPPORT= FW_SDK_PROJECT_DIR="$SDK_PROJECT_DIR_REL" "$0" sdk-port-resolve | grep -qx '/dev/null'
+  echo "EV_SDK_PORT_RESOLVE_TEST PASS"
 }
 
 build_host_image() {
@@ -853,6 +1120,12 @@ case "$cmd" in
     ;;
   sdk-port-resolve)
     sdk_port_resolve
+    ;;
+  target-usb-profile-check)
+    target_usb_profile_check
+    ;;
+  sdk-port-resolve-test)
+    sdk_port_resolve_test
     ;;
   sdk-check)
     sdk_check
